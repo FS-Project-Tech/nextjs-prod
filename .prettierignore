@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+.next
+out
+dist
+build
+
+# Cache
+.turbo
+.cache
+*.cache
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Generated files
+next-env.d.ts
+*.tsbuildinfo
+
+# Package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.md
+!README.md
+

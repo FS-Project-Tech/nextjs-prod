@@ -1,0 +1,341 @@
+"use client";
+ 
+import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
+import { useMemo, useState, useEffect } from "react";
+import ProductVariations from "@/components/ProductVariations";
+import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
+import { useCart } from "@/components/CartProvider";
+import { useToast } from "@/components/ToastProvider";
+import { WishlistButton } from "@/components/WishlistButton";
+import { formatPriceWithLabel } from "@/lib/format-utils";
+import { matchVariation, findBrand, isAllSelected, extractProductBrands } from "@/lib/utils/product";
+import { useViewedProduct } from "@/hooks/useViewedProducts";
+import ConsultationFormModal from "@/components/ConsultationFormModal";
+import EmpowerCampaignBox from "@/components/EmpowerCampaignBox";	
+import Image from "next/image";
+ 
+function hasEmpowerTag(product: WooCommerceProduct): boolean {
+    const tags = product.tags || [];
+    return tags.some(
+        (t: { name?: string; slug?: string }) =>
+            (t.name || "").toLowerCase() === "empower" ||
+            (t.slug || "").toLowerCase() === "empower"
+    );
+}
+
+function showProductTerms(product: WooCommerceProduct): boolean {
+    const meta = product.meta_data?.find(
+      (m: { key?: string }) => m.key === "show_terms_conditions"
+    );
+ 
+    if (!meta?.value) return false;
+ 
+    // value is array like ["yes: Yes"]
+    if (Array.isArray(meta.value)) {
+      return meta.value.some((v: string) =>
+        v.toLowerCase().includes("yes")
+      );
+    }
+ 
+    return String(meta.value).toLowerCase().includes("yes");
+  }
+ 
+export default function ProductDetailPanel({ product, variations }: { product: WooCommerceProduct; variations: WooCommerceVariation[] }) {
+    const [plan, setPlan] = useState<RecurringPlan>("none");
+    const [selected, setSelected] = useState<{ [name: string]: string }>({});
+    const [currentSku, setCurrentSku] = useState<string | null>(product.sku || null);
+    const [matchedVariation, setMatchedVariation] = useState<WooCommerceVariation | null>(null);
+    const matched = useMemo(() => matchVariation(variations, selected), [variations, selected]);
+ 
+// variable attribute definitions for swatches
+const attributes = useMemo(() => {
+    return (product.attributes || [])
+        .filter((a: any) => (a?.variation ?? false) && Array.isArray(a.options))
+        .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
+}, [product.attributes]);
+ 
+    const brandList = useMemo(() => extractProductBrands(product), [product]);
+    const brand = brandList.length > 0 ? brandList.map((b) => b.name).filter(Boolean).join(", ") : findBrand(product);
+ 
+    // Check if product has resources (downloads or meta_data with resource)
+    const hasResources = useMemo(() => {
+        // Check downloads array
+        if (product.downloads && Array.isArray(product.downloads) && product.downloads.length > 0) {
+            return true;
+        }
+        // Check meta_data for resource fields
+        if (product.meta_data && Array.isArray(product.meta_data)) {
+            const resourceKeys = ['resource', 'resources', 'resource_url', 'resource_file', 'download_resource'];
+            return product.meta_data.some((meta: any) => {
+                const key = String(meta.key || '').toLowerCase();
+                return resourceKeys.some(rk => key.includes(rk)) && meta.value;
+            });
+        }
+        return false;
+    }, [product.downloads, product.meta_data]);
+ 
+    const displayPrice = matchedVariation?.price || matched?.price || product.price;
+    const displayRegularRaw = matchedVariation?.regular_price || matched?.regular_price || product.regular_price;
+    const onSale = matchedVariation ? matchedVariation.on_sale : (matched ? matched.on_sale : product.on_sale);
+    const regularFromProduct = product.regular_price && String(product.regular_price).trim() ? product.regular_price : "";
+    const regularFromFirstVariation = variations?.[0]?.regular_price && String(variations[0].regular_price).trim() ? variations[0].regular_price : "";
+    const displayRegular =
+        displayRegularRaw && String(displayRegularRaw).trim() !== ""
+            ? displayRegularRaw
+            : onSale && regularFromProduct && String(regularFromProduct) !== String(displayPrice)
+                ? regularFromProduct
+                : onSale && regularFromFirstVariation && String(regularFromFirstVariation) !== String(displayPrice)
+                    ? regularFromFirstVariation
+                    : displayRegularRaw;
+    const { addItem, open: openCart } = useCart();
+    const { success, error: showError } = useToast();
+    const [quantity, setQuantity] = useState<number>(1);
+    const [addingToCart, setAddingToCart] = useState(false);
+    const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
+ 
+    // Track viewed product
+    const categoryIds = (product.categories || []).map((c) => c.id);
+    useViewedProduct(product.id, categoryIds);
+ 
+    return (
+        <div className="space-y-8">
+            {/* Title & meta */}
+            <div>
+                <h1 id="product-details-heading" className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                    {product.name}
+                </h1>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                    {currentSku || product.sku ? (
+                        <span>SKU: <span className="font-medium text-gray-700">{currentSku || product.sku}</span></span>
+                    ) : null}
+                    {brand && <span>Brand: <span className="font-medium text-gray-700">{brand}</span></span>}
+                    {product.categories && product.categories.length > 0 && (
+                        <span>Category: <span className="font-medium text-gray-700">{product.categories.map((c) => c.name).join(", ")}</span></span>
+                    )}
+                </div>
+            </div>
+
+              {/* ✅ FIXED SPACING HERE */}
+                {showProductTerms(product) && (
+                    <div className="mt-5">
+                    <Image
+                        src="/images/product-terms-conditions.png"
+                        alt="Product Terms"
+                        width={1200}
+                        height={200}
+                        className="w-full max-w-[600px] h-auto rounded-md"
+                    />
+                    </div>
+                )}
+ 
+            {/* Price — same treatment as product card: strikethrough original + Save $X when on sale */}
+            <div className="space-y-2">
+                {(() => {
+                    const raw = Number(displayPrice || 0);
+                    const taxClass = matchedVariation?.tax_class || matched?.tax_class || product.tax_class;
+                    const taxStatus = matchedVariation?.tax_status || matched?.tax_status || product.tax_status;
+                    const regularNum = Number(displayRegular || 0);
+                    const isOnSale = onSale && regularNum > 0 && raw > 0 && raw < regularNum;
+                    const savingsAmount = isOnSale ? regularNum - raw : 0;
+                    const savings = savingsAmount > 0 ? `$${savingsAmount.toFixed(2)}` : "";
+ 
+                    if (isNaN(raw) || raw <= 0) {
+                        return <span className="text-2xl font-semibold text-[#1f605f]">${displayPrice}</span>;
+                    }
+ 
+                    const priceInfo = formatPriceWithLabel(raw, taxClass, taxStatus);
+                    const regularInfo = isOnSale ? formatPriceWithLabel(regularNum, taxClass, taxStatus) : null;
+                    const formattedRegularWithLabel = regularInfo?.label
+                        ? `${regularInfo.label}: ${regularInfo.price}`
+                        : regularInfo?.price ?? "";
+ 
+                    return (
+                        <>
+                            {isOnSale && formattedRegularWithLabel && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm text-gray-500 line-through">{formattedRegularWithLabel}</span>
+                                    {savings && (
+                                        <span className="text-sm font-semibold text-green-600">Save {savings}</span>
+                                    )}
+                                </div>
+                            )}
+                            <div className="flex flex-wrap items-baseline gap-3">
+                                <div className="text-gray-900">
+                                    {priceInfo.taxType === "gst_free" ? (
+                                        <div className="flex flex-wrap items-baseline gap-2">
+                                            <span className="text-2xl font-semibold text-[#1f605f]">
+                                                {priceInfo.label}: {priceInfo.price}
+                                            </span>
+                                            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                                GST FREE
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-0.5">
+                                            <div className="text-2xl font-semibold text-[#1f605f]">
+                                                {priceInfo.label}: {priceInfo.price}
+                                            </div>
+                                            {priceInfo.exclPrice ? (
+                                                <div className="text-sm text-gray-600">Excl. GST: {priceInfo.exclPrice}</div>
+                                            ) : null}
+                                        </div>
+                                    )}
+                                </div>
+                                {onSale && (
+                                    <span className="rounded-md bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+                                        Sale
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    );
+                })()}
+            </div>
+ 
+            {/* Packaging / Variations */}
+            {attributes.length > 0 && (
+                <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Packaging</p>
+                    <ProductVariations
+                        attributes={attributes}
+                        variations={variations}
+                        onVariationChange={(variation, selectedAttributes) => {
+                            setMatchedVariation(variation);
+                            setSelected(selectedAttributes);
+                            if (!variation) setCurrentSku(product.sku || null);
+                        }}
+                        onSkuChange={(sku) => setCurrentSku(sku || product.sku || null)}
+                        style="swatches"
+                    />
+                </div>
+            )}
+ 
+            {/* Delivery plan */}
+            <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery</p>
+                <RecurringSelect onChange={setPlan} value={plan} />
+            </div>
+ 
+            {/* Quantity */}
+            <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">Quantity</label>
+                <input
+                    type="number"
+                    min={1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-24 rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+            </div>
+ 
+            {/* Resource */}
+            {hasResources && (
+                <div>
+                    <button
+                        onClick={() => {
+                            if (product.downloads && product.downloads.length > 0) {
+                                const firstDownload = product.downloads[0];
+                                if (firstDownload.file) window.open(firstDownload.file, "_blank");
+                            } else if (product.meta_data) {
+                                const resourceMeta = product.meta_data.find((meta: any) => {
+                                    const key = String(meta.key || "").toLowerCase();
+                                    return ["resource", "resource_url", "resource_file"].some((rk) => key.includes(rk)) && meta.value;
+                                });
+                                if (resourceMeta?.value) window.open(resourceMeta.value, "_blank");
+                            }
+                        }}
+                        className="w-full rounded-lg border-2 border-teal-600 bg-transparent px-4 py-3 text-sm font-semibold text-teal-600 transition hover:bg-teal-600 hover:text-white"
+                    >
+                        Resource
+                    </button>
+                </div>
+            )}
+ 
+            {/* Add to Cart */}
+            <div className="space-y-3">
+                <div className="flex items-stretch gap-3">
+                    <button
+                        onClick={async () => {
+                            if (addingToCart) return;
+                            if (attributes.length > 0 && !isAllSelected(selected, attributes)) return;
+                            setAddingToCart(true);
+                            try {
+                                await new Promise((resolve) => setTimeout(resolve, 500));
+                                const variationId = matchedVariation?.id || matched?.id;
+                                const variationTaxClass = matchedVariation?.tax_class || matched?.tax_class || product.tax_class || undefined;
+                                const variationTaxStatus = matchedVariation?.tax_status || matched?.tax_status || product.tax_status || undefined;
+                                addItem({
+                                    productId: product.id,
+                                    variationId,
+                                    name: product.name,
+                                    slug: product.slug,
+                                    imageUrl: product.images?.[0]?.src,
+                                    price: (matchedVariation?.price || matched?.price || product.price) || "0",
+                                    qty: quantity,
+                                    sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,
+                                    attributes: selected,
+                                    deliveryPlan: plan,
+                                    tax_class: variationTaxClass,
+                                    tax_status: variationTaxStatus,
+                                });
+                                openCart();
+                                success("Product added to cart");
+                            } catch (error) {
+                                console.error("Error adding to cart:", error);
+                            } finally {
+                                setAddingToCart(false);
+                            }
+                        }}
+                        disabled={(attributes.length > 0 && !isAllSelected(selected, attributes)) || addingToCart}
+                        className="btn-brand flex-1 rounded-lg px-5 py-3.5 text-base font-semibold text-white shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 cursor-pointer"
+                    >
+                        {addingToCart ? (
+                            <>
+                                <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                <span>Adding...</span>
+                            </>
+                        ) : (
+                            <span>Add to Cart</span>
+                        )}
+                    </button>
+                    <WishlistButton productId={product.id} size="lg" variant="icon" className="!h-[52px] !w-12 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" />
+                </div>
+                {attributes.length > 0 && !isAllSelected(selected, attributes) && (
+                    <p className="text-sm font-medium text-red-600" role="alert">
+                        Please select all variations before adding to cart.
+                    </p>
+                )}
+            </div>
+ 
+            {/* Empower Campaign - only for Empower-tagged products */}
+            {hasEmpowerTag(product) && (
+                <EmpowerCampaignBox
+                    price={displayPrice}
+                    taxClass={matchedVariation?.tax_class || matched?.tax_class || product.tax_class}
+                    taxStatus={matchedVariation?.tax_status || matched?.tax_status || product.tax_status}
+                />
+            )}
+ 
+            {/* Need Consultation */}
+            <button
+                onClick={() => setIsConsultationModalOpen(true)}
+                className="flex items-center gap-2 text-sm font-medium text-[#1f605f] hover:text-[#1a4d4c] transition-colors underline underline-offset-2"
+            >
+                <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Need Consultation</span>
+            </button>
+ 
+            {/* Consultation Form Modal */}
+            <ConsultationFormModal
+                isOpen={isConsultationModalOpen}
+                onClose={() => setIsConsultationModalOpen(false)}
+                productName={product.name}
+            />
+        </div>
+    );
+}

@@ -1,0 +1,876 @@
+ @import "tailwindcss";
+@import "swiper/css";
+@import "swiper/css/navigation";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Primary brand tokens */
+  --primary: #1f605f;
+  --primary-muted: #d1eaea;
+  --primary-dark: #164948;
+  --primary-foreground: #f4fbfb;
+
+  /* NDIS / Joya brand colors – use across site */
+  --ndis-primary: #5B1D65;
+  --ndis-secondary: #1F605F;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  /* Brand color: #1f605f - Base color palette */
+  --color-teal-50: #f0f9f9;
+  --color-teal-100: #d1eaea;
+  --color-teal-200: #a3d5d5;
+  --color-teal-300: #75c0c0;
+  --color-teal-400: #47abab;
+  --color-teal-500: #2a8a89;
+  --color-teal-600: var(--primary); /* Base brand color */
+  --color-teal-700: #164948;
+  --color-teal-800: #0d3231;
+  --color-teal-900: #041b1a;
+  
+  /* Primary brand color variable */
+  --color-primary: var(--primary);
+
+  /* NDIS brand – use as bg-ndis-primary, text-ndis-secondary, etc. */
+  --color-ndis-primary: var(--ndis-primary);
+  --color-ndis-secondary: var(--ndis-secondary);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+} */
+
+body {
+  background: #eeeeee;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+main{background-color: #fff;}
+
+/* App-like shell for mobile/tablet */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .app-shell {
+    max-width: 64rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.btn-brand {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  transition: background-color 150ms ease;
+}
+
+.btn-brand:hover {
+  background-color: var(--primary-dark);
+}
+
+.btn-brand:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Hide horizontal/vertical scrollbars for custom sliders */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
+/* Swiper navigation: smaller gray arrows with transparent circular background */
+:root {
+  --swiper-navigation-size: 18px; /* default ~44px; make arrows smaller */
+}
+.swiper-button-next,
+.swiper-button-prev {
+  color: #6b7280; /* gray-500 */
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background-color: transparent;
+}
+.swiper-button-next:hover,
+.swiper-button-prev:hover {
+  color: #374151; /* gray-700 */
+}
+
+/* Remove brand utilities and gradient: revert to defaults */
+
+/* Blob animation for About page hero */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+/* Disabled variation option styling */
+.disabled-option {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Category Swiper - Equal height slides */
+.category-swiper .swiper-slide {
+  height: auto;
+  display: flex;
+}
+
+.category-swiper .swiper-slide > div {
+  width: 100%;
+  display: flex;
+}
+.text-ndis{
+  color: #6a2875;
+}
+.bg-ndis{
+  background-color: #6a2875;
+}
+
+/* Global navigation progress bar (shows when user clicks a link) */
+@keyframes navigation-progress {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  50% {
+    transform: scaleX(0.6);
+    transform-origin: left;
+  }
+  100% {
+    transform: scaleX(0.6);
+    transform-origin: right;
+  }
+}
+.animate-navigation-progress {
+  animation: navigation-progress 1.8s ease-in-out infinite;
+}
+
+/* .container {
+  width: 100%;
+    @media (width >= 40rem) {
+      max-width: 44rem;
+    }
+    @media (width >= 48rem) {
+      max-width: 44rem;
+    }
+    @media (width >= 64rem) {
+      max-width: 60rem;
+    }
+    @media (width >= 80rem) {
+      max-width: 76rem;
+    }
+    @media (width >= 96rem) {
+      max-width: 86rem;
+    }
+} */
+
+.container {
+  width: 100%;
+    @media (width >= 40rem) {
+      max-width: 44rem;
+    }
+    @media (width >= 48rem) {
+      max-width: 44rem;
+    }
+    @media (width >= 64rem) {
+      max-width: 60rem;
+    }
+    @media (width >= 80rem) {
+      max-width: 76rem;
+    }
+    @media (width >= 96rem) {
+      max-width: 86rem;
+    }
+    @media (width >= 112rem) {
+      max-width: 104rem;
+    }
+}
+/* Header */
+main{background-color: #fff;}
+.bg-nav-header{background:#1f4551;}
+.hover\:bg-nav-hover:hover{background:#146f7b;}
+.text-teal{color:#164948;}
+/* ============================================
+   Info pages (privacy, terms, faq, shipping)
+   ============================================ */
+   .info-content,
+   .info-page-content {
+     max-width: none;
+     line-height: 1.6;
+   }
+   .info-content p,
+   .info-page-content p,
+   .prose p {
+     margin: 0.5rem 0 1rem;
+     color: #374151;
+   }
+   .info-content strong,
+   .info-page-content strong {
+     font-weight: 600;
+   }
+   .info-content a,
+   .info-page-content a {
+     color: var(--primary);
+     text-decoration: underline;
+   }
+   .info-content a:hover,
+   .info-page-content a:hover {
+     color: var(--primary-dark);
+   }
+   
+   /* Lists: bullets, numbers, alphabetical – spacing */
+   .info-content ul,
+   .info-content ol,
+   .info-page-content ul,
+   .info-page-content ol,
+   .prose ul,
+   .prose ol {
+     margin: 1rem 0;
+     padding-left: 1.75rem;
+     list-style-position: outside;
+   }
+   .info-content ul,
+   .info-page-content ul,
+   .prose ul {
+     list-style-type: disc;
+   }
+   .info-content ol,
+   .info-page-content ol,
+   .prose ol {
+     list-style-type: decimal;
+   }
+   .info-content li,
+   .info-page-content li,
+   .prose li {
+     margin: 0.5rem 0;
+     padding-left: 0.25rem;
+     line-height: 1.6;
+   }
+   /* Alphabetical (a, b, c) */
+   .info-content ol[type="a"],
+   .info-page-content ol[type="a"],
+   .prose ol[type="a"] {
+     list-style-type: lower-alpha;
+   }
+   .info-content ol[type="A"],
+   .info-page-content ol[type="A"],
+   .prose ol[type="A"] {
+     list-style-type: upper-alpha;
+   }
+   /* Roman numerals */
+   .info-content ol[type="i"],
+   .info-page-content ol[type="i"],
+   .prose ol[type="i"] {
+     list-style-type: lower-roman;
+   }
+   .info-content ol[type="I"],
+   .info-page-content ol[type="I"],
+   .prose ol[type="I"] {
+     list-style-type: upper-roman;
+   }
+   /* Nested lists */
+   .info-content ul ul,
+   .info-content ol ul,
+   .info-content ul ol,
+   .info-content ol ol,
+   .info-page-content ul ul,
+   .info-page-content ol ul,
+   .info-page-content ul ol,
+   .info-page-content ol ol,
+   .prose ul ul,
+   .prose ol ul,
+   .prose ul ol,
+   .prose ol ol {
+     margin: 0.5rem 0;
+     padding-left: 1.5rem;
+   }
+   
+   /* FAQ: Main topic → Question → Answer structure */
+   .info-content--faq {
+     counter-reset: faq-section 0 faq-question 0;
+   }
+   .info-content--faq h2 {
+     font-size: 1.125rem;
+     font-weight: 700;
+     color: var(--primary);
+     margin: 2.5rem 0 1rem;
+     padding-bottom: 0.25rem;
+     border-bottom: 1px solid #e5e7eb;
+     text-transform: uppercase;
+     letter-spacing: 0.02em;
+     counter-increment: faq-section;
+     counter-set: faq-question 0;
+   }
+   .info-content--faq h2::before {
+     content: counter(faq-section) ". ";
+   }
+   .info-content--faq h2:first-child {
+     margin-top: 0;
+   }
+   .info-content--faq h3,
+   .info-content--faq h4 {
+     font-size: 1rem;
+     font-weight: 600;
+     color: var(--primary);
+     margin: 1.25rem 0 0.5rem;
+     padding-left: 2.5rem;
+     counter-increment: faq-question;
+   }
+   .info-content--faq h3::before,
+   .info-content--faq h4::before {
+     content: counter(faq-section) "." counter(faq-question) " ";
+     margin-left: -2.5rem;
+     margin-right: 0.25rem;
+   }
+   
+   /* Terms/Privacy: Hierarchical numbered structure */
+   .info-content--terms h2,
+   .info-content--terms h3 {
+     font-weight: 700;
+     color: #111827;
+     margin: 1.5rem 0 0.75rem;
+   }
+   .info-content--terms h2 {
+     font-size: 1.125rem;
+     color: var(--primary);
+     border-bottom: 1px solid #e5e7eb;
+     padding-bottom: 0.25rem;
+   }
+   .info-content--terms h2:first-child {
+     margin-top: 0;
+   }
+   .info-content--terms h3 {
+     font-size: 1rem;
+     margin-left: 0.5rem;
+   }
+   .info-content--terms p {
+     margin-left: 0.75rem;
+   }
+   
+   /* Accordion (details/summary) for info pages */
+   .prose details,
+   .info-page-content details {
+     margin: 1rem 0;
+     border: 1px solid #e5e7eb;
+     border-radius: 0.5rem;
+     overflow: hidden;
+   }
+   .prose summary,
+   .info-page-content summary {
+     padding: 1rem 1.25rem;
+     font-weight: 600;
+     color: var(--primary);
+     cursor: pointer;
+     background: #f9fafb;
+     list-style: none;
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+   }
+   .prose summary::-webkit-details-marker,
+   .info-page-content summary::-webkit-details-marker {
+     display: none;
+   }
+   .prose summary::after,
+   .info-page-content summary::after {
+     content: "+";
+     font-size: 1.25rem;
+   }
+   .prose details[open] summary::after,
+   .info-page-content details[open] summary::after {
+     content: "−";
+   }
+   .prose details[open] summary,
+   .info-page-content details[open] summary {
+     background: #f3f4f6;
+     border-bottom: 1px solid #e5e7eb;
+   }
+   .prose details > *:not(summary),
+   .info-page-content details > *:not(summary) {
+     padding: 1rem 1.25rem;
+     margin: 0;
+   }
+
+   /* ============================================
+   Funding Scheme page – cards from WP content
+   ============================================ */
+.funding-scheme-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #f9fafb;
+}
+ 
+.funding-scheme-content h2:first-of-type {
+  margin-top: 0;
+}
+ 
+.funding-scheme-content p {
+  margin: 0.5rem 0 1rem;
+  color: #374151;
+}
+ 
+.funding-scheme-content a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+ 
+.funding-scheme-content a:hover {
+  color: var(--primary-dark);
+}
+ 
+/* Read More button style - links that look like buttons */
+.funding-scheme-content p a[href*="funding-scheme"],
+.funding-scheme-content p a[href*="/caps"],
+.funding-scheme-content p a[href*="/my-aged-care"],
+.funding-scheme-content p a[href*="/ndis"] {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--primary);
+  color: white !important;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+ 
+.funding-scheme-content p a[href*="funding-scheme"]:hover,
+.funding-scheme-content p a[href*="/caps"]:hover,
+.funding-scheme-content p a[href*="/my-aged-care"]:hover,
+.funding-scheme-content p a[href*="/ndis"]:hover {
+  background: var(--primary-dark);
+}
+ 
+/* Detail page - simpler styling */
+.funding-scheme-detail h2,
+.funding-scheme-detail h3 {
+  font-weight: 700;
+  color: #111827;
+  margin: 1.5rem 0 0.75rem;
+}
+ 
+.funding-scheme-detail h2:first-child,
+.funding-scheme-detail h3:first-child {
+  margin-top: 0;
+}
+/* Funding Scheme Intro */
+.funding-scheme-intro p {
+  margin: 0.5rem 0 1rem;
+  color: #374151;
+}
+ 
+.funding-scheme-intro img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+/* Funding scheme detail - lists (bullets) */
+.funding-scheme-content ul,
+.funding-scheme-detail ul,
+.funding-scheme-content ol,
+.funding-scheme-detail ol {
+  margin: 1rem 0;
+  padding-left: 1.75rem;
+  list-style-position: outside;
+}
+ 
+.funding-scheme-content ul,
+.funding-scheme-detail ul {
+  list-style-type: disc;
+}
+ 
+.funding-scheme-content ol,
+.funding-scheme-detail ol {
+  list-style-type: decimal;
+}
+ 
+.funding-scheme-content li,
+.funding-scheme-detail li {
+  margin: 0.5rem 0;
+  padding-left: 0.25rem;
+  line-height: 1.6;
+}
+ 
+.funding-scheme-content ul ul,
+.funding-scheme-content ol ul,
+.funding-scheme-detail ul ul,
+.funding-scheme-detail ol ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+/* WordPress Button block - pill style */
+.funding-scheme-detail .wp-block-button__link,
+.funding-scheme-content .wp-block-button__link {
+  display: inline-block;
+  margin: 0.75rem 0;
+  padding: 0.625rem 1.5rem;
+  background: var(--primary);
+  color: white !important;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+ 
+.funding-scheme-detail .wp-block-button__link:hover,
+.funding-scheme-content .wp-block-button__link:hover {
+  background: var(--primary-dark);
+}
+
+/* WordPress / Gutenberg body (nursing routes, or add class cms-page-content elsewhere) */
+.nursing-page-content,
+.cms-page-content {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: #1f2937;
+}
+
+.nursing-page-content h1,
+.nursing-page-content h2,
+.nursing-page-content h3,
+.nursing-page-content h4,
+.cms-page-content h1,
+.cms-page-content h2,
+.cms-page-content h3,
+.cms-page-content h4 {
+  font-weight: 700;
+  color: #111827;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  line-height: 1.3;
+}
+
+.nursing-page-content h1:first-child,
+.nursing-page-content h2:first-child,
+.cms-page-content h1:first-child,
+.cms-page-content h2:first-child {
+  margin-top: 0;
+}
+
+.nursing-page-content h2,
+.cms-page-content h2 {
+  font-size: 1.5rem;
+  margin-top: 2.25rem;
+}
+
+.nursing-page-content h3,
+.cms-page-content h3 {
+  font-size: 1.25rem;
+  color: #1f2937;
+}
+
+.nursing-page-content h4,
+.cms-page-content h4 {
+  font-size: 1.0625rem;
+  margin-top: 1.5rem;
+}
+
+.nursing-page-content h5,
+.nursing-page-content h6,
+.cms-page-content h5,
+.cms-page-content h6 {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #111827;
+  margin: 1.25rem 0 0.5rem;
+  line-height: 1.35;
+}
+
+.nursing-page-content p,
+.cms-page-content p {
+  margin-bottom: 1rem;
+  color: #374151;
+}
+
+/* Override Tailwind preflight: restore visible bullets / numbers */
+.nursing-page-content ul,
+.nursing-page-content ol,
+.cms-page-content ul,
+.cms-page-content ol {
+  margin: 1rem 0 1.25rem;
+  padding-left: 1.75rem;
+  list-style-position: outside;
+}
+
+.nursing-page-content ul,
+.cms-page-content ul,
+.nursing-page-content ul.wp-block-list,
+.cms-page-content ul.wp-block-list {
+  list-style-type: disc;
+}
+
+.nursing-page-content ol,
+.cms-page-content ol,
+.nursing-page-content ol.wp-block-list,
+.cms-page-content ol.wp-block-list {
+  list-style-type: decimal;
+}
+
+.nursing-page-content li,
+.cms-page-content li {
+  margin: 0.5rem 0;
+  padding-left: 0.25rem;
+  line-height: 1.6;
+  display: list-item;
+}
+
+.nursing-page-content ul ul,
+.nursing-page-content ol ul,
+.nursing-page-content ul ol,
+.nursing-page-content ol ol,
+.cms-page-content ul ul,
+.cms-page-content ol ul,
+.cms-page-content ul ol,
+.cms-page-content ol ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.nursing-page-content ol[type="a"],
+.cms-page-content ol[type="a"] {
+  list-style-type: lower-alpha;
+}
+
+.nursing-page-content ol[type="A"],
+.cms-page-content ol[type="A"] {
+  list-style-type: upper-alpha;
+}
+
+.nursing-page-content strong,
+.cms-page-content strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.nursing-page-content img,
+.cms-page-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.nursing-page-content blockquote,
+.cms-page-content blockquote {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  border-left: 4px solid var(--primary-muted);
+  background: #f9fafb;
+  color: #4b5563;
+}
+
+/* Gutenberg columns — two-column hero + full-width sections */
+.nursing-page-content .wp-block-columns,
+.cms-page-content .wp-block-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem 2rem;
+  margin: 1.5rem 0 2rem;
+  align-items: flex-start;
+}
+
+.nursing-page-content .wp-block-column,
+.cms-page-content .wp-block-column {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.nursing-page-content .wp-block-column figure,
+.cms-page-content .wp-block-column figure {
+  margin: 0 0 1rem;
+}
+
+/* Our Nursing Services hub — WP columns as cards (match NursingServiceCard chrome; buttons unchanged) */
+.nursing-services-hub-cms .wp-block-columns {
+  align-items: stretch;
+}
+
+.nursing-services-hub-cms .wp-block-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #fff;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  border-bottom: 4px solid #cec8cb;
+  padding-bottom: 1.5rem;
+}
+
+.nursing-services-hub-cms .wp-block-column figure,
+.nursing-services-hub-cms .wp-block-column .wp-block-image {
+  margin: 0;
+  width: 100%;
+  align-self: stretch;
+}
+
+.nursing-services-hub-cms .wp-block-column figure img,
+.nursing-services-hub-cms .wp-block-column .wp-block-image img {
+  border-radius: 1rem 1rem 0 0;
+  width: 100%;
+  display: block;
+
+}
+
+.nursing-services-hub-cms .wp-block-column h2,
+.nursing-services-hub-cms .wp-block-column h3 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  color: #111827;
+}
+
+.nursing-services-hub-cms .wp-block-column p {
+  margin-top: 0;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  color: #4b5563;
+}
+
+.nursing-services-hub-cms .wp-block-column .wp-block-buttons {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.nursing-services-hub-cms .wp-block-column .wp-block-button__link {
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Plain “Read more” <a> in column (not only button block) */
+.nursing-services-hub-cms .wp-block-column a {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.nursing-page-content .wp-block-group,
+.cms-page-content .wp-block-group {
+  margin: 1.5rem 0;
+}
+
+.nursing-page-content .wp-block-separator,
+.cms-page-content .wp-block-separator {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+
+.nursing-page-content .alignwide,
+.cms-page-content .alignwide {
+  max-width: 100%;
+}
+
+.nursing-page-content table,
+.cms-page-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.9375rem;
+}
+
+.nursing-page-content th,
+.nursing-page-content td,
+.cms-page-content th,
+.cms-page-content td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.nursing-page-content th,
+.cms-page-content th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.nursing-page-content a,
+.cms-page-content a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.nursing-page-content a:hover,
+.cms-page-content a:hover {
+  color: var(--primary-dark);
+}
+
+/* WordPress Button block on nursing / hub CMS body */
+.nursing-page-content .wp-block-button__link,
+.cms-page-content .wp-block-button__link {
+  display: inline-block;
+  margin: 0.75rem 0;
+  padding: 0.625rem 1.5rem;
+  background: var(--primary);
+  color: white !important;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.nursing-page-content .wp-block-button__link:hover,
+.cms-page-content .wp-block-button__link:hover {
+  background: var(--primary-dark);
+  color: white !important;
+}
+
