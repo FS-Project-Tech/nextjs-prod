@@ -16,7 +16,7 @@ async function fetchAllProducts() {
     console.log(`Fetching page ${page}...`);
 
     const res = await fetch(
-      `https://wordpress-1513595-6089575.cloudwaysapps.com/wp-json/wc/v3/products?per_page=100&page=${page}`,
+      `https://stage.joyamedicalsupplies.com.au/wp-json/wc/v3/products?per_page=100&page=${page}`,
       {
         headers: {
           Authorization:
