@@ -13,6 +13,7 @@ const poppins = Poppins({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
 })
+import { Analytics } from "@vercel/analytics/next"
 import "./globals.css";
 import TawkToWidget from "@/components/TawkToWidget";
 
@@ -130,6 +131,7 @@ export default function RootLayout({
 
         <NavigationProgress />
         <SpeedInsights/>
+        <Analytics />
         <ErrorBoundary>
           <CoreProviders>
             <CommerceProviders>
