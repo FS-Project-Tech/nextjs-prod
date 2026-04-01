@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/format-utils";
-import { extractProductBrands } from "@/lib/utils/product";
-import type { WooCommerceProduct } from "@/lib/woocommerce";
 
 /** Format product attributes for the Attribute column (Pkt/CTN/Each – packaging / selling unit). Prefer packaging-related attributes. */
 function formatAttributeColumn(
@@ -82,27 +80,30 @@ export default function SubcategoryDigitalCatalogue({
         if (!request) {
           request = (async () => {
             const params = new URLSearchParams({
-              categorySlug: subcategorySlug,
+              category_slug: subcategorySlug,
               per_page: "200",
               page: "1",
+              sortBy: "popularity",
+              q: "*",
             });
-            const res = await fetch(`/api/products?${params.toString()}`);
+            const res = await fetch(`/api/typesense/search?${params.toString()}`);
             const json = await res.json();
-            const products: WooCommerceProduct[] = Array.isArray(json.products)
-              ? json.products
-              : [];
+            const products = Array.isArray(json.products) ? json.products : [];
 
-            return products.map((p) => {
-              const brandInfo = extractProductBrands(p)[0];
-              const attrs = (p.attributes || []) as Array<{ name?: string; options?: string[] }>;
+            return products.map((p: Record<string, unknown>) => {
+              const attrs = (p.attributes as
+                | Array<{ name?: string; options?: string[] }>
+                | undefined) || [];
               const attributeLabel = formatAttributeColumn(attrs);
               return {
-                sku: p.sku || "",
-                name: p.name,
+                sku: String(p.sku ?? ""),
+                name: String(p.name ?? ""),
                 attribute: attributeLabel,
-                price: p.price || "",
-                brand: brandInfo?.name || "",
-                slug: p.slug || "",
+                price: String(p.price ?? ""),
+                brand: String(
+                  p.brand_name ?? p.brand ?? ""
+                ),
+                slug: String(p.slug ?? ""),
               };
             });
           })();

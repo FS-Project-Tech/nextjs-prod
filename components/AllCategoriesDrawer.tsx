@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, memo } from "react";
 import { useRouter } from "next/navigation";
+import { fetchUnifiedCategoriesClient } from "@/lib/client-unified-categories";
 
 interface WCCategory {
   id: number;
@@ -93,56 +94,37 @@ export default function AllCategoriesDrawer({
     [isControlled, onOpenChange]
   );
 
-  // Fetch all categories and build children map
+  // Single unified /api/categories load (deduped across app via client cache)
   useEffect(() => {
     if (!isOpen) return;
 
     let cancelled = false;
 
-    const fetchCategories = async () => {
+    (async () => {
       setLoading(true);
       try {
-        // Fetch both parent and all categories in parallel
-        const [parentRes, allRes] = await Promise.all([
-          fetch("/api/categories?per_page=100&parent=0&hide_empty=true", {
-            cache: "force-cache",
-          }),
-          fetch("/api/categories?per_page=200&hide_empty=false", {
-            cache: "force-cache",
-          }),
-        ]);
-
+        const payload = await fetchUnifiedCategoriesClient();
         if (cancelled) return;
 
-        let parentCats: WCCategory[] = [];
-        let allCats: WCCategory[] = [];
+        const parentCats: WCCategory[] = payload.roots
+          .filter((c) => c.count > 0)
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            parent: 0,
+          }));
 
-        if (parentRes.ok) {
-          const data = await parentRes.json();
-          parentCats = Array.isArray(data) ? data : data.categories || [];
-        }
-
-        if (allRes.ok) {
-          const data = await allRes.json();
-          allCats = Array.isArray(data) ? data : data.categories || [];
-        }
-
-        if (cancelled) return;
-
-        // Build children map from all categories
         const map: Record<number, WCCategory[]> = {};
-        allCats.forEach((cat: any) => {
-          // Ensure parent is a number and not 0
-          const parentId = typeof cat.parent === "number" ? cat.parent : parseInt(cat.parent, 10);
-          if (parentId && parentId > 0) {
-            map[parentId] = map[parentId] || [];
-            map[parentId].push({
-              id: cat.id,
-              name: cat.name,
-              slug: cat.slug,
-              parent: parentId,
-            });
-          }
+        Object.entries(payload.childrenByParentId).forEach(([pid, children]) => {
+          const parentId = parseInt(pid, 10);
+          if (!parentId) return;
+          map[parentId] = children.map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            parent: parentId,
+          }));
         });
 
         if (!cancelled) {
@@ -151,94 +133,34 @@ export default function AllCategoriesDrawer({
         }
       } catch (error) {
         console.error("Error fetching categories:", error);
-        if (!cancelled) {
-          setCategories([]);
-        }
+        if (!cancelled) setCategories([]);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
-    };
-
-    fetchCategories();
+    })();
 
     return () => {
       cancelled = true;
     };
   }, [isOpen]);
 
-  // Handle category click - Amazon style
   const handleCategoryClick = useCallback(
-    async (category: WCCategory) => {
-      // Check if category has subcategories in the map
+    (category: WCCategory) => {
       const existingSubcategories = childrenMap[category.id];
-      const hasSubcategories = existingSubcategories && existingSubcategories.length > 0;
+      const hasSubcategories =
+        existingSubcategories && existingSubcategories.length > 0;
 
       if (hasSubcategories) {
-        // Category has subcategories - open drawer, DO NOT navigate
         setSelectedCategory(category);
         setSubcategories(existingSubcategories);
         setSubcategoryDrawerOpen(true);
         setLoadingSubcategories(false);
-        return; // Important: return early to prevent navigation
-      }
-
-      // No subcategories in map - check by fetching
-      setSelectedCategory(category);
-      setLoadingSubcategories(true);
-      setSubcategoryDrawerOpen(true); // Open drawer first to show loading
-
-      try {
-        const res = await fetch(
-          `/api/categories?per_page=100&parent=${category.id}&hide_empty=true`,
-          { cache: "force-cache" }
-        );
-        
-        if (res.ok) {
-          const data = await res.json();
-          const children = Array.isArray(data) ? data : data.categories || [];
-
-          if (children.length > 0) {
-            // Found subcategories - show them in drawer, DO NOT navigate
-            const normalizedChildren: WCCategory[] = children.map((cat: any) => ({
-              id: cat.id,
-              name: cat.name,
-              slug: cat.slug,
-              parent: category.id,
-            }));
-
-            setSubcategories(normalizedChildren);
-            
-            // Update children map for future use
-            setChildrenMap((prev) => ({
-              ...prev,
-              [category.id]: normalizedChildren,
-            }));
-          } else {
-            // No subcategories found - close drawer and navigate
-            setSubcategoryDrawerOpen(false);
-            setDrawerOpen(false);
-            router.push(`/product-category/${category.slug}`);
-            return;
-          }
-        } else {
-          // API error - close drawer and navigate
-          setSubcategoryDrawerOpen(false);
-          setDrawerOpen(false);
-          router.push(`/product-category/${category.slug}`);
-          return;
-        }
-      } catch (error) {
-        console.error("Error fetching subcategories:", error);
-        // On error - close drawer and navigate
-        setSubcategoryDrawerOpen(false);
-        setDrawerOpen(false);
-        router.push(`/product-category/${category.slug}`);
         return;
-      } finally {
-        setLoadingSubcategories(false);
       }
+
+      setSubcategoryDrawerOpen(false);
+      setDrawerOpen(false);
+      router.push(`/product-category/${category.slug}`);
     },
     [childrenMap, router, setDrawerOpen]
   );

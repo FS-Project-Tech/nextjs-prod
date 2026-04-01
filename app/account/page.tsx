@@ -1,15 +1,13 @@
 "use client";
- 
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import Link from 'next/link';
-import withAuth, { WithAuthProps } from '@/lib/withAuth';
+
+import Link from "next/link";
+import { signOut } from "next-auth/react";
+import withAuth, { WithAuthProps } from "@/lib/withAuth";
 import { useCart } from "@/components/CartProvider";
- 
+import { clearAddressesDeletedIds } from "@/hooks/useAddresses";
+
 function AccountPage({ user }: WithAuthProps) {
-  const { logout } = useAuth();
-   const { clear } = useCart();
-  const router = useRouter();
+  const { clear } = useCart();
  
   return (
     <div className="min-h-screen bg-gray-50 py-10">
@@ -58,8 +56,9 @@ function AccountPage({ user }: WithAuthProps) {
                   </Link>
                   <button
                     onClick={async () => {
-                      clear();            // 🔥 cart reset (fixes shared cart)
-                      await logout();     // 🔐 auth logout
+                      clear();
+                      clearAddressesDeletedIds();
+                      await signOut({ callbackUrl: "/login" });
                     }}
                     className="flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
                   >

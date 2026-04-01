@@ -284,6 +284,8 @@ export interface WooCommerceProduct {
   id: number;
   name: string;
   slug: string;
+  /** Product type; variable products often omit parent regular/sale on list responses. */
+  type?: 'simple' | 'grouped' | 'external' | 'variable';
   permalink: string;
   description: string;
   short_description: string;
@@ -385,6 +387,38 @@ export interface PaginatedProductResponse {
   perPage: number;
 }
 
+/** WooCommerce REST: catalog listings exclude out-of-stock. */
+const WC_REST_INSTOCK = { stock_status: "instock" as const };
+
+/**
+ * Which product IDs WC reports as in stock (WP taxonomy lists have no stock field).
+ */
+async function filterIdsToInStockProductIds(ids: number[]): Promise<number[]> {
+  if (ids.length === 0) return [];
+  const unique = [...new Set(ids)];
+  const inStock = new Set<number>();
+  const chunk = 100;
+  for (let i = 0; i < unique.length; i += chunk) {
+    const slice = unique.slice(i, i + chunk);
+    try {
+      const res = await wcAPI.get("/products", {
+        params: {
+          include: slice.join(","),
+          per_page: slice.length,
+          ...WC_REST_INSTOCK,
+        },
+      });
+      const rows: Array<{ id?: number }> = Array.isArray(res.data) ? res.data : [];
+      rows.forEach((p) => {
+        if (p?.id != null) inStock.add(p.id);
+      });
+    } catch {
+      /* skip chunk */
+    }
+  }
+  return unique.filter((id) => inStock.has(id));
+}
+
 /** Get all product IDs for a single brand term from WP REST API (paginated). */
 async function getProductIdsByBrandTerm(
   base: string,
@@ -464,7 +498,12 @@ async function fetchProductsByBrandTaxonomy(
     const wcPerPage = 100;
     while (true) {
       const wcRes = await wcAPI.get('/products', {
-        params: { category: categoryId, per_page: wcPerPage, page: wcPage },
+        params: {
+          category: categoryId,
+          per_page: wcPerPage,
+          page: wcPage,
+          ...WC_REST_INSTOCK,
+        },
       });
       const products: any[] = wcRes.data || [];
       if (products.length === 0) break;
@@ -474,6 +513,8 @@ async function fetchProductsByBrandTaxonomy(
       wcPage += 1;
     }
     filteredIds = inCategory;
+  } else {
+    filteredIds = await filterIdsToInStockProductIds(allIds);
   }
 
   const total = filteredIds.length;
@@ -483,7 +524,11 @@ async function fetchProductsByBrandTaxonomy(
   if (pageIds.length === 0) return { products: [], total, totalPages, page, perPage };
 
   const wcRes = await wcAPI.get('/products', {
-    params: { include: pageIds.join(','), per_page: pageIds.length },
+    params: {
+      include: pageIds.join(','),
+      per_page: pageIds.length,
+      ...WC_REST_INSTOCK,
+    },
   });
   let products: any[] = wcRes.data || [];
   const orderMap = new Map(pageIds.map((id, i) => [id, i]));
@@ -531,7 +576,12 @@ async function fetchProductsByBrandTaxonomyMulti(
     const idSet = new Set(filteredIds);
     while (true) {
       const wcRes = await wcAPI.get('/products', {
-        params: { category: categoryId, per_page: wcPerPage, page: wcPage },
+        params: {
+          category: categoryId,
+          per_page: wcPerPage,
+          page: wcPage,
+          ...WC_REST_INSTOCK,
+        },
       });
       const products: any[] = wcRes.data || [];
       if (products.length === 0) break;
@@ -540,6 +590,8 @@ async function fetchProductsByBrandTaxonomyMulti(
       wcPage += 1;
     }
     filteredIds = inCategory;
+  } else {
+    filteredIds = await filterIdsToInStockProductIds(filteredIds);
   }
 
   const total = filteredIds.length;
@@ -549,7 +601,11 @@ async function fetchProductsByBrandTaxonomyMulti(
   if (pageIds.length === 0) return { products: [], total, totalPages, page, perPage };
 
   const wcRes = await wcAPI.get('/products', {
-    params: { include: pageIds.join(','), per_page: pageIds.length },
+    params: {
+      include: pageIds.join(','),
+      per_page: pageIds.length,
+      ...WC_REST_INSTOCK,
+    },
   });
   let products: any[] = wcRes.data || [];
   const orderMap = new Map(pageIds.map((id, i) => [id, i]));
@@ -583,6 +639,8 @@ export const fetchProducts = async (params?: {
   sortBy?: string;
   include?: number[];
   on_sale?: boolean;  // Fetch specific product IDs
+  /** `edit` returns fuller fields (prices, meta_data) when using authenticated REST keys. */
+  context?: 'view' | 'edit';
 }): Promise<PaginatedProductResponse> => {
   try {
     // Clean up params
@@ -800,12 +858,18 @@ export const fetchProducts = async (params?: {
       cleanParams.on_sale = true;
     }
 
+    if (params?.context === 'edit' || params?.context === 'view') {
+      cleanParams.context = params.context;
+    }
+
     // Handle include parameter (fetch specific product IDs)
     if (params?.include && params.include.length > 0) {
       cleanParams.include = params.include.join(',');
       // When fetching specific IDs, ensure we get all of them
       cleanParams.per_page = Math.max(cleanParams.per_page || 24, params.include.length);
     }
+
+    Object.assign(cleanParams, WC_REST_INSTOCK);
     
     console.log('🛒 WooCommerce Request:', {
       endpoint: '/products',
@@ -865,6 +929,7 @@ export const fetchProducts = async (params?: {
             category: categoryId,
             per_page: rescuePerPage,
             page: rescuePage,
+            ...WC_REST_INSTOCK,
           },
         });
 
@@ -996,7 +1061,7 @@ export const fetchProductBySlug = async (slug: string): Promise<WooCommerceProdu
 export const fetchProductsByCategory = async (categoryId: number): Promise<WooCommerceProduct[]> => {
   try {
     const response = await wcAPI.get('/products', {
-      params: { category: categoryId },
+      params: { category: categoryId, ...WC_REST_INSTOCK },
     });
     return response.data;
   } catch (error: unknown) {
@@ -1159,6 +1224,7 @@ export interface WooCommerceCategory {
   parent: number;
   count: number;
   description?: string;
+  image?: { src: string; alt?: string };
 }
 
 // Header Navbar Categories and subcategories

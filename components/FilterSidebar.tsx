@@ -5,12 +5,16 @@ import {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
 } from "react";
+import { useProductListing } from "@/contexts/ProductListingContext";
 import {
   useRouter,
   usePathname,
   useSearchParams,
 } from "next/navigation";
+import PriceRangeSlider from "@/components/PriceRangeSlider";
+import { formatPrice } from "@/lib/format-utils";
 
 /* ================= TYPES ================= */
 
@@ -33,47 +37,139 @@ interface Props {
   categorySlug?: string;
   /** When set (e.g. /brands/3m), sidebar lists only categories that contain this brand's products */
   brandSlug?: string;
+  /** Match ProductGrid on-sale filter for facet counts */
+  onSaleOnly?: boolean;
   isMobileDrawer?: boolean;
   onClose?: () => void;
 }
 
-const brandCategoriesCache: Record<string, Category[]> = {};
-const brandCategoriesPromises = new Map<string, Promise<Category[]>>();
+const BRAND_FACET_FIELD =
+  process.env.NEXT_PUBLIC_TYPESENSE_BRAND_FACET || "brand";
 
-async function loadCategoriesForBrand(brandSlug: string): Promise<Category[]> {
-  const cachedList = brandCategoriesCache[brandSlug];
-  if (cachedList && cachedList.length > 0) return cachedList;
+const CATEGORY_FACET_FIELD =
+  process.env.NEXT_PUBLIC_TYPESENSE_CATEGORY_FACET || "category";
 
-  const pending = brandCategoriesPromises.get(brandSlug);
-  if (pending) return pending;
+let categoriesTreeCache: Category[] | null = null;
+let categoriesTreePromise: Promise<Category[]> | null = null;
 
-  const p = fetch(`/api/brands/${encodeURIComponent(brandSlug)}/categories`, {
-    cache: "force-cache",
-  })
+async function loadCategoriesFlat(): Promise<Category[]> {
+  if (categoriesTreeCache) return categoriesTreeCache;
+  if (categoriesTreePromise) return categoriesTreePromise;
+
+  categoriesTreePromise = fetch("/api/categories", { cache: "force-cache" })
     .then(async (res) => {
       if (!res.ok) return [];
       const data = await res.json();
       const list = Array.isArray(data.categories) ? data.categories : [];
-      brandCategoriesCache[brandSlug] = list;
+      categoriesTreeCache = list;
       return list;
     })
     .finally(() => {
-      brandCategoriesPromises.delete(brandSlug);
+      categoriesTreePromise = null;
     });
 
-  brandCategoriesPromises.set(brandSlug, p);
-  return p;
+  return categoriesTreePromise;
 }
 
-interface FiltersPayload {
-  categories: Category[];
-  brandsByCategory: Record<string, Brand[]>;
-  allBrands: Brand[];
+function slugToLabel(slug: string): string {
+  return String(slug || "")
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
-const FILTERS_ALL_ENDPOINT = "/api/filters/all";
-let filtersCache: FiltersPayload | null = null;
-let filtersPromise: Promise<FiltersPayload> | null = null;
+function slugId(slug: string): number {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h << 5) - h + slug.charCodeAt(i);
+  return Math.abs(h) || 1;
+}
+
+async function fetchTypesenseBrandFacets(opts: {
+  categorySlug: string | null;
+  minPrice: string;
+  maxPrice: string;
+  onSaleOnly?: boolean;
+}): Promise<Brand[]> {
+  const usp = new URLSearchParams();
+  usp.set("facets_only", "1");
+  usp.set("for_brand_facets", "1");
+  usp.set("include_facets", "1");
+  if (opts.categorySlug) usp.set("category_slug", opts.categorySlug);
+  if (opts.minPrice && /^\d+(\.\d+)?$/.test(opts.minPrice)) {
+    usp.set("min_price", opts.minPrice);
+  }
+  if (opts.maxPrice && /^\d+(\.\d+)?$/.test(opts.maxPrice)) {
+    usp.set("max_price", opts.maxPrice);
+  }
+  if (opts.onSaleOnly) usp.set("on_sale", "true");
+
+  const res = await fetch(`/api/typesense/search?${usp.toString()}`, {
+    cache: "no-store",
+  });
+  const data = await res.json();
+  if (!res.ok) return [];
+
+  const facet = (data.facet_counts || []).find(
+    (f: { field_name?: string }) => f.field_name === BRAND_FACET_FIELD
+  );
+  const counts = Array.isArray(facet?.counts) ? facet.counts : [];
+  return counts
+    .map((c: { value?: string; count?: number }) => {
+      const slug = String(c.value || "").trim().toLowerCase();
+      if (!slug) return null;
+      return {
+        id: slugId(slug),
+        name: slugToLabel(slug),
+        slug,
+        count: typeof c.count === "number" ? c.count : 0,
+      } as Brand;
+    })
+    .filter(Boolean) as Brand[];
+}
+
+async function fetchTypesenseCategoryFacetsForBrand(opts: {
+  brandSlug: string;
+  minPrice: string;
+  maxPrice: string;
+  onSaleOnly?: boolean;
+}): Promise<Category[]> {
+  const usp = new URLSearchParams();
+  usp.set("facets_only", "1");
+  usp.set("include_facets", "1");
+  usp.set("for_brand_category_facets", "1");
+  usp.set("brand_slug", opts.brandSlug);
+  if (opts.minPrice && /^\d+(\.\d+)?$/.test(opts.minPrice)) {
+    usp.set("min_price", opts.minPrice);
+  }
+  if (opts.maxPrice && /^\d+(\.\d+)?$/.test(opts.maxPrice)) {
+    usp.set("max_price", opts.maxPrice);
+  }
+  if (opts.onSaleOnly) usp.set("on_sale", "true");
+
+  const res = await fetch(`/api/typesense/search?${usp.toString()}`, {
+    cache: "no-store",
+  });
+  const data = await res.json();
+  if (!res.ok) return [];
+
+  const facet = (data.facet_counts || []).find(
+    (f: { field_name?: string }) => f.field_name === CATEGORY_FACET_FIELD
+  );
+  const counts = Array.isArray(facet?.counts) ? facet.counts : [];
+  return counts
+    .map((c: { value?: string; count?: number }) => {
+      const slug = String(c.value || "").trim().toLowerCase();
+      if (!slug) return null;
+      return {
+        id: slugId(slug),
+        name: slugToLabel(slug),
+        slug,
+        count: typeof c.count === "number" ? c.count : 0,
+      } as Category;
+    })
+    .filter(Boolean) as Category[];
+}
 
 function isNumericOnly(value: string | undefined | null): boolean {
   if (!value) return false;
@@ -92,54 +188,45 @@ function sanitizeBrands(list: Brand[] | undefined | null): Brand[] {
   });
 }
 
-async function loadFiltersAll(): Promise<FiltersPayload> {
-  if (filtersCache) return filtersCache;
-  if (filtersPromise) return filtersPromise;
-
-  filtersPromise = fetch(FILTERS_ALL_ENDPOINT, { cache: "force-cache" })
-    .then(async (res) => {
-      if (!res.ok) throw new Error("Failed to load filters");
-      const data = await res.json();
-      const payload: FiltersPayload = {
-        categories: Array.isArray(data.categories) ? data.categories : [],
-        brandsByCategory:
-          data.brandsByCategory && typeof data.brandsByCategory === "object"
-            ? data.brandsByCategory
-            : {},
-        allBrands: sanitizeBrands(Array.isArray(data.allBrands) ? data.allBrands : []),
-      };
-      filtersCache = payload;
-      return payload;
-    })
-    .finally(() => {
-      filtersPromise = null;
-    });
-
-  return filtersPromise;
+/** Remove deprecated keys so URLs stay canonical (`brands`, `min_price`, `max_price`). */
+function stripDeprecatedFilterParams(params: URLSearchParams) {
+  params.delete("brand");
+  params.delete("minPrice");
+  params.delete("maxPrice");
 }
 
 /* ================= COMPONENT ================= */
 
-export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer, onClose }: Props) {
+export default function FilterSidebar({
+  categorySlug,
+  brandSlug,
+  onSaleOnly,
+  isMobileDrawer,
+  onClose,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const listingCtx = useProductListing();
+  const filtersLocked = Boolean(listingCtx?.listingBusy);
+  const urlMigratedRef = useRef(false);
+  const priceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [categories, setCategories] = useState<Category[]>(filtersCache?.categories || []);
-  const [brandsByCategory, setBrandsByCategory] = useState<Record<string, Brand[]>>(
-    filtersCache?.brandsByCategory || {}
-  );
-  const [allBrandsFallback, setAllBrandsFallback] = useState<Brand[]>(
-    filtersCache?.allBrands || []
-  );
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [brandRelatedCategories, setBrandRelatedCategories] = useState<Category[]>(
-    brandSlug ? brandCategoriesCache[brandSlug] || [] : []
-  );
-  const [brandCategoriesLoading, setBrandCategoriesLoading] = useState(
-    Boolean(brandSlug && !(brandCategoriesCache[brandSlug]?.length ?? 0))
-  );
+  const [brandRelatedCategories, setBrandRelatedCategories] = useState<
+    Category[]
+  >([]);
+  const [brandCategoriesLoading, setBrandCategoriesLoading] = useState(false);
+
+  const [priceBounds, setPriceBounds] = useState<{ min: number; max: number }>({
+    min: 0,
+    max: 1000,
+  });
+  const [priceMinDraft, setPriceMinDraft] = useState("");
+  const [priceMaxDraft, setPriceMaxDraft] = useState("");
 
   /* ================= ACTIVE ================= */
 
@@ -153,12 +240,11 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
   }, [pathname, categorySlug, searchParams]);
 
   const activeBrands = useMemo(() => {
-    const val = searchParams.get("brand") || searchParams.get("brands") || "";
+    const val = searchParams.get("brands") || "";
     return val.split(",").map((s) => s.trim()).filter(Boolean);
   }, [searchParams]);
 
   const isBrandContext = Boolean(brandSlug || pathname.startsWith("/brands/"));
-  const isShopPage = !activeCategory && !isBrandContext;
 
   const categoriesBySlug = useMemo(() => {
     const map: Record<string, Category> = {};
@@ -209,28 +295,10 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
     return chain;
   }, [activeCategory, parentBySlug]);
 
-  const allBrands = useMemo(() => {
-    if (Object.keys(brandsByCategory).length === 0) {
-      return allBrandsFallback;
-    }
-    const merged = new Map<string, Brand>();
-    Object.values(brandsByCategory).forEach((list) => {
-      list.forEach((b) => {
-        if (!merged.has(b.slug)) merged.set(b.slug, b);
-      });
-    });
-    const mergedList = Array.from(merged.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-    return mergedList.length ? mergedList : allBrandsFallback;
-  }, [brandsByCategory, allBrandsFallback]);
-
-  const categoryBrands = useMemo(() => {
-    if (!activeCategory) return allBrands;
-    const mapped = brandsByCategory[activeCategory];
-    if (Array.isArray(mapped) && mapped.length > 0) return mapped;
-    return allBrands;
-  }, [activeCategory, allBrands, brandsByCategory]);
+  const categoryBrands = useMemo(
+    () => sanitizeBrands(brands).sort((a, b) => a.name.localeCompare(b.name)),
+    [brands]
+  );
 
   const visibleCategoryRows = useMemo(() => {
     if (showAllCategories) return [] as Array<{ cat: Category; level: number }>;
@@ -268,74 +336,53 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
 
   useEffect(() => {
     let mounted = true;
-    loadFiltersAll()
-      .then((payload) => {
-        if (!mounted) return;
-        setCategories(payload.categories);
-        const nextBrandsByCategory: Record<string, Brand[]> = {};
-        Object.entries(payload.brandsByCategory || {}).forEach(([slug, list]) => {
-          nextBrandsByCategory[slug] = sanitizeBrands(list);
-        });
-        setBrandsByCategory(nextBrandsByCategory);
-        setAllBrandsFallback(sanitizeBrands(payload.allBrands || []));
+    loadCategoriesFlat()
+      .then((list) => {
+        if (mounted) setCategories(list);
       })
-      .catch((e) => {
-        console.error(e);
-      });
-
+      .catch((e) => console.error(e));
     return () => {
       mounted = false;
     };
   }, []);
 
-  useEffect(() => {
-    if (allBrandsFallback.length > 0) return;
-    let mounted = true;
-    fetch("/api/filters/brands", { cache: "force-cache" })
-      .then((res) => (res.ok ? res.json() : { brands: [] }))
-      .then((data) => {
-        if (!mounted) return;
-        const brands = Array.isArray(data?.brands) ? data.brands : [];
-        if (brands.length > 0) {
-          setAllBrandsFallback(sanitizeBrands(brands));
-        }
-      })
-      .catch(() => {
-        // keep silent fallback
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [allBrandsFallback.length]);
+  const searchParamsFacetKey = `${searchParams.get("min_price") || ""}|${searchParams.get("max_price") || ""}`;
 
   useEffect(() => {
-    if (brandSlug) return;
-    if (!activeCategory) return;
-    const mapped = brandsByCategory[activeCategory];
-    if (Array.isArray(mapped) && mapped.length > 0) return;
+    if (isBrandContext) {
+      setBrands([]);
+      return;
+    }
 
-    let mounted = true;
-    fetch(`/api/filters/brands?category=${encodeURIComponent(activeCategory)}`, {
-      cache: "force-cache",
-    })
-      .then((res) => (res.ok ? res.json() : { brands: [] }))
-      .then((data) => {
-        if (!mounted) return;
-        const brands = Array.isArray(data?.brands) ? data.brands : [];
-        if (brands.length === 0) return;
-        setBrandsByCategory((prev) => ({
-          ...prev,
-          [activeCategory]: sanitizeBrands(brands),
-        }));
+    let cancelled = false;
+    const minP = searchParams.get("min_price") || "";
+    const maxP = searchParams.get("max_price") || "";
+
+    const t = window.setTimeout(() => {
+      fetchTypesenseBrandFacets({
+        categorySlug: activeCategory,
+        minPrice: minP,
+        maxPrice: maxP,
+        onSaleOnly,
       })
-      .catch(() => {
-        // silent fallback
-      });
+        .then((list) => {
+          if (!cancelled) setBrands(sanitizeBrands(list));
+        })
+        .catch(() => {
+          if (!cancelled) setBrands([]);
+        });
+    }, 260);
 
     return () => {
-      mounted = false;
+      cancelled = true;
+      window.clearTimeout(t);
     };
-  }, [activeCategory, brandsByCategory, brandSlug]);
+  }, [
+    activeCategory,
+    searchParamsFacetKey,
+    isBrandContext,
+    onSaleOnly,
+  ]);
 
   useEffect(() => {
     if (!brandSlug) {
@@ -343,46 +390,181 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
       setBrandCategoriesLoading(false);
       return;
     }
-    if (brandCategoriesCache[brandSlug]?.length) {
-      setBrandRelatedCategories(brandCategoriesCache[brandSlug]);
-      setBrandCategoriesLoading(false);
-      return;
-    }
-    let mounted = true;
+
+    let cancelled = false;
+    const minP = searchParams.get("min_price") || "";
+    const maxP = searchParams.get("max_price") || "";
+
     setBrandCategoriesLoading(true);
-    loadCategoriesForBrand(brandSlug).then((list) => {
-      if (!mounted) return;
-      setBrandRelatedCategories(list);
-      setBrandCategoriesLoading(false);
-    });
+    const t = window.setTimeout(() => {
+      fetchTypesenseCategoryFacetsForBrand({
+        brandSlug,
+        minPrice: minP,
+        maxPrice: maxP,
+        onSaleOnly,
+      })
+        .then((list) => {
+          if (!cancelled) setBrandRelatedCategories(list);
+        })
+        .catch(() => {
+          if (!cancelled) setBrandRelatedCategories([]);
+        })
+        .finally(() => {
+          if (!cancelled) setBrandCategoriesLoading(false);
+        });
+    }, 260);
+
     return () => {
-      mounted = false;
+      cancelled = true;
+      window.clearTimeout(t);
     };
-  }, [brandSlug]);
+  }, [brandSlug, searchParamsFacetKey, onSaleOnly]);
+
+  /* Migrate legacy ?brand= & ?minPrice= / ?maxPrice= (once per mount) */
+  useEffect(() => {
+    if (urlMigratedRef.current) return;
+    const params = new URLSearchParams(searchParams.toString());
+    let changed = false;
+    const legacyBrand = params.get("brand");
+    if (legacyBrand) {
+      const set = new Set(
+        (params.get("brands") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+      set.add(legacyBrand.trim());
+      params.set("brands", Array.from(set).join(","));
+      params.delete("brand");
+      changed = true;
+    }
+    const minOld = params.get("minPrice");
+    if (minOld && !params.get("min_price")) {
+      params.set("min_price", minOld);
+      params.delete("minPrice");
+      changed = true;
+    }
+    const maxOld = params.get("maxPrice");
+    if (maxOld && !params.get("max_price")) {
+      params.set("max_price", maxOld);
+      params.delete("maxPrice");
+      changed = true;
+    }
+    urlMigratedRef.current = true;
+    if (changed) {
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [pathname, router, searchParams]);
+
+  /* Price slider bounds from catalogue (scoped to active category when set) */
+  useEffect(() => {
+    let cancelled = false;
+    const q = activeCategory
+      ? `?category=${encodeURIComponent(activeCategory)}`
+      : "";
+    fetch(`/api/filters/price-range${q}`, { cache: "force-cache" })
+      .then((r) => r.json())
+      .then((d: { min?: number; max?: number }) => {
+        if (
+          cancelled ||
+          typeof d.min !== "number" ||
+          typeof d.max !== "number"
+        ) {
+          return;
+        }
+        setPriceBounds({
+          min: Math.min(d.min, d.max),
+          max: Math.max(d.min, d.max),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCategory]);
+
+  useEffect(() => {
+    setPriceMinDraft(searchParams.get("min_price") || "");
+    setPriceMaxDraft(searchParams.get("max_price") || "");
+  }, [searchParams]);
 
   /* ================= URL ================= */
 
   const updateURL = useCallback(
     (updates: Record<string, string | null>) => {
       const params = new URLSearchParams(searchParams.toString());
-
+      stripDeprecatedFilterParams(params);
       Object.entries(updates).forEach(([k, v]) =>
         v ? params.set(k, v) : params.delete(k)
       );
-
-      const newUrl = `${pathname}?${params.toString()}`;
-      const currentUrl = `${pathname}?${searchParams.toString()}`;
-
-      if (newUrl !== currentUrl) {
-        router.replace(newUrl, { scroll: false });
+      params.delete("page");
+      const qs = params.toString();
+      const next = qs ? `${pathname}?${qs}` : pathname;
+      const cur = searchParams.toString()
+        ? `${pathname}?${searchParams}`
+        : pathname;
+      if (next !== cur) {
+        router.replace(next, { scroll: false });
       }
     },
     [pathname, router, searchParams]
   );
 
+  const pushPriceToUrl = useCallback(
+    (minDraft: string, maxDraft: string) => {
+      if (filtersLocked) return;
+      const lo = priceBounds.min;
+      const hi = priceBounds.max;
+      const numRe = /^\d+(\.\d+)?$/;
+      const minTrim = minDraft.trim();
+      const maxTrim = maxDraft.trim();
+      const minN =
+        minTrim && numRe.test(minTrim) ? parseFloat(minTrim) : lo;
+      const maxN =
+        maxTrim && numRe.test(maxTrim) ? parseFloat(maxTrim) : hi;
+      if (minN <= lo && maxN >= hi) {
+        updateURL({ min_price: null, max_price: null });
+        setPriceMinDraft("");
+        setPriceMaxDraft("");
+        return;
+      }
+      updateURL({
+        min_price: minTrim && numRe.test(minTrim) ? minTrim : null,
+        max_price: maxTrim && numRe.test(maxTrim) ? maxTrim : null,
+      });
+    },
+    [filtersLocked, priceBounds.min, priceBounds.max, updateURL]
+  );
+
+  const schedulePriceUrl = useCallback(
+    (minDraft: string, maxDraft: string) => {
+      if (priceDebounceRef.current) clearTimeout(priceDebounceRef.current);
+      priceDebounceRef.current = setTimeout(() => {
+        priceDebounceRef.current = null;
+        pushPriceToUrl(minDraft, maxDraft);
+      }, 350);
+    },
+    [pushPriceToUrl]
+  );
+
+  const flushPriceDebounce = useCallback(() => {
+    if (priceDebounceRef.current) {
+      clearTimeout(priceDebounceRef.current);
+      priceDebounceRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (priceDebounceRef.current) clearTimeout(priceDebounceRef.current);
+    };
+  }, []);
+
   const handleCategorySelect = useCallback((slug: string) => {
     if (brandSlug) {
       const params = new URLSearchParams(searchParams.toString());
+      stripDeprecatedFilterParams(params);
       params.delete("page");
       if (activeCategory === slug) {
         params.delete("category");
@@ -398,6 +580,7 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
     }
 
     const params = new URLSearchParams(searchParams.toString());
+    stripDeprecatedFilterParams(params);
     params.delete("category");
     params.delete("page");
     const lineage: string[] = [];
@@ -409,22 +592,67 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
     lineage.reverse();
     const query = params.toString();
     const categoryPath = `/product-category/${lineage.join("/")}/`;
-    router.push(`${categoryPath}${query ? `?${query}` : ""}`, { scroll: false });
+    router.replace(`${categoryPath}${query ? `?${query}` : ""}`, {
+      scroll: false,
+    });
     onClose?.();
   }, [router, searchParams, onClose, parentBySlug, brandSlug, activeCategory]);
 
   const handleBrandToggle = (slug: string) => {
+    if (filtersLocked) return;
     const updated = activeBrands.includes(slug)
       ? activeBrands.filter((b) => b !== slug)
       : [...activeBrands, slug];
-
     updateURL({
-      brand: updated.length ? updated.join(",") : null,
       brands: updated.length ? updated.join(",") : null,
     });
   };
 
+  const applyPriceFilter = () => {
+    if (filtersLocked) return;
+    flushPriceDebounce();
+    pushPriceToUrl(priceMinDraft, priceMaxDraft);
+  };
+
+  const clearPriceFilter = () => {
+    if (filtersLocked) return;
+    flushPriceDebounce();
+    setPriceMinDraft("");
+    setPriceMaxDraft("");
+    updateURL({ min_price: null, max_price: null });
+  };
+
+  const handleSliderChange = (minN: number, maxN: number) => {
+    if (filtersLocked) return;
+    const a = String(minN);
+    const b = String(maxN);
+    setPriceMinDraft(a);
+    setPriceMaxDraft(b);
+    schedulePriceUrl(a, b);
+  };
+
+  const priceSliderValues = useMemo(() => {
+    const lo = priceBounds.min;
+    const hi = priceBounds.max;
+    const numRe = /^\d+(\.\d+)?$/;
+    let minN = lo;
+    let maxN = hi;
+    const minT = priceMinDraft.trim();
+    const maxT = priceMaxDraft.trim();
+    if (minT && numRe.test(minT)) minN = Math.round(parseFloat(minT));
+    if (maxT && numRe.test(maxT)) maxN = Math.round(parseFloat(maxT));
+    minN = Math.min(Math.max(minN, lo), hi);
+    maxN = Math.min(Math.max(maxN, lo), hi);
+    if (minN > maxN) {
+      const t = minN;
+      minN = maxN;
+      maxN = t;
+    }
+    return { lo, hi, minN, maxN };
+  }, [priceBounds.min, priceBounds.max, priceMinDraft, priceMaxDraft]);
+
   const toggleCategory = (slug: string) => {
+    if (filtersLocked) return;
     setExpandedCategories((prev) => ({
       ...prev,
       [slug]: !prev[slug],
@@ -432,15 +660,22 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
   };
 
   const clearFilters = useCallback(() => {
+    if (filtersLocked) return;
     if (brandSlug) {
       router.replace(`/brands/${encodeURIComponent(brandSlug)}`, { scroll: false });
       onClose?.();
       return;
     }
+    const params = new URLSearchParams(searchParams.toString());
+    stripDeprecatedFilterParams(params);
+    ["brands", "min_price", "max_price", "page", "category", "sortBy"].forEach(
+      (k) => params.delete(k)
+    );
+    const qs = params.toString();
     const basePath = pathname.startsWith("/product-category/") ? pathname : "/products";
-    router.replace(basePath, { scroll: false });
+    router.replace(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
     onClose?.();
-  }, [pathname, router, onClose, brandSlug]);
+  }, [pathname, router, onClose, brandSlug, searchParams, filtersLocked]);
 
   /* ================= RENDER ================= */
 
@@ -457,8 +692,9 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
         <div className="flex items-center gap-2">
           <button
             type="button"
+            disabled={filtersLocked}
             onClick={() => hasChildren && toggleCategory(slug)}
-            className={`h-5 w-5 rounded text-xs ${hasChildren ? "text-gray-600 hover:bg-gray-100" : "text-transparent"}`}
+            className={`h-5 w-5 rounded text-xs ${hasChildren ? "text-gray-600 hover:bg-gray-100" : "text-transparent"} disabled:opacity-50`}
             aria-label={hasChildren ? (isExpanded ? "Collapse category" : "Expand category") : "No children"}
           >
             {hasChildren ? (isExpanded ? "▾" : "▸") : "•"}
@@ -466,12 +702,13 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
 
           <button
             type="button"
+            disabled={filtersLocked}
             onClick={() => handleCategorySelect(slug)}
             className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
               isActive
                 ? "bg-teal-600 text-white font-semibold shadow-sm"
                 : "text-gray-700 hover:bg-gray-100"
-            }`}
+            } disabled:opacity-50 disabled:pointer-events-none`}
             style={{ marginLeft: `${level * 10}px` }}
           >
             <span className="truncate">{category.name}</span>
@@ -502,8 +739,9 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
           {!brandSlug && (
             <button
               type="button"
+              disabled={filtersLocked}
               onClick={() => setShowAllCategories((prev) => !prev)}
-              className="text-xs font-medium text-teal-700 hover:text-teal-800"
+              className="text-xs font-medium text-teal-700 hover:text-teal-800 disabled:opacity-50 disabled:pointer-events-none"
             >
               {showAllCategories ? "Focused View" : "See All Categories"}
             </button>
@@ -515,8 +753,11 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
             <>
               <button
                 type="button"
+                disabled={filtersLocked}
                 onClick={() => {
+                  if (filtersLocked) return;
                   const params = new URLSearchParams(searchParams.toString());
+                  stripDeprecatedFilterParams(params);
                   params.delete("category");
                   params.delete("page");
                   const q = params.toString();
@@ -529,7 +770,7 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
                   !activeCategory
                     ? "bg-teal-600 text-white font-semibold shadow-sm"
                     : "text-gray-700 hover:bg-gray-100"
-                }`}
+                } disabled:opacity-50 disabled:pointer-events-none`}
               >
                 <span className="truncate">All products</span>
               </button>
@@ -542,12 +783,13 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
                   <button
                     key={cat.slug}
                     type="button"
+                    disabled={filtersLocked}
                     onClick={() => handleCategorySelect(cat.slug)}
                     className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
                       activeCategory === cat.slug
                         ? "bg-teal-600 text-white font-semibold shadow-sm"
                         : "text-gray-700 hover:bg-gray-100"
-                    }`}
+                    } disabled:opacity-50 disabled:pointer-events-none`}
                   >
                     <span className="truncate">{cat.name}</span>
                     {typeof cat.count === "number" && cat.count > 0 && (
@@ -568,12 +810,13 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
               <button
                 key={cat.slug}
                 type="button"
+                disabled={filtersLocked}
                 onClick={() => handleCategorySelect(cat.slug)}
                 className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
                   activeCategory === cat.slug
                     ? "bg-teal-600 text-white font-semibold shadow-sm"
                     : "text-gray-700 hover:bg-gray-100"
-                }`}
+                } disabled:opacity-50 disabled:pointer-events-none`}
                 style={{ marginLeft: `${level * 10}px` }}
               >
                 <span className="truncate">{cat.name}</span>
@@ -588,44 +831,130 @@ export default function FilterSidebar({ categorySlug, brandSlug, isMobileDrawer,
         </div>
       </div>
 
-      {!isShopPage && !isBrandContext && (
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900">Price</h3>
+        <p className="text-xs text-gray-500">
+          Catalogue range {formatPrice(priceBounds.min)} –{" "}
+          {formatPrice(priceBounds.max)} (incl. GST)
+        </p>
+        <PriceRangeSlider
+          minBound={priceSliderValues.lo}
+          maxBound={priceSliderValues.hi}
+          valueMin={priceSliderValues.minN}
+          valueMax={priceSliderValues.maxN}
+          disabled={filtersLocked}
+          onChange={handleSliderChange}
+        />
+        <p className="text-center text-xs font-medium text-gray-700">
+          {formatPrice(priceSliderValues.minN)} –{" "}
+          {formatPrice(priceSliderValues.maxN)}
+        </p>
+        <div className="flex gap-2">
+          <label className="flex-1 text-xs text-gray-600">
+            Min
+            <input
+              type="number"
+              min={priceBounds.min}
+              max={priceBounds.max}
+              step={1}
+              value={priceMinDraft}
+              disabled={filtersLocked}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPriceMinDraft(v);
+                schedulePriceUrl(v, priceMaxDraft);
+              }}
+              className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
+            />
+          </label>
+          <label className="flex-1 text-xs text-gray-600">
+            Max
+            <input
+              type="number"
+              min={priceBounds.min}
+              max={priceBounds.max}
+              step={1}
+              value={priceMaxDraft}
+              disabled={filtersLocked}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPriceMaxDraft(v);
+                schedulePriceUrl(priceMinDraft, v);
+              }}
+              className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
+            />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={filtersLocked}
+            onClick={applyPriceFilter}
+            className="flex-1 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+          >
+            Apply price
+          </button>
+          <button
+            type="button"
+            disabled={
+              filtersLocked ||
+              (!searchParams.get("min_price") && !searchParams.get("max_price"))
+            }
+            onClick={clearPriceFilter}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {!isBrandContext && (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-gray-900">Brands</h3>
-          <div className="max-h-64 overflow-y-auto pr-1 space-y-1">
-            {categoryBrands.length === 0 && (
-              <p className="text-sm text-gray-500">No brands found</p>
-            )}
-            {categoryBrands.map((b) => (
-              <label
-                key={b.slug}
-                className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition ${
-                  activeBrands.includes(b.slug)
-                    ? "bg-gray-100 text-gray-900 font-semibold"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={activeBrands.includes(b.slug)}
-                  onChange={() => handleBrandToggle(b.slug)}
-                  className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                />
-                <span>{b.name}</span>
-                </div>
-                {typeof b.count === "number" && (
-                  <span className="text-xs text-gray-400">{b.count}</span>
-                )}
-              </label>
-            ))}
-          </div>
+            <h3 className="text-sm font-semibold text-gray-900">Brands</h3>
+            <div className="max-h-64 overflow-y-auto pr-1 space-y-1">
+              {categoryBrands.length === 0 && (
+                <p className="text-sm text-gray-500">No brands found</p>
+              )}
+              {categoryBrands.map((b) => {
+                const count = b.count;
+                const empty = typeof count === "number" && count === 0;
+                const disabled = filtersLocked || empty;
+                return (
+                  <label
+                    key={b.slug}
+                    className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition ${
+                      disabled
+                        ? "cursor-not-allowed opacity-50"
+                        : activeBrands.includes(b.slug)
+                          ? "bg-gray-100 text-gray-900 font-semibold"
+                          : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={activeBrands.includes(b.slug)}
+                        disabled={disabled}
+                        onChange={() => handleBrandToggle(b.slug)}
+                        className="h-4 w-4 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
+                      />
+                      <span className="truncate">
+                        {b.name}
+                        {typeof count === "number" ? ` (${count})` : ""}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
         </div>
       )}
 
       <button
         type="button"
+        disabled={filtersLocked}
         onClick={clearFilters}
-        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
       >
         Clear all
       </button>

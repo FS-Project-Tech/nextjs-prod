@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { WebsiteStructuredData, OrganizationStructuredData } from "@/components/StructuredData";
 import HeroDualSliderServer from "@/components/HeroDualSliderServer";
 
+
 // ============================================================================
 // ISR Configuration - Revalidate homepage every 5 minutes
 // ============================================================================

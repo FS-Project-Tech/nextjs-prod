@@ -101,12 +101,12 @@ export async function getProducts() {
 }
 
 export async function getBrands() {
-  const res = await fetch(
-    `${BASE_URL}/api/filters/brands`,
-    { next: { revalidate: 60 } }
-  );
+  const res = await fetch(`${BASE_URL}/wp-json/custom/v1/brands`, {
+    next: { revalidate: 60 },
+  });
 
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 export async function getBrandBySlug(slug: string) {

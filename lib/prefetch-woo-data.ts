@@ -4,8 +4,9 @@
  * Use these functions during build time to pre-generate static pages
  */
 
-import { prefetchProducts, prefetchCategories } from './fetch-woo-data';
+import { prefetchProducts } from './fetch-woo-data';
 import type { WooCommerceProduct, WooCommerceCategory } from './woocommerce';
+import { getUnifiedCategories } from './categories-unified';
 
 /**
  * Prefetch all popular products for ISR
@@ -56,12 +57,19 @@ export async function prefetchFeaturedProducts(
  * Prefetch all categories for ISR
  */
 export async function prefetchAllCategories(): Promise<WooCommerceCategory[]> {
-  console.log('[Prefetch] Fetching all categories...');
-  
-  const categories = await prefetchCategories({
-    hide_empty: true,
-  });
-  
+  console.log('[Prefetch] Fetching all categories (unified)...');
+
+  const unified = await getUnifiedCategories();
+  const categories: WooCommerceCategory[] = unified.categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    parent: c.parent,
+    count: c.count,
+    description: c.description,
+    image: c.image ?? undefined,
+  }));
+
   console.log(`[Prefetch] Fetched ${categories.length} categories`);
   return categories;
 }

@@ -145,7 +145,7 @@ function calculateRatingData(ratingCount?: number, averageRating?: string): Rati
 
 const StarRating = memo(function StarRating({ rating }: { rating: RatingData }) {
   return (
-    <div className="mt-2 flex items-center gap-1" role="img" aria-label={`Rated ${rating.avg} out of 5 stars`}>
+    <div className="mt-2 flex items-center gap-1 w-full" role="img" aria-label={`Rated ${rating.avg} out of 5 stars`}>
       <div className="flex gap-0.5 text-amber-400">
         {[0, 1, 2, 3, 4].map((i) => (
           <svg

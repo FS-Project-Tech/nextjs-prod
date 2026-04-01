@@ -37,7 +37,7 @@ export function useAuth(): OldAuthContextType {
     user: newAuth.user,
     status: newAuth.status === 'error' ? 'unauthenticated' : newAuth.status,
     loading: newAuth.isLoading,
-    refresh: newAuth.validateSession,
+    refresh: newAuth.refreshSession,
     logout: newAuth.logout,
     login: newAuth.login,
   };

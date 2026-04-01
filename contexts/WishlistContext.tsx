@@ -667,7 +667,8 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ productid }),
+            // body: JSON.stringify({ productid }),
+            body: JSON.stringify({ productId: productid }),
           });
           if (response.status === 401) {
             showError('Please log in to use the wishlist.');

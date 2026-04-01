@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { fetchCategories } from "@/lib/woocommerce";
-import { cached, categoriesKey, CACHE_TTL, CACHE_TAGS } from "@/lib/cache";
+import { getUnifiedCategories, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
 export const revalidate = 600;
@@ -14,14 +13,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/catalogue" },
 };
 
-const CATALOGUE_PARAMS = { per_page: 100, parent: 0, hide_empty: true };
-
 export default async function CataloguePage() {
-  const categories = await cached(
-    categoriesKey(CATALOGUE_PARAMS),
-    () => fetchCategories(CATALOGUE_PARAMS),
-    { ttl: CACHE_TTL.CATEGORIES, tags: [CACHE_TAGS.CATEGORIES] }
-  );
+  const unified = await getUnifiedCategories();
+  const categories = getRootCategoriesNonEmpty(unified);
 
   const breadcrumbItems = [
     { label: "Home", href: "/" },
@@ -46,12 +40,11 @@ export default async function CataloguePage() {
                   className="group flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-teal-200 transition-all"
                 >
                   <div className="aspect-[4/3] flex items-center justify-center bg-gray-50 p-3 sm:p-4 min-h-[120px] sm:min-h-[140px]">
-                    {/* WooCommerceCategory doesn't declare image in types, but it exists at runtime; cast to any to read it safely */}
-                    {(cat as any).image?.src ? (
+                    {cat.image?.src ? (
                       <div className="relative w-full h-full rounded-lg overflow-hidden ring-1 ring-gray-200/80 group-hover:ring-teal-200 transition-shadow">
                         <Image
-                          src={(cat as any).image.src}
-                          alt={(cat as any).image?.alt || cat.name}
+                          src={cat.image.src}
+                          alt={cat.image.alt || cat.name}
                           fill
                           className="object-contain group-hover:scale-[1.02] transition-transform duration-200"
                           sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
@@ -79,4 +72,3 @@ export default async function CataloguePage() {
     </>
   );
 }
-

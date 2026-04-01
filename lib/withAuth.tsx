@@ -1,22 +1,15 @@
 "use client";
 
-import { Component, useEffect, useState, useRef, ReactNode, ErrorInfo } from 'react';
+import { Component, useEffect, useState, useRef, ReactNode, ErrorInfo, useMemo } from 'react';
 
 /** Only show auth loading UI if verification takes longer than this (ms). */
 const AUTH_LOADING_DELAY_MS = 400;
 import { useRouter, usePathname } from 'next/navigation';
-import { useAuth, type AuthStatus } from '@/contexts/AuthContext';
+import { useSession } from 'next-auth/react';
+import type { AuthStatus } from '@/contexts/AuthContext';
+import { sessionToAppUser, type AppSessionUser } from '@/lib/next-auth-user';
 
-/**
- * TypeScript interfaces for authentication
- */
-export interface User {
-  id: number;
-  email: string;
-  name: string;
-  username: string;
-  roles: string[];
-}
+export type User = AppSessionUser;
 
 export interface AuthContextData {
   user: User | null;
@@ -124,7 +117,7 @@ function AuthLoadingSpinner({ message = 'Verifying authentication...' }: { messa
  * @returns Protected component with authentication check
  * 
  * Features:
- * - Uses AuthContext for authentication state (no duplicate API calls)
+ * - Uses NextAuth useSession() (single /api/auth/session on load)
  * - Shows loading spinner during verification
  * - Redirects to login with 'next' parameter
  * - Passes user data to wrapped component
@@ -145,7 +138,18 @@ export default function withAuth<P extends object>(
   return function AuthenticatedComponent(props: P) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, status, isLoading, validateSession } = useAuth();
+    const { data: session, status: naStatus } = useSession();
+    const user = useMemo(() => {
+      if (naStatus !== 'authenticated' || !session) return null;
+      return sessionToAppUser(session);
+    }, [session, naStatus]);
+    const status: AuthStatus =
+      naStatus === 'loading'
+        ? 'loading'
+        : naStatus === 'authenticated' && user
+          ? 'authenticated'
+          : 'unauthenticated';
+    const isLoading = naStatus === 'loading';
     const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
     const [roleError, setRoleError] = useState<string | null>(null);
     const redirectedRef = useRef(false);
@@ -183,7 +187,6 @@ export default function withAuth<P extends object>(
         return;
       }
 
-      // Wait for auth to finish loading
       if (status === 'loading' || isLoading) {
         return;
       }
@@ -192,7 +195,7 @@ export default function withAuth<P extends object>(
       setHasCheckedAuth(true);
 
       // Redirect if not authenticated
-      if (status === 'unauthenticated' || status === 'error' || !user) {
+      if (status === 'unauthenticated' || !user) {
         redirectedRef.current = true;
         const currentPath = pathname || window.location.pathname;
         const redirectUrl = `${redirectTo}?next=${encodeURIComponent(currentPath)}`;
@@ -262,7 +265,7 @@ export default function withAuth<P extends object>(
     }
 
     // Check authentication status - if not authenticated, show nothing (redirect is happening)
-    if (status === 'unauthenticated' || status === 'error' || !user) {
+    if (status === 'unauthenticated' || !user) {
       return null;
     }
 
@@ -278,12 +281,23 @@ export default function withAuth<P extends object>(
 /**
  * Hook for protected pages (alternative to HOC)
  * Returns user data and handles redirects
- * Uses AuthContext directly - no duplicate API calls
+ * Uses NextAuth useSession()
  */
 export function useProtectedPage(options: WithAuthOptions = {}) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, status, isLoading } = useAuth();
+  const { data: session, status: naStatus } = useSession();
+  const user = useMemo(() => {
+    if (naStatus !== 'authenticated' || !session) return null;
+    return sessionToAppUser(session);
+  }, [session, naStatus]);
+  const status: AuthStatus =
+    naStatus === 'loading'
+      ? 'loading'
+      : naStatus === 'authenticated' && user
+        ? 'authenticated'
+        : 'unauthenticated';
+  const isLoading = naStatus === 'loading';
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const redirectedRef = useRef(false);
@@ -305,7 +319,7 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
     setHasCheckedAuth(true);
 
     // Redirect if not authenticated
-    if (status === 'unauthenticated' || status === 'error' || !user) {
+    if (status === 'unauthenticated' || !user) {
       redirectedRef.current = true;
       const currentPath = pathname || window.location.pathname;
       router.replace(`${redirectTo}?next=${encodeURIComponent(currentPath)}`);

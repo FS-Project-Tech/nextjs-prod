@@ -7,6 +7,7 @@ import ProductGrid from "@/components/ProductGrid";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import Container from "@/components/Container";
+import ShopListingLayout from "@/components/ShopListingLayout";
 import { Suspense } from "react";
 import { createSafeHTML } from "@/lib/xss-sanitizer";
 
@@ -38,6 +39,7 @@ export default function BrandPageClient({
   }, [mobileFiltersOpen]);
 
   return (
+    <ShopListingLayout>
     <div className="min-h-screen py-4">
       <Container>
         <Breadcrumbs
@@ -109,22 +111,21 @@ export default function BrandPageClient({
               <h1 className="text-3xl font-bold text-gray-900">{brandName}</h1>
               {brandDescription && (
                 <div className="mt-3">
-                <p
-                  className={`w-full text-sm leading-relaxed text-gray-600 ${
-                    isDescriptionExpanded ? "" : "line-clamp-4"
-                  }`}
-                >
-                  <div dangerouslySetInnerHTML={createSafeHTML(brandDescription)} />
-                  </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsDescriptionExpanded((prev) => !prev)}
-                      className="mt-2 text-sm font-medium text-teal-700 hover:text-teal-800"
-                      aria-expanded={isDescriptionExpanded}
-                    >
-                      {isDescriptionExpanded ? "Read less" : "Read more"}
-                    </button>
-                  </div>
+                  <div
+                    className={`w-full text-sm leading-relaxed text-gray-600 ${
+                      isDescriptionExpanded ? "" : "line-clamp-4"
+                    }`}
+                    dangerouslySetInnerHTML={createSafeHTML(brandDescription)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsDescriptionExpanded((prev) => !prev)}
+                    className="mt-2 text-sm font-medium text-teal-700 hover:text-teal-800"
+                    aria-expanded={isDescriptionExpanded}
+                  >
+                    {isDescriptionExpanded ? "Read less" : "Read more"}
+                  </button>
+                </div>
               )}
           </div>
             <Suspense fallback={<ProductGridSkeleton />}>
@@ -134,5 +135,6 @@ export default function BrandPageClient({
         </div>
       </Container>
     </div>
+    </ShopListingLayout>
   );
 }

@@ -4,12 +4,13 @@ import { useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RegisterForm from '@/components/auth/RegisterForm';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSession } from 'next-auth/react';
 
 function RegisterPageContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const { status, user } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user ?? null;
 
   useEffect(() => {
     if (status === 'authenticated' && user) {

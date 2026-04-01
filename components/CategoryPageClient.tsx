@@ -8,6 +8,7 @@ import ProductGrid from "@/components/ProductGrid";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import Container from "@/components/Container";
+import ShopListingLayout from "@/components/ShopListingLayout";
 import { createSafeHTML } from "@/lib/xss-sanitizer";
 
 // Dynamically import FilterSidebar - heavy component with filters and sliders
@@ -77,6 +78,7 @@ export default function CategoryPageClient({
   }, [categorySlug]);
 
   return (
+    <ShopListingLayout>
     <div className="min-h-screen py-4" suppressHydrationWarning>
       <Container suppressHydrationWarning>
         <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Shop', href: '/shop' }, { label: categoryName }]} />
@@ -90,7 +92,7 @@ export default function CategoryPageClient({
           </aside>
           
           {/* Product Grid - Wrapped in Suspense for useSearchParams */}
-          <div className="flex-1" suppressHydrationWarning>
+          <div className="flex-1 min-w-0" suppressHydrationWarning>
               <div className="mb-6" suppressHydrationWarning>
                 <h1 className="text-2xl font-semibold text-gray-900">{categoryName}</h1>
                 {categoryDescription && (
@@ -120,6 +122,7 @@ export default function CategoryPageClient({
         </div>
       </Container>
     </div>
+    </ShopListingLayout>
   );
 }
 

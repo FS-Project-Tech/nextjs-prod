@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { fetchCategoryBySlug, fetchCategories } from "@/lib/woocommerce";
+import { fetchCategoryBySlug } from "@/lib/woocommerce";
+import { getUnifiedCategories, findCategoryBySlug, getChildrenForParent } from "@/lib/categories-unified";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import CategorySubcategoryBook from "@/components/CategorySubcategoryBook";
 
@@ -26,15 +27,15 @@ export default async function CatalogueCategoryPage({ params }: Props) {
   const { categorySlug } = await params;
   const slug = decodeURIComponent(categorySlug);
 
-  const parentCategory = await fetchCategoryBySlug(slug);
+  const unified = await getUnifiedCategories();
+  const fromTree = findCategoryBySlug(unified, slug);
+  const parentCategory = fromTree ?? (await fetchCategoryBySlug(slug));
   if (!parentCategory) {
     notFound();
   }
 
-  const subcategories = await fetchCategories({
-    per_page: 100,
-    parent: parentCategory.id,
-    hide_empty: true,
+  const subcategories = getChildrenForParent(unified, parentCategory.id, {
+    hideEmpty: true,
   });
 
   const breadcrumbItems = [
@@ -59,4 +60,3 @@ export default async function CatalogueCategoryPage({ params }: Props) {
     </>
   );
 }
-

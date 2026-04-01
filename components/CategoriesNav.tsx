@@ -208,6 +208,16 @@ async function CategoriesNavContent() {
             </PrefetchLink>
           </li>
 
+          {/* Health Professionals  */}
+          <li>
+            <PrefetchLink
+              href="/health-professionals/"
+              className="px-3 py-2 text-white hover:bg-nav-hover"
+            >
+              Health Professionals
+            </PrefetchLink>
+           </li>
+
         </ul>
       </div>
     </nav>

@@ -37,11 +37,13 @@ export default function CategoryBookClient({
       setLoading(true);
       try {
         const params = new URLSearchParams({
-          categorySlug,
+          category_slug: categorySlug,
           per_page: String(MAX_PRODUCTS),
           page: "1",
+          sortBy: "popularity",
+          q: "*",
         });
-        const res = await fetch(`/api/products?${params.toString()}`);
+        const res = await fetch(`/api/typesense/search?${params.toString()}`);
         const json = await res.json();
         if (!cancelled) {
           setProducts(Array.isArray(json.products) ? json.products : []);

@@ -41,15 +41,15 @@ export default function ProductsSlider({ products: rawProducts, gridCols = 5 }: 
  
   const gridClass =
     gridCols === 6
-      ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6 items-stretch"
+      ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6 items-stretch w-full"
       : gridCols === 5
-        ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5 items-stretch"
-        : "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 items-stretch";
+        ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5 items-stretch w-full"
+        : "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 items-stretch w-full";
  
   return (
     <div className={gridClass}>
       {products.map((p) => (
-        <div key={p.id} className="h-full min-h-0 flex">
+        <div key={p.id} className="h-full min-h-0 flex flex flex-col w-full">
           {renderProductCard(p)}
         </div>
       ))}

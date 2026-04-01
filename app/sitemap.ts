@@ -4,7 +4,8 @@
  */
 
 import { MetadataRoute } from 'next';
-import { fetchProducts, fetchCategories } from '@/lib/woocommerce';
+import { fetchProducts } from '@/lib/woocommerce';
+import { getUnifiedCategories } from '@/lib/categories-unified';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://example.com';
 
@@ -49,6 +50,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.65,
     },
+    {
+      url: `${baseUrl}/health-professionals`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    },
   ];
 
   // Fetch products and categories
@@ -66,8 +73,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     }));
 
-    // Fetch all categories directly
-    const categories = await fetchCategories({ per_page: 100 }).catch(() => []);
+    const unified = await getUnifiedCategories().catch(() => ({
+      categories: [] as { slug: string }[],
+    }));
+    const categories = unified.categories;
     
     categoryPages = categories.map((category) => ({
       url: `${baseUrl}/product-category/${category.slug}`,

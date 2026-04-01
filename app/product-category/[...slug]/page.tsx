@@ -1,4 +1,5 @@
-import { fetchCategoryBySlug, fetchCategories } from "@/lib/woocommerce";
+import { fetchCategoryBySlug } from "@/lib/woocommerce";
+import { getUnifiedCategories, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
 import CategoryPageClient from "@/components/CategoryPageClient";
 import type { Metadata } from "next";
 import { fetchCategorySEO } from "@/lib/wordpress";
@@ -15,13 +16,9 @@ function getLeafSlug(input: string[] | string): string {
 
 export async function generateStaticParams() {
   try {
-    const categories = await fetchCategories({
-      per_page: 50,
-      parent: 0,
-      hide_empty: true,
-    });
-
-    return categories.map((category: { slug: string }) => ({
+    const unified = await getUnifiedCategories();
+    const roots = getRootCategoriesNonEmpty(unified).slice(0, 50);
+    return roots.map((category) => ({
       slug: [category.slug],
     }));
   } catch (error) {

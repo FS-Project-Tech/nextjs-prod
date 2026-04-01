@@ -1,4 +1,53 @@
 import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
+
+function metaDataString(
+  meta: Array<{ key?: string; value?: unknown }> | undefined,
+  ...keys: string[]
+): string {
+  if (!meta?.length) return "";
+  for (const key of keys) {
+    const m = meta.find((x) => x?.key === key);
+    const v = m?.value;
+    if (v != null && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+
+/**
+ * WooCommerce list responses often omit variable parent `regular_price` / `sale_price`.
+ * Uses parent `meta_data` min-variation keys (no extra API calls).
+ */
+export function enrichWcListProductPricesForCard(
+  product: WooCommerceProduct
+): WooCommerceProduct {
+  const type = product.type;
+  const regStr = product.regular_price != null ? String(product.regular_price).trim() : "";
+  const saleStr = product.sale_price != null ? String(product.sale_price).trim() : "";
+  const hasRegular = regStr !== "";
+  const hasSale = saleStr !== "";
+
+  if (type !== "variable" || (hasRegular && hasSale)) {
+    return product;
+  }
+
+  const meta = product.meta_data as Array<{ key?: string; value?: unknown }> | undefined;
+  const regular =
+    regStr ||
+    metaDataString(
+      meta,
+      "_min_variation_regular_price",
+      "min_variation_regular_price"
+    );
+  const sale =
+    saleStr ||
+    metaDataString(meta, "_min_variation_sale_price", "min_variation_sale_price");
+
+  return {
+    ...product,
+    regular_price: regular || product.regular_price,
+    sale_price: sale || product.sale_price,
+  };
+}
  
 export interface ProductBrandInfo {
   id?: number;

@@ -1,7 +1,7 @@
 "use client";
  
 import { useCart } from "@/components/CartProvider";
-import { useAuth } from "@/components/AuthProvider";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import Image from "next/image";
@@ -172,7 +172,8 @@ CartItem.displayName = 'CartItem';
  
 export default function MiniCartDrawer() {
     const { isOpen, close, items, total, removeItem, updateItemQty, clear } = useCart();
-    const { user } = useAuth();
+    const { data: session } = useSession();
+    const user = session?.user ?? null;
     const { discount, appliedCoupon, calculateDiscount } = useCoupon();
  
     const [selectedRateId, setSelectedRateId] = useState<string>("");

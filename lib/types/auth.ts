@@ -74,6 +74,7 @@ export interface AuthContextType {
   // Actions
   login: (username: string, password: string, redirectTo?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  /** NextAuth `update()` → refetch `/api/auth/session` (not `/api/auth/validate`). */
   validateSession: () => Promise<void>;
   refreshSession: () => Promise<void>;
   clearError: () => void;

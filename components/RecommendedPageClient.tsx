@@ -7,6 +7,7 @@ import ProductGrid from "@/components/ProductGrid";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import Container from "@/components/Container";
+import ShopListingLayout from "@/components/ShopListingLayout";
 
 const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
   loading: () => <FilterSidebarSkeleton />,
@@ -15,6 +16,7 @@ const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
 
 export default function RecommendedPageClient() {
   return (
+    <ShopListingLayout>
     <div className="min-h-screen py-12" suppressHydrationWarning>
       <Container suppressHydrationWarning>
         <Breadcrumbs
@@ -39,7 +41,7 @@ export default function RecommendedPageClient() {
             <FilterSidebar />
           </aside>
 
-          <div className="flex-1" suppressHydrationWarning>
+          <div className="flex-1 min-w-0" suppressHydrationWarning>
             <Suspense fallback={<ProductGridSkeleton />}>
               <ProductGrid />
             </Suspense>
@@ -47,5 +49,6 @@ export default function RecommendedPageClient() {
         </div>
       </Container>
     </div>
+    </ShopListingLayout>
   );
 }

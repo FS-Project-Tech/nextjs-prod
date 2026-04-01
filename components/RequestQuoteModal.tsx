@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/components/ToastProvider';
 import { useCart } from '@/components/CartProvider';
-import { useAuth } from '@/components/AuthProvider';
+import { useSession } from 'next-auth/react';
 import { parseCartTotal } from '@/lib/cart-utils';
 import { formatPrice } from '@/lib/format-utils';
 import type { QuoteTemplate } from '@/lib/types/quote-template';
@@ -33,7 +33,8 @@ export default function RequestQuoteModal({
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const { success, error: showError } = useToast();
   const { items, total } = useCart();
-  const { user } = useAuth();
+  const { data: session } = useSession();
+  const user = session?.user ?? null;
 
   if (!isOpen) return null;
 
@@ -55,7 +56,7 @@ export default function RequestQuoteModal({
         },
         body: JSON.stringify({
           email: user.email,
-          userName: user.name || user.username || 'Customer',
+          userName: user.name || user.email?.split("@")[0] || "Customer",
           items: items.map(item => ({
             name: item.name,
             sku: item.sku || null,

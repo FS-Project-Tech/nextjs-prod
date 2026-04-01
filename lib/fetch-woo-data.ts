@@ -276,7 +276,7 @@ export async function fetchProductsBatch(
   // WooCommerce supports include parameter for batch fetching
   return fetchWooData<WooCommerceProduct[]>(
     '/products',
-    { include: productIds.join(',') },
+    { include: productIds.join(','), stock_status: 'instock' },
     {
       cache: {
         revalidate: 300,
@@ -341,7 +341,7 @@ export async function prefetchProducts(
     // Fetch first page to get total count
     const firstPage = await fetchWooData<WooCommerceProduct[]>(
       '/products',
-      { ...params, per_page: perPage, page: 1 },
+      { ...params, per_page: perPage, page: 1, stock_status: 'instock' },
       {
         cache: {
           revalidate: 300,
@@ -363,7 +363,7 @@ export async function prefetchProducts(
       const pagePromises = Array.from({ length: pagesToFetch - 1 }, (_, i) =>
         fetchWooData<WooCommerceProduct[]>(
           '/products',
-          { ...params, per_page: perPage, page: i + 2 },
+          { ...params, per_page: perPage, page: i + 2, stock_status: 'instock' },
           {
             cache: {
               revalidate: 300,

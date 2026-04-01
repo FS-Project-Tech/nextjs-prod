@@ -6,7 +6,7 @@ import LoginForm from '@/components/auth/LoginForm';
 import { Shield } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useAuth } from '@/components/AuthProvider';
+import { useSession } from 'next-auth/react';
 import { validateNextParam, ALLOWED_REDIRECT_PATHS } from '@/lib/redirectUtils';
 
 /** Only show loading UI if the operation takes longer than this (ms). Fast loads show nothing. */
@@ -16,7 +16,8 @@ const REDIRECT_LOADING_DELAY_MS = 400;
 function LoginPageContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const { user, status } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user ?? null;
   const [showSessionLoading, setShowSessionLoading] = useState(false);
   const [showRedirecting, setShowRedirecting] = useState(false);
   const sessionDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);

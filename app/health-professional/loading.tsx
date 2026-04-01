@@ -1,7 +1,4 @@
-/**
- * Health Professional page loading.
- */
-export default function HealthProfessionalLoading() {
+export default function HealthProfessionalsLoading() {
   return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 py-12">
       <div

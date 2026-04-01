@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '@/components/ToastProvider';
 import { useCart } from '@/components/CartProvider';
-import { useAuth } from '@/contexts/AuthContext';
+import { useSession } from 'next-auth/react';
+import { sessionToAppUser } from '@/lib/next-auth-user';
 import { formatPrice } from '@/lib/format-utils';
 import { getExpiryStatus, isQuoteExpired } from '@/lib/quote-expiry';
 import type { Quote, QuoteStatusHistory, QuoteComment } from '@/lib/types/quote';
@@ -27,7 +28,11 @@ export default function QuoteDetailPage() {
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { success, error: showError } = useToast();
   const { clear: clearCart, addItem } = useCart();
-  const { user } = useAuth();
+  const { data: session, status: sessionStatus } = useSession();
+  const user =
+    sessionStatus === 'authenticated' && session
+      ? sessionToAppUser(session)
+      : null;
 
   useEffect(() => {
     const fetchQuote = async () => {

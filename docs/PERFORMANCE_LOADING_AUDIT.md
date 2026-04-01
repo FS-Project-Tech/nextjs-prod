@@ -8,7 +8,7 @@ This document summarizes causes of slow loading across the site and the fixes ap
 
 **Issue:** Opening a category (e.g. Airway Management) triggered many sequential API calls to build the brand list, so the Brand section stayed on "Loading..." for a long time.
 
-**Root cause:** `fetchBrandsForCategorySlug` in `/api/filters/brands` was doing:
+**Root cause:** `fetchBrandsForCategorySlug` in the former `/api/filters/brands` route was doing:
 - Up to **20** WooCommerce product pages (2,000 products) to extract brands from product data (which often doesn’t include `product_brand`).
 - Then, if empty, up to **10** WordPress requests for brand terms and up to **15** WP product pages.
 

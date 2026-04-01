@@ -8,6 +8,7 @@ import ProductGrid from "@/components/ProductGrid";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import Container from "@/components/Container";
+import ShopListingLayout from "@/components/ShopListingLayout";
 
 // Dynamically import FilterSidebar - heavy component with filters and sliders
 const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
@@ -30,9 +31,16 @@ function ProductsPageContent() {
   // Count active filters for badge
   const activeFilterCount = useCallback(() => {
     let count = 0;
-    const brands = searchParams?.get('brands');
-    if (brands) count += brands.split(',').length;
-    if (searchParams?.get('minPrice') || searchParams?.get('maxPrice')) count += 1;
+    const brands = searchParams?.get("brands");
+    if (brands) count += brands.split(",").length;
+    if (
+      searchParams?.get("min_price") ||
+      searchParams?.get("max_price") ||
+      searchParams?.get("minPrice") ||
+      searchParams?.get("maxPrice")
+    ) {
+      count += 1;
+    }
     return count;
   }, [searchParams]);
 
@@ -49,6 +57,7 @@ function ProductsPageContent() {
   }, [mobileFiltersOpen]);
 
   return (
+    <ShopListingLayout>
     <div className="min-h-screen py-6 lg:py-12" suppressHydrationWarning>
       <Container suppressHydrationWarning>
         <Breadcrumbs items={[
@@ -142,6 +151,7 @@ function ProductsPageContent() {
         </div>
       </Container>
     </div>
+    </ShopListingLayout>
   );
 }
 

@@ -169,6 +169,11 @@ const nextConfig: NextConfig = {
       // Add known WooCommerce media hosts here
       {
         protocol: "https",
+        hostname: "wordpress-1513595-6089575.cloudwaysapps.com",
+        pathname: "/wp-content/uploads/**",
+      },
+      {
+        protocol: "https",
         hostname: "**.stage.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
@@ -246,6 +251,16 @@ const nextConfig: NextConfig = {
       { source: '/collection-statement', destination: '/info/collection-statement', permanent: true },
       { source: '/collection-statement-general-enquiries', destination: '/info/collection-statement', permanent: true },
       { source: '/info/blog', destination: '/blog', permanent: true },
+      {
+        source: '/health-professional',
+        destination: '/health-professionals',
+        permanent: true,
+      },
+      {
+        source: '/health-professional/:path*',
+        destination: '/health-professionals/:path*',
+        permanent: true,
+      },
       ...nursingServiceRootRedirects()
     ];
   },

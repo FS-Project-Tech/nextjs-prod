@@ -50,7 +50,7 @@ const fetchFallbackProducts = async (
   signal: AbortSignal
 ): Promise<ProductCardProduct[]> => {
   const res = await fetch(
-    `/api/products?per_page=${RECOMMENDED_SECTION_SIZE}&sortBy=popularity`,
+    `/api/typesense/search?per_page=${RECOMMENDED_SECTION_SIZE}&page=1&sortBy=popularity&q=*`,
     {
       signal,
       next: { revalidate: 300 },

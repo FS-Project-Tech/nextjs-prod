@@ -1,19 +1,16 @@
 "use client";
 
-import { useAuth } from "@/hooks/useAuth";
+import { useSession } from "next-auth/react";
 
+/** Login entry when the header has no NextAuth user (parent handles loading / authenticated UI). */
 export default function HeaderUser() {
-  const { user, loading } = useAuth();
+  const { status } = useSession();
 
-  if (loading) return null;
+  if (status === "loading") return null;
 
   return (
     <div>
-      {user ? (
-        <p>Welcome, {user.name}</p>
-      ) : (
-        <a href="/login">Login</a>
-      )}
+      <a href="/login">Login</a>
     </div>
   );
 }

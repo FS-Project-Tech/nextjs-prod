@@ -328,6 +328,7 @@ export async function fetchProductsWithSession(
   const wcParams: Record<string, unknown> = {
     per_page: params.perPage || 24,
     page: params.page || 1,
+    stock_status: 'instock',
   };
   
   if (params.category) {
@@ -442,19 +443,47 @@ export async function fetchCategoriesWithSession(
     perPage?: number;
   } = {}
 ): Promise<SessionFetchResult<WCCategory[]>> {
-  const wcParams: Record<string, unknown> = {
-    per_page: params.perPage || 100,
-    hide_empty: params.hideEmpty ?? true,
-  };
-  
-  if (params.parent !== undefined) {
-    wcParams.parent = params.parent;
+  const { getUnifiedCategories, getChildrenForParent } = await import(
+    "@/lib/categories-unified"
+  );
+  const unified = await getUnifiedCategories();
+  const hideEmpty = params.hideEmpty ?? true;
+
+  let list =
+    params.parent === undefined
+      ? [...unified.categories]
+      : params.parent === 0
+        ? [...unified.roots]
+        : getChildrenForParent(unified, params.parent, { hideEmpty: false });
+
+  if (hideEmpty) {
+    list = list.filter((c) => c.count > 0);
   }
-  
-  return wcFetch<WCCategory[]>('/products/categories', wcParams, {
-    session,
-    ttl: CACHE_TTL.CATEGORIES,
-  });
+
+  const mapped: WCCategory[] = list.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    parent: c.parent,
+    count: c.count,
+    description: c.description || "",
+    image: c.image?.src
+      ? {
+          id: 0,
+          src: c.image.src,
+          name: "",
+          alt: c.image.alt || "",
+        }
+      : null,
+  }));
+
+  return {
+    data: mapped,
+    error: null,
+    status: 200,
+    cached: true,
+    sessionValid: Boolean(session?.token),
+  };
 }
 
 /**

@@ -1,10 +1,11 @@
 "use client";
- 
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Container from "@/components/Container";
- 
+import { fetchUnifiedCategoriesClient } from "@/lib/client-unified-categories";
+
 type Category = {
   id: number;
   name: string;
@@ -12,26 +13,19 @@ type Category = {
   count: number;
   image: string | null;
 };
- 
-/**
- * Fetch all categories via API (high per_page to get full list)
- */
+
 async function fetchAllCategories(signal: AbortSignal): Promise<Category[]> {
   try {
-    const response = await fetch(
-      "/api/categories?per_page=100&parent=0&hide_empty=true",
-      { signal, next: { revalidate: 3600 } }
-    );
-    if (!response.ok) return [];
-    const data = await response.json();
-    const categories = Array.isArray(data) ? data : data.categories || [];
-    return categories.map((cat: { id: number; name: string; slug: string; count?: number; image?: { src?: string }; image_url?: string }) => ({
-      id: cat.id,
-      name: cat.name,
-      slug: cat.slug,
-      count: cat.count || 0,
-      image: cat.image?.src || cat.image_url || null,
-    }));
+    const payload = await fetchUnifiedCategoriesClient({ signal });
+    return payload.roots
+      .filter((c) => c.count > 0)
+      .map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        count: cat.count || 0,
+        image: cat.image?.src || null,
+      }));
   } catch (e: unknown) {
     if (e instanceof Error && e.name !== "AbortError") {
       console.error("Categories fetch error:", e);
@@ -39,7 +33,7 @@ async function fetchAllCategories(signal: AbortSignal): Promise<Category[]> {
     return [];
   }
 }
- 
+
 function CategoryCard({ category }: { category: Category }) {
   const imageSrc = category.image || "/images/category-placeholder.png";
   return (
@@ -63,11 +57,11 @@ function CategoryCard({ category }: { category: Category }) {
     </Link>
   );
 }
- 
+
 export default function AllCategoriesPageClient() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
- 
+
   useEffect(() => {
     const controller = new AbortController();
     fetchAllCategories(controller.signal)
@@ -75,35 +69,31 @@ export default function AllCategoriesPageClient() {
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, []);
- 
+
   return (
     <main className="min-h-screen pb-12 pt-6">
       <Container>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">All Categories</h1>
-          <p className="mt-1 text-gray-600">
-            Browse our complete product range by category
-          </p>
-          <div className="mt-3 h-1 w-24 rounded-full bg-teal-500" />
-        </div>
- 
+        <h1 className="mb-6 text-2xl font-semibold text-gray-900">All categories</h1>
         {loading ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {Array.from({ length: 18 }).map((_, i) => (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, i) => (
               <div
                 key={i}
-                className="h-20 animate-pulse rounded-xl border border-gray-200 bg-gray-50 sm:h-24"
+                className="h-24 animate-pulse rounded-xl bg-gray-100"
+                aria-hidden
               />
             ))}
           </div>
-        ) : categories.length === 0 ? (
+        ) : !categories.length ? (
           <p className="text-gray-500">No categories found.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {categories.map((category) => (
-              <CategoryCard key={category.id} category={category} />
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {categories.map((cat) => (
+              <li key={cat.id}>
+                <CategoryCard category={cat} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </Container>
     </main>

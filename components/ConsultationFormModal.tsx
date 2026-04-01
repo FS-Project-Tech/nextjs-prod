@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ToastProvider";
 
 interface ConsultationFormModalProps {
@@ -15,7 +15,9 @@ export default function ConsultationFormModal({
   onClose,
   productName,
 }: ConsultationFormModalProps) {
-  const { user, loading: authLoading } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user ?? null;
+  const authLoading = status === "loading";
   const { success, error: showError } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,7 +33,7 @@ export default function ConsultationFormModal({
       setFormData((prev) => ({
         ...prev,
         email: user.email || "",
-        name: user.name || user.username || "",
+        name: user.name || "",
       }));
     }
   }, [user, authLoading]);
@@ -41,7 +43,7 @@ export default function ConsultationFormModal({
     if (!isOpen) {
       setFormData({
         email: user?.email || "",
-        name: user?.name || user?.username || "",
+        name: user?.name || "",
         productName: productName,
         comment: "",
       });

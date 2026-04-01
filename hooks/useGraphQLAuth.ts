@@ -10,6 +10,7 @@
  
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/components/CartProvider';
 import { parseResponseJson } from '@/lib/parse-response-json';
@@ -63,6 +64,7 @@ export interface RegisterData {
 export function useGraphQLAuth(): UseGraphQLAuthReturn {
   const router = useRouter();
   const auth = useAuth();
+  const { update } = useSession();
   const { items: cartItems, clear: clearLocalCart } = useCart();
   const [isProcessing, setIsProcessing] = useState(false);
  
@@ -130,8 +132,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
         clearLocalCart();
       }
  
-      // Refresh auth state
-      await auth.validateSession();
+      await update?.();
  
       // Redirect
       if (data.redirectTo) {
@@ -151,7 +152,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, cartItems, clearLocalCart, auth, router]);
+  }, [isProcessing, cartItems, clearLocalCart, update, router]);
  
   /**
    * Register via GraphQL
@@ -201,7 +202,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
  
       // Refresh auth state (registration includes auto-login)
       if (autoLogin) {
-        await auth.validateSession();
+        await update?.();
       }
  
       // Redirect
@@ -222,7 +223,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, auth, router]);
+  }, [isProcessing, update, router]);
  
   /**
    * Logout via GraphQL
@@ -263,8 +264,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
         };
       }
  
-      // Refresh auth state
-      await auth.validateSession();
+      await update?.();
  
       return { success: true };
     } catch (error: any) {
@@ -273,7 +273,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
         error: error.message || 'An error occurred'
       };
     }
-  }, [auth]);
+  }, [update]);
  
   /**
    * Merge local cart with WooCommerce cart
@@ -331,7 +331,9 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
     mergeCart,
    
     // Original useAuth actions
-    validateSession: auth.validateSession,
+    validateSession: async () => {
+      await update?.();
+    },
     clearError: auth.clearError,
   };
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import wcAPI from '@/lib/woocommerce';
+import wcAPI, { fetchCategoryBySlug } from '@/lib/woocommerce';
 import { cached, CACHE_TTL, CACHE_TAGS, STATIC_CACHE_HEADERS } from '@/lib/cache';
 
 /**
@@ -21,22 +21,28 @@ export async function GET(request: NextRequest) {
     const priceRange = await cached(
       cacheKey,
       async () => {
-        // Build params for WooCommerce request
-        const params: Record<string, any> = {
+        const params: Record<string, string | number> = {
           per_page: 1,
           orderby: 'price',
+          status: 'publish',
+          stock_status: 'instock',
         };
-        
-        // If category specified, we'd need to resolve it to ID
-        // For simplicity, we'll get global price range
-        
-        // Get cheapest and most expensive products in parallel
+
+        if (categorySlug) {
+          try {
+            const cat = await fetchCategoryBySlug(categorySlug);
+            if (cat?.id) params.category = cat.id;
+          } catch {
+            /* global range */
+          }
+        }
+
         const [minResponse, maxResponse] = await Promise.all([
           wcAPI.get('/products', {
-            params: { ...params, order: 'asc', status: 'publish' },
+            params: { ...params, order: 'asc' },
           }),
           wcAPI.get('/products', {
-            params: { ...params, order: 'desc', status: 'publish' },
+            params: { ...params, order: 'desc' },
           }),
         ]);
         
