@@ -1,18 +1,18 @@
 "use client";
-
+ 
 import { useCallback, useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import LoginForm from '@/components/auth/LoginForm';
 import { Shield } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { AuthSideBanner } from '@/components/auth/AuthSideBanner';
 import { useSession } from 'next-auth/react';
 import { validateNextParam, ALLOWED_REDIRECT_PATHS } from '@/lib/redirectUtils';
-
+ 
 /** Only show loading UI if the operation takes longer than this (ms). Fast loads show nothing. */
 const SESSION_LOADING_DELAY_MS = 700;
 const REDIRECT_LOADING_DELAY_MS = 400;
-
+ 
 function LoginPageContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -22,20 +22,20 @@ function LoginPageContent() {
   const [showRedirecting, setShowRedirecting] = useState(false);
   const sessionDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+ 
   // ✅ Secure redirect resolver
   const resolveRedirect = useCallback(() => {
     if (!params) return '/dashboard';
     const nextParam = params.get('next');
     return validateNextParam(nextParam, ALLOWED_REDIRECT_PATHS, '/dashboard');
   }, [params]);
-
+ 
   // ✅ Redirect authenticated users
   useEffect(() => {
     if (status !== 'authenticated' || !user) return;
     router.replace(resolveRedirect());
   }, [status, user, resolveRedirect]);
-
+ 
   // ✅ Show "Checking session…" only if session check takes longer than delay (avoids flash when fast)
   useEffect(() => {
     if (status !== 'loading') {
@@ -57,7 +57,7 @@ function LoginPageContent() {
       }
     };
   }, [status]);
-
+ 
   // ✅ Show "Redirecting…" only if redirect takes longer than delay
   useEffect(() => {
     if (status !== 'authenticated' || !user) {
@@ -79,7 +79,7 @@ function LoginPageContent() {
       }
     };
   }, [status, user]);
-
+ 
   // ✅ Loading state: only show after delay (so fast session check never shows this)
   if (status === 'loading' && showSessionLoading) {
     return (
@@ -89,7 +89,7 @@ function LoginPageContent() {
       </div>
     );
   }
-
+ 
   // ✅ Already authenticated: only show redirect message after delay
   if (status === 'authenticated' && user && showRedirecting) {
     return (
@@ -98,72 +98,53 @@ function LoginPageContent() {
       </div>
     );
   }
-
-  // ✅ Login form UI
+ 
+  // ✅ Login UI — same split card as /register (embedded banner, fixed promo bounds in AuthSideBanner)
   return (
-    <div className="h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      {/* Left side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center px-4 sm:px-6 lg:px-8 overflow-y-auto">
-        <div className="w-full max-w-md">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome</h1>
-            <p className="text-gray-600">Sign in to your account to continue</p>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-white to-slate-100 py-8 sm:py-10 lg:py-12">
+      <div className="mx-auto flex w-full max-w-[min(88rem,calc(100%-1.5rem))] justify-center px-3 sm:px-5">
+        <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 lg:min-h-[min(640px,calc(100dvh-10rem))] lg:max-h-[calc(100dvh-8rem)] lg:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col justify-center px-6 py-8 sm:px-10 sm:py-10 lg:px-12 xl:px-14">
+            <div className="mx-auto w-full max-w-xl">
+              <div className="mb-8 text-center lg:text-left">
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900 antialiased">
+                  Welcome
+                </h1>
+                <p className="mt-2 text-sm text-slate-600">
+                  Sign in to your account to continue
+                </p>
+              </div>
+ 
+              <LoginForm />
+ 
+              <div className="mt-6 text-center lg:text-left">
+                <p className="text-sm text-slate-600">
+                  Don&apos;t have an account?{" "}
+                  <Link
+                    href="/register"
+                    className="font-semibold text-teal-700 underline decoration-teal-700/30 underline-offset-2 hover:text-teal-800"
+                  >
+                    Create one now
+                  </Link>
+                </p>
+              </div>
+ 
+              <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-500 lg:justify-start">
+                <Shield className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Secure login with encrypted connection</span>
+              </div>
+            </div>
           </div>
-
-          {/* Login Form Card */}
-          <div>
-            <LoginForm />
-          </div>
-
-          {/* Additional Links */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link
-                href="/register"
-                className="font-semibold text-gray-900 hover:text-gray-700 transition-colors underline"
-              >
-                Create one now
-              </Link>
-            </p>
-          </div>
-
-          {/* Security Badge */}
-          <div className="mt-8 flex items-center justify-center gap-2 text-xs text-gray-500">
-            <Shield className="w-4 h-4" aria-hidden="true" />
-            <span>Secure login with encrypted connection</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Right side - Dynamic Image */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden h-full">
-        <Image
-          src="https://images.unsplash.com/photo-1556740758-90de374c12ad?w=800&h=1200&fit=crop&q=80"
-          alt="Welcome"
-          fill
-          priority
-          className="object-cover"
-          sizes="50vw"
-        />
-        {/* Overlay for better text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-
-        {/* Optional: Add text overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-12 text-white">
-          <div className="max-w-md">
-            <h2 className="text-3xl font-bold mb-3">Secure & Fast Access</h2>
-            <p className="text-lg text-gray-200 leading-relaxed">
-              Sign in to access your account and manage your orders and more
-            </p>
+ 
+          <div className="flex shrink-0 flex-col items-center justify-center border-t border-slate-100 bg-slate-50/90 px-4 py-8 sm:px-6 lg:w-[min(54%,640px)] lg:border-l lg:border-t-0 lg:px-8 lg:py-10 xl:px-10">
+            <AuthSideBanner variant="login" embedded />
           </div>
         </div>
       </div>
     </div>
   );
 }
-
+ 
 export default function LoginPage() {
   return (
     <Suspense

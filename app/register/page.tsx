@@ -4,6 +4,7 @@ import { useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RegisterForm from '@/components/auth/RegisterForm';
+import { AuthSideBanner } from '@/components/auth/AuthSideBanner';
 import { useSession } from 'next-auth/react';
 
 function RegisterPageContent() {
@@ -20,44 +21,32 @@ function RegisterPageContent() {
   }, [status, user, params, router]);
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-white px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md space-y-8">
-          <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Create your account
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              Or{' '}
-              <Link
-                href={`/login${params?.get('next') ? `?next=${encodeURIComponent(params.get('next') as string)}` : ''}`}
-                className="font-medium text-teal-600 hover:text-teal-500"
-              >
-                sign in to your existing account
-              </Link>
-            </p>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-white to-slate-100 py-8 sm:py-10 lg:py-12">
+      <div className="mx-auto flex w-full max-w-[min(88rem,calc(100%-1.5rem))] justify-center px-3 sm:px-5">
+        <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 lg:min-h-[min(640px,calc(100dvh-10rem))] lg:max-h-[calc(100dvh-8rem)] lg:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col justify-center px-6 py-8 sm:px-10 sm:py-10 lg:px-12 xl:px-14">
+            <div className="mx-auto w-full max-w-xl space-y-8">
+              <div className="text-center lg:text-left">
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 antialiased bg-transparent">
+                  Create your account
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Or{" "}
+                  <Link
+                    href={`/login${params?.get("next") ? `?next=${encodeURIComponent(params.get("next") as string)}` : ""}`}
+                    className="font-medium text-teal-700 underline decoration-teal-700/30 underline-offset-2 hover:text-teal-800"
+                  >
+                    sign in to your existing account
+                  </Link>
+                </p>
+              </div>
+              <RegisterForm />
+            </div>
           </div>
-          <div className="bg-white py-8">
-            <RegisterForm />
-          </div>
-        </div>
-      </div>
 
-      {/* Right side - Image */}
-      <div className="hidden lg:block lg:w-1/2 relative bg-gradient-to-br from-teal-500 to-teal-700">
-        <div className="absolute inset-0 flex items-center justify-center p-12">
-          <div className="text-center text-white">
-            <h3 className="text-4xl font-bold mb-4">Join Us Today</h3>
-            <p className="text-xl opacity-90">
-              Create an account to start shopping and enjoy exclusive benefits
-            </p>
+          <div className="flex shrink-0 flex-col items-center justify-center border-t border-slate-100 bg-slate-50/90 px-4 py-8 sm:px-6 lg:w-[min(54%,640px)] lg:border-l lg:border-t-0 lg:px-8 lg:py-10 xl:px-10">
+            <AuthSideBanner variant="register" embedded />
           </div>
-        </div>
-        {/* Decorative pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full translate-x-1/2 -translate-y-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-white rounded-full -translate-x-1/2 translate-y-1/2"></div>
         </div>
       </div>
     </div>
@@ -78,4 +67,3 @@ export default function RegisterPage() {
     </Suspense>
   );
 }
-
