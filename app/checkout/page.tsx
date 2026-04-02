@@ -16,7 +16,14 @@ import { useCoupon } from "@/components/CouponProvider";
 import CouponInput from "@/components/CouponInput";
 import ShippingOptions from "@/components/ShippingOptions";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
-import { parseCartTotal, calculateGST, calculateTotal } from "@/lib/cart-utils";
+import { parseCartTotal } from "@/lib/cart-utils";
+import { useCheckoutTotals } from "@/hooks/useCheckoutTotals";
+import ParcelProtection from "@/components/ParcelProtection";
+import {
+  CHECKOUT_INSURANCE_STORAGE_KEY,
+  PARCEL_PROTECTION_FEE_AUD,
+  type InsuranceOption,
+} from "@/lib/checkout-parcel-protection";
 import { formatPrice } from "@/lib/format-utils";
 import { isValidName, isValidAuPhone, nameCharsOnly, digitsOnly } from "@/lib/form-validation";
 import {
@@ -145,6 +152,10 @@ const checkoutSchema = yup.object({
   cust_woo_provider_email: yup.string().optional(),
   cust_woo_hcp_approval: yup.boolean().optional(),
   subscribe_newsletter: yup.boolean().default(false),
+  insurance_option: yup
+    .string()
+    .oneOf(["yes", "no"] as const)
+    .default("no"),
   termsAccepted: yup.boolean().oneOf([true], "You must accept the terms and conditions").required(),
 });
 
@@ -241,6 +252,7 @@ function CheckoutPageContent() {
       cust_woo_provider_email: "",
       cust_woo_hcp_approval: false,
       subscribe_newsletter: false,
+      insurance_option: "no",
       termsAccepted: false,
     },
   });
@@ -277,6 +289,9 @@ function CheckoutPageContent() {
   const watchedShipToDifferent = watch("shipToDifferentAddress");
   const watchedShippingMethod = watch("shippingMethod");
   const watchedPaymentMethod = watch("paymentMethod");
+  const watchedInsuranceOption = watch("insurance_option");
+  const insuranceOptionResolved: InsuranceOption =
+    watchedInsuranceOption === "yes" ? "yes" : "no";
 
   const billingFirst = watchedBilling?.first_name ?? "";
   const billingLast = watchedBilling?.last_name ?? "";
@@ -307,6 +322,27 @@ function CheckoutPageContent() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!isMounted || typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(CHECKOUT_INSURANCE_STORAGE_KEY);
+      if (raw === "yes" || raw === "no") {
+        setValue("insurance_option", raw, { shouldDirty: false });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [isMounted, setValue]);
+
+  useEffect(() => {
+    if (!isMounted || typeof window === "undefined") return;
+    try {
+      localStorage.setItem(CHECKOUT_INSURANCE_STORAGE_KEY, insuranceOptionResolved);
+    } catch {
+      /* ignore */
+    }
+  }, [isMounted, insuranceOptionResolved]);
 
   const cartSubtotal = useMemo(() => parseCartTotal(total), [total]);
   const itemsCount = items.length;
@@ -364,8 +400,12 @@ function CheckoutPageContent() {
   const subtotal = parseCartTotal(total);
   const shippingCost = watchedShippingMethod ? Number((watchedShippingMethod as ShippingMethodType)?.cost || 0) : 0;
   const couponDiscount = discount || 0;
-  const gst = calculateGST(subtotal, shippingCost, couponDiscount);
-  const orderTotal = calculateTotal(subtotal, shippingCost, couponDiscount, gst);
+  const { parcelProtectionFee, gst, orderTotal } = useCheckoutTotals(
+    subtotal,
+    shippingCost,
+    couponDiscount,
+    insuranceOptionResolved
+  );
 
   const onSubmit = async (data: CheckoutFormData): Promise<void> => {
     if (items.length === 0) {
@@ -514,6 +554,8 @@ function CheckoutPageContent() {
       checkoutPayload.do_not_send_paperwork = data.doNotSendPaperwork || false;
       checkoutPayload.discreet_packaging = data.discreetPackaging || false;
       checkoutPayload.subscribe_newsletter = data.subscribe_newsletter || false;
+      checkoutPayload.insurance_option =
+        data.insurance_option === "yes" ? "yes" : "no";
 
       if (quoteConversion) {
         checkoutPayload.quote_id = quoteConversion.quote_id;
@@ -1667,6 +1709,12 @@ function CheckoutPageContent() {
                   <span className="text-gray-600">Shipping</span>
                   <span className="font-medium">{formatPrice(shippingCost)}</span>
                 </div>
+                {parcelProtectionFee > 0 && (
+                  <div className="flex animate-in fade-in slide-in-from-top-1 duration-200 items-center justify-between">
+                    <span className="text-gray-600">Parcel Protection</span>
+                    <span className="font-medium">{formatPrice(PARCEL_PROTECTION_FEE_AUD)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">GST (10%)</span>
                   <span className="font-medium">{formatPrice(gst)}</span>
@@ -1718,6 +1766,23 @@ function CheckoutPageContent() {
                 {errors.shippingMethod && (
                   <p className="mt-2 text-xs text-rose-600">{errors.shippingMethod.message}</p>
                 )}
+              </div>
+
+              <div className="mt-6 border-t pt-4">
+                <Controller
+                  name="insurance_option"
+                  control={control}
+                  render={({ field }) => (
+                    <ParcelProtection
+                      insurance_option={
+                        field.value === "yes" || field.value === "no"
+                          ? field.value
+                          : "no"
+                      }
+                      onInsuranceChange={field.onChange}
+                    />
+                  )}
+                />
               </div>
 
               <div className="mt-6 border-t pt-4">

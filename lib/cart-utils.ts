@@ -24,9 +24,11 @@ export function calculateSubtotal(items: CartItem[]): number {
 export function calculateGST(
   subtotal: number,
   shipping: number,
-  discount: number = 0
+  discount: number = 0,
+  /** Optional fees included in GST base (e.g. parcel protection) */
+  additionalTaxable: number = 0
 ): number {
-  const base = Math.max(0, subtotal - discount) + shipping;
+  const base = Math.max(0, subtotal - discount) + shipping + additionalTaxable;
   return Number((base * 0.1).toFixed(2));
 }
  
@@ -38,11 +40,15 @@ export function calculateTotal(
   subtotal: number,
   shipping: number,
   discount: number = 0,
-  gst?: number
+  gst?: number,
+  additionalFees: number = 0
 ): number {
   const subtotalAfterDiscount = Math.max(0, subtotal - discount);
-  const calculatedGST = gst !== undefined ? gst : calculateGST(subtotal, shipping, discount);
-  return Number((subtotalAfterDiscount + shipping + calculatedGST).toFixed(2));
+  const calculatedGST =
+    gst !== undefined ? gst : calculateGST(subtotal, shipping, discount, additionalFees);
+  return Number(
+    (subtotalAfterDiscount + shipping + additionalFees + calculatedGST).toFixed(2)
+  );
 }
  
 /**

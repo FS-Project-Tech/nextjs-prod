@@ -14,6 +14,7 @@ import {
   releaseOrderLock,
 } from "@/lib/checkout-security";
 import { syncCartToWooCommerce } from "@/lib/cart-sync";
+import { INSURANCE_OPTION_META_KEY } from "@/lib/checkout-parcel-protection";
 import type { CartItem } from "@/lib/types/cart";
 import { getToken } from 'next-auth/jwt';
  
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest) {
       discreet_packaging,
       quote_id,
       quote_number,
+      insurance_option,
     } = body;
  
     // Basic validation
@@ -247,6 +249,11 @@ metaData.push({
   key: "Newsletter Subscription",
   value: body.subscribe_newsletter ? "yes" : "no",
 });
+
+      // Parcel protection (WooCommerce custom checkout field)
+      const insuranceOpt: "yes" | "no" =
+        insurance_option === "yes" ? "yes" : "no";
+      metaData.push({ key: INSURANCE_OPTION_META_KEY, value: insuranceOpt });
  
       // Add idempotency key to meta for tracking
       metaData.push({ key: "_idempotency_key", value: idempotencyKey });

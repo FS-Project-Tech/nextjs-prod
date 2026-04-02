@@ -174,6 +174,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "wordpress-1513595-6318973.cloudwaysapps.com",
+        pathname: "/wp-content/uploads/**",
+      },
+      {
+        protocol: "https",
         hostname: "**.stage.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
