@@ -41,10 +41,10 @@ async function CategoriesNavContent() {
     parentCategories = parent;
     childCategories = child;
   } catch {
-    return null;
+    // Keep rendering static nav links even if category API is temporarily unavailable.
+    parentCategories = [];
+    childCategories = [];
   }
-
-  if (!parentCategories.length) return null;
 
   // Build map: parentId → children[]
   const subCategoriesMap = childCategories.reduce<Record<number, Category[]>>(

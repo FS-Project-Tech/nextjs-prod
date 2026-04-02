@@ -14,9 +14,13 @@ const NAV_PARENT_SLUGS = [
 export async function getCategoriesForNav() {
   const payload = await getUnifiedCategories();
 
-  const parentCategories = NAV_PARENT_SLUGS.map((slug) =>
+  const preferredParents = NAV_PARENT_SLUGS.map((slug) =>
     payload.categories.find((cat) => cat.slug === slug)
   ).filter((cat): cat is UnifiedCategory => Boolean(cat));
+  const parentCategories =
+    preferredParents.length > 0
+      ? preferredParents
+      : payload.roots.filter((cat) => cat.count > 0).slice(0, 8);
 
   const parentIds = parentCategories.map((cat) => cat.id);
 
