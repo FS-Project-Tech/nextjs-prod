@@ -23,7 +23,10 @@
     "scan:unused:fix": "node scripts/scan-unused.js --fix",
     "scan:purgecss": "npx purgecss --config purgecss.config.js",
     "scan:unimported": "npx unimported",
-    "scan:depcheck": "npx depcheck --ignores=\"@types/*,eslint*,prettier,@next/*,@tailwindcss/*,postcss*,autoprefixer,babel-plugin-*,rimraf\""
+    "scan:depcheck": "npx depcheck --ignores=\"@types/*,eslint*,prettier,@next/*,@tailwindcss/*,postcss*,autoprefixer,babel-plugin-*,rimraf\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci"
   },
   "dependencies": {
     "@algolia/autocomplete-js": "^1.19.7",
@@ -71,13 +74,16 @@
     "typesense-instantsearch-adapter": "^3.0.2",
     "xss": "^1.0.15",
     "yup": "^1.7.1",
+    "zod": "^3.25.76",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.0.2",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/google.maps": "^3.58.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.37",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -88,11 +94,14 @@
     "eslint-config-next": "16.0.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
     "postcss-lab-function": "^7.0.12",
     "postcss-preset-env": "^10.4.0",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.9.3"
   }
 }

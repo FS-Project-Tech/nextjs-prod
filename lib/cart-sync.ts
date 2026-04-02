@@ -59,12 +59,15 @@ export async function syncCartToWooCommerce(
         quantity: number;
         name: string;
         price: string;
+        subtotal?: string;
         sku?: string;
         image?: { src: string; alt: string };
         stock_status?: string;
         stock_quantity?: number | null;
       }>;
       total_line_items_price?: string;
+      /** Some WC versions expose cart subtotal here instead of total_line_items_price */
+      subtotal?: string;
       total?: string;
       total_tax?: string;
       total_shipping?: string;
@@ -72,8 +75,22 @@ export async function syncCartToWooCommerce(
       coupon_lines?: Array<{ code: string; discount: string }>;
     };
 
+    const lineList = order.line_items || [];
+    const subtotalFromApi =
+      parseFloat(order.total_line_items_price || order.subtotal || "") || 0;
+    const subtotalFromLines = lineList.reduce((sum, item) => {
+      const lineSub = item.subtotal != null ? parseFloat(String(item.subtotal)) : NaN;
+      if (Number.isFinite(lineSub) && lineSub > 0) {
+        return sum + lineSub;
+      }
+      const unit = parseFloat(String(item.price || "0")) || 0;
+      return sum + unit * (item.quantity || 0);
+    }, 0);
+    const resolvedSubtotal =
+      subtotalFromApi > 0 ? subtotalFromApi : subtotalFromLines;
+
     const cartData: WooCommerceCartData = {
-      items: (order.line_items || []).map((item) => ({
+      items: lineList.map((item) => ({
         id: `${item.product_id}${item.variation_id ? ":" + item.variation_id : ""}`,
         product_id: item.product_id,
         variation_id: item.variation_id,
@@ -85,7 +102,7 @@ export async function syncCartToWooCommerce(
         stock_status: item.stock_status,
         stock_quantity: item.stock_quantity,
       })),
-      subtotal: order.total_line_items_price || "0",
+      subtotal: String(resolvedSubtotal),
       total: order.total || "0",
       tax_total: order.total_tax || "0",
       shipping_total: order.total_shipping || "0",

@@ -63,7 +63,7 @@ function OrderReviewContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
-  const orderIdFromUrl = searchParams.get("orderId");
+  const orderIdFromUrl = searchParams.get("order_id") || searchParams.get("orderId");
   const recoverKey = searchParams.get("recover");
  
   useEffect(() => {

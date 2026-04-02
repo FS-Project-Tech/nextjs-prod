@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { getAuthToken } from '@/lib/auth-server';
 import { invalidateProducts, invalidateCategories, invalidateAll } from '@/lib/cache';
+import { checkRateLimitSafe } from '@/lib/rate-limit';
+import crypto from 'crypto';
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
+  return request.headers.get("x-real-ip") || "unknown";
+}
 
 /**
  * POST /api/revalidate
@@ -35,18 +49,35 @@ import { invalidateProducts, invalidateCategories, invalidateAll } from '@/lib/c
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication - either auth token or webhook secret
-    const token = await getAuthToken();
+    // Strictly require shared secret for revalidation calls.
     const webhookSecret = request.headers.get('x-revalidate-secret');
     const expectedSecret = process.env.REVALIDATE_SECRET;
-
-    const isAuthenticated = !!token;
-    const isValidWebhook = expectedSecret && webhookSecret === expectedSecret;
-
-    if (!isAuthenticated && !isValidWebhook) {
+    if (!expectedSecret) {
+      return NextResponse.json(
+        { error: 'Revalidation is not configured' },
+        { status: 503 }
+      );
+    }
+    if (!webhookSecret || !safeEqual(webhookSecret, expectedSecret)) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+
+    const identifier = `revalidate:${getClientIp(request)}`;
+    const rl = await checkRateLimitSafe(identifier, { windowMs: 60_000, maxRequests: 10 });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rl.resetSeconds),
+            "X-RateLimit-Limit": String(rl.limit),
+            "X-RateLimit-Remaining": String(rl.remaining),
+          },
+        }
       );
     }
 
@@ -59,15 +90,17 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case 'path':
         // Revalidate single path
-        if (path) {
+        if (path && typeof path === "string" && path.startsWith("/")) {
           revalidatePath(path);
           revalidated.push(path);
         }
         // Revalidate multiple paths
         if (paths && Array.isArray(paths)) {
           for (const p of paths) {
-            revalidatePath(p);
-            revalidated.push(p);
+            if (typeof p === "string" && p.startsWith("/")) {
+              revalidatePath(p);
+              revalidated.push(p);
+            }
           }
         }
         message = `Revalidated ${revalidated.length} path(s)`;
@@ -75,15 +108,17 @@ export async function POST(request: NextRequest) {
 
       case 'tag':
         // Revalidate single tag
-        if (tag) {
+        if (tag && typeof tag === "string") {
           revalidateTag(tag, 'page');
           revalidated.push(tag);
         }
         // Revalidate multiple tags
         if (tags && Array.isArray(tags)) {
           for (const t of tags) {
-            revalidateTag(t, 'page');
-            revalidated.push(t);
+            if (typeof t === "string") {
+              revalidateTag(t, 'page');
+              revalidated.push(t);
+            }
           }
         }
         message = `Revalidated tag(s): ${revalidated.join(', ')}`;
@@ -168,7 +203,7 @@ export async function GET(request: NextRequest) {
     const expectedSecret = process.env.REVALIDATE_SECRET;
 
     // Verify secret
-    if (!expectedSecret || secret !== expectedSecret) {
+    if (!expectedSecret || !secret || !safeEqual(secret, expectedSecret)) {
       return NextResponse.json(
         { error: 'Invalid secret' },
         { status: 401 }

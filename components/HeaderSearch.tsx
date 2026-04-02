@@ -117,6 +117,8 @@ export default function HeaderSearch() {
       <input
         ref={inputRef}
         type="text"
+        id="header-search-input"
+        aria-label="Search products"
         value={query}
         onKeyDown={handleKeyDown}
         onChange={(e) => setQuery(e.target.value)}
@@ -181,7 +183,11 @@ export default function HeaderSearch() {
                     index === activeIndex ? "bg-gray-100" : "hover:bg-gray-100"
                   }`}
                 >
-                  <img src={hit.image} className="w-10 h-10 object-contain" />
+                  <img
+                    src={hit.image}
+                    alt={hit?.name ? `${hit.name} thumbnail` : ""}
+                    className="w-10 h-10 object-contain"
+                  />
 
                   <div>
                     <p

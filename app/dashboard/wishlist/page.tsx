@@ -56,7 +56,12 @@ function WishlistProductWrapper({
         tax_status={product.tax_status}
         average_rating={product.average_rating}
         rating_count={product.rating_count}
-        imageUrl={product.image || product.images?.[0]?.src}
+        imageUrl={
+          (typeof product.image === "string"
+            ? product.image
+            : product.image?.src || product.image?.thumbnail) ||
+          product.images?.[0]?.src
+        }
         imageAlt={product.image_alt || product.images?.[0]?.alt || product.name}
       />
     </div>

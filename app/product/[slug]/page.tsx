@@ -36,12 +36,13 @@ import { fetchGlobalPromotions } from "@/lib/promotions";
 import { fetchProductSEO } from "@/lib/wordpress";
 import Script from "next/script";
 import { ProductCardProduct } from "@/lib/types/product";
+import { cache } from "react";
 
 // ============================================================================
 // ISR
 // ============================================================================
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const dynamic = "auto";
+export const revalidate = 300;
 export const dynamicParams = true;
 
 // ============================================================================
@@ -101,7 +102,8 @@ export async function generateMetadata(
   const { slug } = await props.params;
   const decodedSlug = decodeURIComponent(slug);
 
-  const product = await fetchProductBySlug(decodedSlug);
+  const getProduct = cache(fetchProductBySlug);
+  const product = await getProduct(decodedSlug);
 
   if (!product) {
     return { title: "Product not found" };
@@ -154,7 +156,8 @@ export default async function ProductPage(
   const { slug } = await props.params;
   const decodedSlug = decodeURIComponent(slug);
 
-  const product = await fetchProductBySlug(decodedSlug);
+  const getProduct = cache(fetchProductBySlug);
+  const product = await getProduct(decodedSlug);
   if (!product) notFound();
 
   // =======================================================
@@ -172,7 +175,7 @@ export default async function ProductPage(
   // PARALLEL FETCH: promotions, variations, category products, reviews
   // (reduces total wait vs sequential fetches)
   // =======================================================
-  const [promotions, variations, categoryProductsResult, initialReviews, detailBanner, categoryBanners] =
+  const [promotions, variations, categoryProductsResult, initialReviews, categoryBanners] =
   await Promise.all([
     fetchGlobalPromotions(),
     product.variations?.length
@@ -182,7 +185,7 @@ export default async function ProductPage(
       ? fetchProducts({ per_page: 20, category: firstCategoryId })
       : Promise.resolve({ products: [] as any[] }),
     fetchProductReviews(product.id, { per_page: 20 }),
-    fetchDetailBanner(),
+    // fetchDetailBanner(),
     firstCategoryId
       ? fetchCategoryBannersWithInheritance(firstCategoryId)
       : Promise.resolve([]),
@@ -197,11 +200,7 @@ export default async function ProductPage(
   // =======================================================
   const safeCategoryBanners = Array.isArray(categoryBanners) ? categoryBanners : [];
   const hasCategoryBanners = safeCategoryBanners.some((row) => bannerRowHasImage(row));
-  const bannersToShow = hasCategoryBanners
-    ? safeCategoryBanners
-    : detailBanner && bannerRowHasImage(detailBanner)
-      ? [detailBanner]
-      : [];
+  const bannersToShow = hasCategoryBanners ? safeCategoryBanners : [];
 
   const wpRestBase = getWordPressRestBaseUrl();
   const resolvedSidebarBanners = await Promise.all(

@@ -1,19 +1,6 @@
 /**
- * Unit tests for redirect utilities
- * 
- * To run these tests, you'll need to set up a test framework (Jest, Vitest, etc.)
- * Example with Vitest:
- *   npm install -D vitest @vitest/ui
- *   Add to package.json: "test": "vitest"
- *   Run: npm test
- * 
- * NOTE: This file requires vitest to be installed. If you don't have it, you can:
- * 1. Install it: npm install -D vitest @vitest/ui
- * 2. Or comment out this file if you're not running tests
+ * Unit tests for redirect utilities (Jest).
  */
-
-// @ts-ignore - vitest may not be installed
-import { describe, it, expect } from 'vitest';
 import {
   validateRedirect,
   validateNextParam,

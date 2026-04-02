@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ToastProvider";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ConsultationFormModalProps {
   isOpen: boolean;
@@ -62,6 +63,12 @@ export default function ConsultationFormModal({
 
   if (!isOpen) return null;
 
+  const { containerRef } = useFocusTrap({
+    enabled: isOpen,
+    onEscape: onClose,
+    initialFocusSelector: 'button[aria-label="Close"]',
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -116,6 +123,10 @@ export default function ConsultationFormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
       <div
+        ref={containerRef as any}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Consultation request"
         className="bg-white rounded-lg p-6 w-full max-w-md mx-4"
         onClick={(e) => e.stopPropagation()}
       >

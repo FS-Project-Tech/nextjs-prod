@@ -64,7 +64,7 @@
 - `/api/search`
 - `/api/filters/*`
 - `/api/shipping/*`
-- `/api/payment-methods`
+- `/api/checkout/payment-options`
 - `/api/coupons/validate`
 - `/api/inventory/check`
 - `/api/newsletter/subscribe`

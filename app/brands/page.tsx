@@ -33,7 +33,7 @@ type Brand = {
 async function getBrands(): Promise<Brand[]> {
   try {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_WP_URL}/wp-json/custom/v1/brands`,
+      `${process.env.NEXT_PUBLIC_WP_URL}/wp-json/wc/store/v1/products/brands`,
       {
         next: { revalidate: 3600 },
       }

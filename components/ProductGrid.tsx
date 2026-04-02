@@ -13,6 +13,7 @@ import ProductCard from "@/components/ProductCard";
 import { ProductCardProduct } from "@/lib/types/product";
 import { getSalePercentageFromProduct } from "@/lib/utils/product";
 import { useProductListing } from "@/contexts/ProductListingContext";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 interface ProductGridProps {
   categorySlug?: string;
@@ -139,7 +140,7 @@ export default function ProductGrid({
   const effectiveCategorySlug =
     categorySlug || categoryFromPath || "";
 
-  const filters = useMemo(() => {
+  const filters = useMemo<Record<string, string>>(() => {
     const params: Record<string, string> = {};
 
     if (effectiveCategorySlug) {
@@ -171,6 +172,15 @@ export default function ProductGrid({
     return params;
   }, [effectiveCategorySlug, brandSlug, searchParamsKey]);
 
+  const debouncedQuery = useDebouncedValue(filters.q || "", 400);
+  const effectiveFilters = useMemo<Record<string, string>>(
+    () => ({
+      ...filters,
+      q: debouncedQuery,
+    }),
+    [filters, debouncedQuery]
+  );
+
   const fetchProducts = useCallback(
     async (pageNum: number, append = false) => {
       if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -192,19 +202,19 @@ export default function ProductGrid({
         usp.set("per_page", "24");
         usp.set("include_facets", "0");
 
-        if (filters.category_slug) {
-          usp.set("category_slug", filters.category_slug);
+        if (effectiveFilters.category_slug) {
+          usp.set("category_slug", effectiveFilters.category_slug);
         }
         if (brandSlug) {
           usp.set("brand_slug", brandSlug);
         }
-        if (filters.brands) {
-          usp.set("brands", filters.brands);
+        if (effectiveFilters.brands) {
+          usp.set("brands", effectiveFilters.brands);
         }
-        if (filters.sortBy) usp.set("sortBy", filters.sortBy);
-        if (filters.min_price) usp.set("min_price", filters.min_price);
-        if (filters.max_price) usp.set("max_price", filters.max_price);
-        if (filters.q) usp.set("q", filters.q);
+        if (effectiveFilters.sortBy) usp.set("sortBy", effectiveFilters.sortBy);
+        if (effectiveFilters.min_price) usp.set("min_price", effectiveFilters.min_price);
+        if (effectiveFilters.max_price) usp.set("max_price", effectiveFilters.max_price);
+        if (effectiveFilters.q) usp.set("q", effectiveFilters.q);
         if (onSaleOnly) usp.set("on_sale", "true");
 
         const res = await fetch(`/api/typesense/search?${usp.toString()}`, {
@@ -270,7 +280,7 @@ export default function ProductGrid({
         }
       }
     },
-    [filters, brandSlug, searchParamsKey, onSaleOnly]
+    [effectiveFilters, brandSlug, searchParamsKey, onSaleOnly]
   );
 
   useEffect(() => {
@@ -387,8 +397,15 @@ export default function ProductGrid({
                 tax_status={product.tax_status}
                 average_rating={product.average_rating}
                 rating_count={product.rating_count}
-                imageUrl={product.image ?? product.images?.[0]?.src ?? ""}
-                imageAlt={product.images?.[0]?.alt || product.name}
+                imageUrl={
+                  typeof (product as any)?.image === "string"
+                    ? (product as any).image
+                    : (product as any)?.image?.src ||
+                      (product as any)?.image?.thumbnail ||
+                      (product as any)?.images?.[0]?.src ||
+                      ""
+                }
+                imageAlt={(product as any)?.images?.[0]?.alt || product.name}
               />
             ))}
           </div>

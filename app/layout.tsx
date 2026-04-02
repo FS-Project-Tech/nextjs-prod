@@ -157,7 +157,6 @@ export default function RootLayout({
             </CommerceProviders>
           </CoreProviders>
         </ErrorBoundary>
-        <SpeedInsights/>
       </body>
     </html>
   );

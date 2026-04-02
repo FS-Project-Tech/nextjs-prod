@@ -19,7 +19,9 @@ export default function ProductGridAlgolia() {
           imageUrl={
             product.images?.[0]?.src ||
             product.images?.[0]?.url ||
-            product.image ||
+            (typeof product.image === "string"
+              ? product.image
+              : product.image?.src || product.image?.thumbnail || "") ||
             ""
           }
           

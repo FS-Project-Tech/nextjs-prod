@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
@@ -26,10 +27,6 @@ import {
 } from "@/lib/checkout-parcel-protection";
 import { formatPrice } from "@/lib/format-utils";
 import { isValidName, isValidAuPhone, nameCharsOnly, digitsOnly } from "@/lib/form-validation";
-import {
-  parseCheckoutSuccessCookieFromDocument,
-  clearCheckoutSuccessCookieClient,
-} from "@/lib/checkout-success-cookie";
 
 interface ShippingMethodType {
   id: string;
@@ -40,61 +37,6 @@ interface ShippingMethodType {
   description?: string;
 }
 
-/** If the JSON body is empty or stripped by a proxy, same-origin fetch can still read these headers from our API route. */
-function buildCheckoutDataFromSuccessHeaders(res: Response): Record<string, unknown> | null {
-  const successH = res.headers.get("x-checkout-success")?.trim();
-  const redirectUrl = res.headers.get("x-redirect-url")?.trim();
-  const orderIdH = res.headers.get("x-order-id")?.trim();
-  const orderNumH = res.headers.get("x-order-number")?.trim();
-  if (successH !== "1" || (!redirectUrl && !orderIdH && !orderNumH)) {
-    return null;
-  }
-  const ref = orderNumH || orderIdH || "";
-  return {
-    success: true,
-    order: {
-      id: orderIdH ? Number(orderIdH) : undefined,
-      number: orderNumH || orderIdH,
-      order_number: orderNumH || orderIdH,
-    },
-    redirect_url:
-      redirectUrl ||
-      `/checkout/order-review?orderId=${encodeURIComponent(String(ref))}`,
-  };
-}
-
-/** Fallback when both body and X-* headers are stripped; server sets checkout_done cookie on success. */
-function buildCheckoutDataFromSuccessCookie(): Record<string, unknown> | null {
-  const parsed = parseCheckoutSuccessCookieFromDocument();
-  if (!parsed) return null;
-  const { id, ref } = parsed;
-  const orderIdParam = ref || id;
-  return {
-    success: true,
-    order: {
-      id: id ? Number(id) : undefined,
-      number: ref || id,
-      order_number: ref || id,
-    },
-    redirect_url: `/checkout/order-review?orderId=${encodeURIComponent(orderIdParam)}`,
-  };
-}
-
-/**
- * Full page navigation to order review — loads order via ?recover=<idempotency_key>
- * when POST returned 200 but fetch could not read body/headers (proxy / cross-origin quirk).
- */
-function redirectToOrderReviewWithRecoverKey(idempotencyKey: string) {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem("checkout_recover_ik", idempotencyKey);
-  } catch {
-    /* ignore */
-  }
-  window.location.replace(
-    `/checkout/order-review?recover=${encodeURIComponent(idempotencyKey)}`
-  );
-}
 
 const checkoutSchema = yup.object({
   billing_first_name: yup.string().required("First name is required").test("name-format", "Letters, spaces, hyphens and apostrophes only", (v) => !v?.trim() || isValidName(v)),
@@ -125,7 +67,6 @@ const checkoutSchema = yup.object({
     total: yup.number().required(),
     description: yup.string().optional(),
   }).required("Please select a shipping method"),
-  paymentMethod: yup.string().required("Payment method is required"),
   shipToDifferentAddress: yup.boolean().default(false),
   deliveryAuthority: yup.string().default("with_signature"),
   deliveryInstructions: yup.string().optional(),
@@ -171,27 +112,15 @@ function CheckoutPageContent() {
   
   const [isMounted, setIsMounted] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const [csrfToken, setCsrfToken] = useState<string>("");
-  const [enabledPaymentMethods, setEnabledPaymentMethods] = useState<
-    Array<{ id: string; title: string; description?: string; enabled: boolean }>
-  >([]);
   const [selectedBillingAddress, setSelectedBillingAddress] = useState<string>("");
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<string>("");
   const [openNdisSection, setOpenNdisSection] = useState(false);
   const [openHcpSection, setOpenHcpSection] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [quoteConversion, setQuoteConversion] = useState<{
-    quote_id: string;
-    quote_number: string;
-    subtotal: number;
-    shipping: number;
-    shipping_method?: string;
-    discount: number;
-    total: number;
-    notes?: string;
-  } | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "on_account">("eway");
   
   const { user } = useUser();
+  const { data: session } = useSession();
   const { addresses } = useAddresses();
   const billingAddresses = addresses.filter(a => a.type === 'billing');
   const shippingAddresses = addresses.filter(a => a.type === 'shipping');
@@ -288,10 +217,16 @@ function CheckoutPageContent() {
     : { first_name: "", last_name: "", company: "", address_1: "", address_2: "", city: "", postcode: "", country: "AU", state: "" };
   const watchedShipToDifferent = watch("shipToDifferentAddress");
   const watchedShippingMethod = watch("shippingMethod");
-  const watchedPaymentMethod = watch("paymentMethod");
   const watchedInsuranceOption = watch("insurance_option");
   const insuranceOptionResolved: InsuranceOption =
     watchedInsuranceOption === "yes" ? "yes" : "no";
+  const canUseOnAccount =
+    (session?.user as any)?.role === "administrator" &&
+    (session?.user as any)?.meta?.ndis_approved === true;
+  const paymentMethods = [
+    "eway",
+    ...(canUseOnAccount ? (["on_account"] as const) : []),
+  ];
 
   const billingFirst = watchedBilling?.first_name ?? "";
   const billingLast = watchedBilling?.last_name ?? "";
@@ -311,16 +246,6 @@ function CheckoutPageContent() {
 
   useEffect(() => {
     setIsMounted(true);
-    if (typeof window !== "undefined") {
-      const cookies = document.cookie.split(';');
-      const csrfCookie = cookies.find(c => c.trim().startsWith('csrf-token='));
-      if (csrfCookie) {
-        const token = csrfCookie.split('=')[1];
-        setCsrfToken(token);
-      } else {
-        setCsrfToken('');
-      }
-    }
   }, []);
 
   useEffect(() => {
@@ -344,37 +269,40 @@ function CheckoutPageContent() {
     }
   }, [isMounted, insuranceOptionResolved]);
 
+  useEffect(() => {
+    if (!canUseOnAccount && selectedPaymentMethod === "on_account") {
+      setSelectedPaymentMethod("eway");
+    }
+  }, [canUseOnAccount, selectedPaymentMethod]);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    const cancelled = searchParams.get("cancelled");
+    const err = searchParams.get("error");
+    if (cancelled === "true") {
+      showError("Payment was cancelled.");
+      router.replace("/checkout", { scroll: false });
+      return;
+    }
+    if (err) {
+      const messages: Record<string, string> = {
+        payment_failed: "Payment was declined or failed. Please try again.",
+        session_expired: "Checkout session expired. Please start again.",
+        order_creation_failed:
+          "Payment may have succeeded but we could not create your order. Please contact support with your receipt.",
+        payment_pending: "Payment is still processing. Check your email or try again shortly.",
+      };
+      showError(messages[err] || "Something went wrong. Please try again.");
+      router.replace("/checkout", { scroll: false });
+    }
+  }, [isMounted, searchParams, router, showError]);
+
   const cartSubtotal = useMemo(() => parseCartTotal(total), [total]);
   const itemsCount = items.length;
   const itemsString = useMemo(() => {
     if (items.length === 0) return '[]';
     return JSON.stringify(items);
   }, [itemsCount]);
-
-  useEffect(() => {
-    if (!isMounted) return;
-
-    (async () => {
-      try {
-        const paymentRes = await fetch("/api/payment-methods", { cache: "no-store" });
-        const paymentData = await paymentRes.json();
-        if (paymentData.paymentMethods && Array.isArray(paymentData.paymentMethods)) {
-          setEnabledPaymentMethods(paymentData.paymentMethods.filter((m: any) => m.enabled));
-          if (paymentData.paymentMethods.length > 0 && !watchedPaymentMethod) {
-            setValue("paymentMethod", paymentData.paymentMethods[0].id);
-          }
-        }
-      } catch {
-        setEnabledPaymentMethods([
-          { id: "cod", title: "Cash on Delivery", enabled: true },
-          { id: "bacs", title: "Direct Bank Transfer", enabled: true },
-        ]);
-        if (!watchedPaymentMethod) {
-          setValue("paymentMethod", "bacs");
-        }
-      }
-    })();
-  }, [isMounted, watchedPaymentMethod, setValue]);
 
   useEffect(() => {
     if (!watchedShipToDifferent && billingFirst) {
@@ -443,55 +371,20 @@ function CheckoutPageContent() {
     try {
       await syncWithWooCommerce();
 
-      let paymentProcessed = false;
-      const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque"];
-      const isOfflinePayment = offlinePaymentMethods.includes(data.paymentMethod);
-
-      if (!isOfflinePayment && data.paymentMethod === "paypal") {
-        try {
-          const paymentRes = await fetch("/api/payments/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              payment_method: data.paymentMethod,
-              amount: orderTotal,
-              currency: "AUD",
-              billing,
-              return_url: typeof window !== "undefined" ? window.location.href : "",
-            }),
-          });
-
-          const paymentData = await paymentRes.json();
-          if (!paymentRes.ok || !paymentData.success) {
-            showError(paymentData.error || "Payment processing failed");
-            setPlacing(false);
-            return;
-          }
-          paymentProcessed = paymentData.requires_payment !== false;
-        } catch (paymentError) {
-          console.error("Payment processing error:", paymentError);
-          showError("Payment processing failed");
-          setPlacing(false);
-          return;
-        }
-      }
-
       const finalShipping = data.shipToDifferentAddress ? shipping : billing;
-
-      let shippingMethodData: any = null;
-      if (data.shippingMethod) {
-        const sm = data.shippingMethod as ShippingMethodType;
-        shippingMethodData = {
-          method_id: sm.method_id || "flat_rate",
-          total: String(sm.total || sm.cost || 0),
-        };
+      const shippingMethodData = data.shippingMethod as ShippingMethodType | undefined;
+      if (!shippingMethodData?.id) {
+        showError("Please select a shipping method.");
+        return;
       }
 
-      const checkoutPayload: any = {
+      const checkoutPayload: Record<string, unknown> = {
         billing,
         shipping: {
           first_name: finalShipping.first_name || "",
           last_name: finalShipping.last_name || "",
+          email: billing.email || "",
+          phone: billing.phone || "",
           company: finalShipping.company || "",
           address_1: finalShipping.address_1 || "",
           address_2: finalShipping.address_2 || "",
@@ -500,321 +393,83 @@ function CheckoutPageContent() {
           postcode: finalShipping.postcode || "",
           country: finalShipping.country || "AU",
         },
-        payment_method: data.paymentMethod || "",
-        payment_processed: paymentProcessed,
         line_items: items.map((i) => ({
           product_id: i.productId,
           variation_id: i.variationId || undefined,
           quantity: i.qty,
-          name: i.name || "",
-          price: i.price || "0",
-          sku: i.sku || "",
-          slug: i.slug || "",
         })),
-        shipping_lines: shippingMethodData ? [shippingMethodData] : [],
-        total: orderTotal,
+        shipping_method_id: shippingMethodData.id,
+        payment_method: selectedPaymentMethod,
+        coupon_code: appliedCoupon?.code || searchParams.get("coupon") || undefined,
+        insurance_option: data.insurance_option === "yes" ? "yes" : "no",
+        ndis_type:
+          (data.cust_woo_ndis_funding_type ?? data.ndis_funding_type) || undefined,
       };
 
-      const couponCode = appliedCoupon?.code || searchParams.get("coupon");
-      if (couponCode) {
-        checkoutPayload.coupon_code = couponCode;
-      }
+      const endpoint = "/api/checkout/create-order";
 
-      if (csrfToken) {
-        checkoutPayload.csrf_token = csrfToken;
-      }
-
-      const ndisNum = data.cust_woo_ndis_number ?? data.ndis_number;
-      const ndisName = data.cust_woo_ndis_participant_name ?? data.ndis_participant_name;
-      const ndisDob = data.cust_woo_ndis_dob ?? data.ndis_dob;
-      const ndisFunding = data.cust_woo_ndis_funding_type ?? data.ndis_funding_type;
-      const ndisApproval = data.cust_woo_ndis_approval ?? data.ndis_approval;
-      const ndisEmail = data.cust_woo_invoice_email ?? data.billing_ndis_invoice_email;
-      const hcpNum = data.cust_woo_hcp_number ?? data.hcp_number;
-      const hcpName = data.cust_woo_hcp_participant_name ?? data.hcp_participant_name;
-      const hcpEmail = data.cust_woo_provider_email ?? data.hcp_provider_email;
-      const hcpApproval = data.cust_woo_hcp_approval ?? data.hcp_approval;
-      if (ndisNum) checkoutPayload.ndis_number = ndisNum;
-      if (ndisName) checkoutPayload.ndis_participant_name = ndisName;
-      if (ndisDob) checkoutPayload.ndis_dob = ndisDob;
-      if (ndisFunding) checkoutPayload.ndis_funding_type = ndisFunding;
-      if (ndisApproval) checkoutPayload.ndis_approval = ndisApproval;
-      if (ndisEmail) checkoutPayload.billing_ndis_invoice_email = ndisEmail;
-      if (hcpNum) checkoutPayload.hcp_number = hcpNum;
-      if (hcpName) checkoutPayload.hcp_participant_name = hcpName;
-      if (hcpEmail) checkoutPayload.hcp_provider_email = hcpEmail;
-      if (hcpApproval) checkoutPayload.hcp_approval = hcpApproval;
-
-      checkoutPayload.delivery_authority = data.deliveryAuthority || "with_signature";
-
-      if (data.deliveryInstructions) {
-        checkoutPayload.delivery_instructions = data.deliveryInstructions;
-      }
-
-      checkoutPayload.do_not_send_paperwork = data.doNotSendPaperwork || false;
-      checkoutPayload.discreet_packaging = data.discreetPackaging || false;
-      checkoutPayload.subscribe_newsletter = data.subscribe_newsletter || false;
-      checkoutPayload.insurance_option =
-        data.insurance_option === "yes" ? "yes" : "no";
-
-      if (quoteConversion) {
-        checkoutPayload.quote_id = quoteConversion.quote_id;
-        checkoutPayload.quote_number = quoteConversion.quote_number;
-      }
-
-      const idempotencyKeyClient =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `idem-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-      checkoutPayload.idempotency_key = idempotencyKeyClient;
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (csrfToken) {
-        headers["x-csrf-token"] = csrfToken;
-      }
-
-      let payloadString: string;
-      try {
-        payloadString = JSON.stringify(checkoutPayload);
-      } catch (stringifyError) {
-        console.error("Error stringifying checkout payload:", stringifyError);
-        showError("Invalid checkout data. Please refresh and try again.");
-        setPlacing(false);
-        return;
-      }
-
-      const checkoutRes = await fetch("/api/checkout", {
+      const res = await fetch(endpoint, {
         method: "POST",
-        headers,
-        body: payloadString,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkoutPayload),
         cache: "no-store",
         credentials: "same-origin",
       });
 
-      if (!checkoutRes.ok) {
-        let errorData: any = {};
-        let errorMessage = "Failed to create order";
-        
+      const responseText = await res.text();
+      let apiJson: any = {};
+      if (responseText?.trim()) {
         try {
-          const text = await checkoutRes.text();
-          if (text) {
-            try {
-              errorData = JSON.parse(text);
-              errorMessage = errorData.error || errorData.message || errorMessage;
-            } catch (parseError) {
-              console.error("Error parsing error response:", parseError);
-              errorMessage = text || `Server returned ${checkoutRes.status} ${checkoutRes.statusText}`;
-            }
-          } else {
-            errorMessage = `Server returned ${checkoutRes.status} ${checkoutRes.statusText || 'error'}`;
-          }
-        } catch (readError) {
-          console.error("Error reading error response:", readError);
-          errorMessage = `Server error (${checkoutRes.status}). Please try again.`;
+          apiJson = JSON.parse(responseText);
+        } catch {
+          apiJson = {};
         }
-        
-        console.error("Checkout API error:", {
-          status: checkoutRes.status,
-          statusText: checkoutRes.statusText,
-          error: errorData,
-        });
-        
-        showError(errorMessage);
-        setPlacing(false);
+      }
+      if (!res.ok || apiJson?.success === false) {
+        showError(apiJson?.message || apiJson?.error || "Unable to place order.");
         return;
       }
 
-      let checkoutData: any = null;
+      const orderId = apiJson?.orderId;
+      if (!orderId) {
+        showError("Order ID was not returned.");
+        return;
+      }
       try {
-        const text = await checkoutRes.text();
-        let parseFailed = false;
-
-        if (text) {
-          try {
-            checkoutData = JSON.parse(text);
-          } catch (parseError) {
-            parseFailed = true;
-            console.error("Error parsing checkout response:", {
-              error: parseError,
-              responseText: text.substring(0, 200),
-              status: checkoutRes.status,
-              headers: Object.fromEntries(checkoutRes.headers.entries()),
-            });
-          }
+        clear();
+        if (user?.id) {
+          fetch("/api/dashboard/cart/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ items: [] }),
+          }).catch(() => {});
         }
+      } catch {
+        /* ignore */
+      }
 
-        const validBody =
-          checkoutData &&
-          typeof checkoutData === "object" &&
-          checkoutData.success === true &&
-          checkoutData.order;
-
-        if (!validBody) {
-          const fromHeaders = buildCheckoutDataFromSuccessHeaders(checkoutRes);
-          let fromCookie: Record<string, unknown> | null = null;
-          if (!fromHeaders && typeof document !== "undefined") {
-            // Set-Cookie from the response is applied before fetch resolves; one microtask helps edge browsers.
-            await Promise.resolve();
-            fromCookie = buildCheckoutDataFromSuccessCookie();
-          }
-          let recovered: Record<string, unknown> | null =
-            (fromHeaders as Record<string, unknown> | null) ||
-            fromCookie;
-
-          if (!recovered) {
-            try {
-              const resultRes = await fetch(
-                `/api/checkout/result?key=${encodeURIComponent(idempotencyKeyClient)}`,
-                { method: "GET", credentials: "same-origin", cache: "no-store" }
-              );
-              if (resultRes.ok) {
-                const rt = await resultRes.text();
-                if (rt) {
-                  const parsed = JSON.parse(rt) as Record<string, unknown>;
-                  if (parsed?.success === true && parsed?.order) {
-                    recovered = parsed;
-                  }
-                }
-              }
-            } catch (recoverErr) {
-              console.warn("Checkout idempotency recovery request failed:", recoverErr);
-            }
-          }
-
-          if (recovered) {
-            console.warn("Checkout: recovered success (order was created).", {
-              hadText: !!text,
-              parseFailed,
-              status: checkoutRes.status,
-              source: fromHeaders ? "headers" : fromCookie ? "cookie" : "idempotency",
-            });
-            checkoutData = recovered;
-          } else {
-            console.warn("Checkout: response not readable — opening order confirmation to resolve order", {
-              hadText: !!text,
-              parseFailed,
-              status: checkoutRes.status,
-            });
-            setIsRedirecting(true);
-            redirectToOrderReviewWithRecoverKey(idempotencyKeyClient);
-            return;
-          }
-        }
-      } catch (readError: any) {
-        console.error("Error reading checkout response:", readError);
+      if (selectedPaymentMethod === "on_account") {
+        success("Order placed successfully.");
         setIsRedirecting(true);
-        redirectToOrderReviewWithRecoverKey(idempotencyKeyClient);
+        window.location.assign(
+          `/order-review?order_id=${encodeURIComponent(String(orderId))}`
+        );
         return;
       }
 
-      if (checkoutData.success && checkoutData.order) {
-        clearCheckoutSuccessCookieClient();
-
-        if (data.subscribe_newsletter && data.billing_email) {
-          try {
-            await fetch("/api/newsletter/subscribe", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: data.billing_email }),
-            });
-          } catch {}
-        }
-
-        // Save checkout billing/shipping to user's address book so they appear in WP backend (Edit User → Customer Billing/Shipping Address Secondary)
-        if (user) {
-          const billingPayload = {
-            type: "billing",
-            sync_primary: true,
-            first_name: billing.first_name,
-            last_name: billing.last_name,
-            email: billing.email,
-            phone: billing.phone,
-            company: billing.company,
-            address_1: billing.address_1,
-            address_2: billing.address_2,
-            city: billing.city,
-            state: billing.state,
-            postcode: billing.postcode,
-            country: billing.country,
-            ndis_participant_name: (data.cust_woo_ndis_participant_name ?? data.ndis_participant_name) || "",
-            ndis_number: (data.cust_woo_ndis_number ?? data.ndis_number) || "",
-            ndis_dob: (data.cust_woo_ndis_dob ?? data.ndis_dob) || "",
-            ndis_funding_type: (data.cust_woo_ndis_funding_type ?? data.ndis_funding_type) || "",
-            ndis_approval: (data.cust_woo_ndis_approval ?? data.ndis_approval) || false,
-            ndis_invoice_email: (data.cust_woo_invoice_email ?? data.billing_ndis_invoice_email) || "",
-            hcp_participant_name: (data.cust_woo_hcp_participant_name ?? data.hcp_participant_name) || "",
-            hcp_number: (data.cust_woo_hcp_number ?? data.hcp_number) || "",
-            hcp_provider_email: (data.cust_woo_provider_email ?? data.hcp_provider_email) || "",
-            hcp_approval: (data.cust_woo_hcp_approval ?? data.hcp_approval) || false,
-          };
-          try {
-            await fetch("/api/dashboard/addresses", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify(billingPayload),
-            });
-          } catch {}
-          if (data.shipToDifferentAddress) {
-            const shippingPayload = {
-              type: "shipping",
-              sync_primary: true,
-              first_name: shipping.first_name,
-              last_name: shipping.last_name,
-              company: shipping.company,
-              address_1: shipping.address_1,
-              address_2: shipping.address_2,
-              city: shipping.city,
-              state: shipping.state,
-              postcode: shipping.postcode,
-              country: shipping.country,
-              phone: billing.phone,
-              email: billing.email,
-            };
-            try {
-              await fetch("/api/dashboard/addresses", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(shippingPayload),
-              });
-            } catch {}
-          }
-        }
-        success("Order placed successfully!");
-
-        const redirectUrl =
-          checkoutData.redirect_url ||
-          `/checkout/order-review?orderId=${checkoutData.order.number ?? checkoutData.order.order_number ?? checkoutData.order.id}`;
-
-        setIsRedirecting(true);
-        window.location.href = redirectUrl;
-
-        try {
-          clear();
-          if (user?.id) {
-            fetch("/api/dashboard/cart/save", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ items: [] }),
-            }).catch(() => {});
-          }
-        } catch (e) {
-          console.warn("Failed to fully clear cart:", e);
-        }
-        
-        } else {
-          showError("Failed to create order");
-        }
-        } catch (error: any) {
-          console.error("Checkout error:", error);
-          showError(error.message || "An error occurred while placing your order");
-        } finally {
-          setPlacing(false);
-        }
+      const paymentUrl = String(apiJson?.paymentUrl || "");
+      if (!paymentUrl) {
+        showError("Payment URL was not returned.");
+        return;
+      }
+      window.location.assign(paymentUrl);
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      showError(error?.message || "An error occurred while placing your order");
+    } finally {
+      setPlacing(false);
+    }
   };
 
   if (!isMounted) {
@@ -1788,34 +1443,37 @@ function CheckoutPageContent() {
               <div className="mt-6 border-t pt-4">
                 <h2 className="mb-4 text-lg font-semibold">Payment Method</h2>
                 <div className="space-y-2">
-                  {enabledPaymentMethods.map((method) => (
-                    <label
-                      key={method.id}
-                      className="flex cursor-pointer items-start gap-3 rounded border p-3 hover:bg-gray-50"
-                    >
-                      <Controller
-                        name="paymentMethod"
-                        control={control}
-                        render={({ field }) => (
-                          <input
-                            type="radio"
-                            {...field}
-                            value={method.id}
-                            checked={field.value === method.id}
-                            className="mt-1 h-4 w-4"
-                          />
-                        )}
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{method.title}</div>
-                        {method.description && <div className="mt-1 text-xs text-gray-500">{method.description}</div>}
-                      </div>
-                    </label>
-                  ))}
+                  {paymentMethods.map((method) => {
+                    const id = method === "on_account" ? "on_account" : "eway";
+                    const title =
+                      id === "on_account" ? "On Account (manual payment)" : "Credit Card (eWAY)";
+                    const description =
+                      id === "on_account"
+                        ? "Approved administrator + NDIS accounts only."
+                        : "Secure hosted payment via eWAY.";
+                    return (
+                      <label
+                        key={id}
+                        className="flex cursor-pointer items-start gap-3 rounded border p-3 hover:bg-gray-50"
+                      >
+                        <input
+                          type="radio"
+                          name="checkout_payment_method"
+                          value={id}
+                          checked={selectedPaymentMethod === id}
+                          onChange={() =>
+                            setSelectedPaymentMethod(id as "eway" | "on_account")
+                          }
+                          className="mt-1 h-4 w-4"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{title}</div>
+                          <div className="mt-1 text-xs text-gray-500">{description}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
-                {errors.paymentMethod && (
-                  <p className="mt-1 text-xs text-rose-600">{errors.paymentMethod.message}</p>
-                )}
               </div>
 
               <div className="mt-6 border-t pt-4">
@@ -1848,7 +1506,13 @@ function CheckoutPageContent() {
                 disabled={placing}
                 className="mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {placing ? "Processing..." : "Place Order"}
+                {placing
+                  ? selectedPaymentMethod === "eway"
+                    ? "Redirecting to secure payment…"
+                    : "Placing on-account order…"
+                  : selectedPaymentMethod === "eway"
+                    ? "Pay Securely with Card"
+                    : "Place On Account Order"}
               </button>
             </div>
           </div>

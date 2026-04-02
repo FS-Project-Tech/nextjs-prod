@@ -14,6 +14,7 @@ import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 import { sanitizeString } from "@/lib/sanitize";
 import { getCartUrl } from "@/lib/access-token";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
  
 // Dynamically import RequestQuoteModal - only needed when quote button is clicked
 // Using a function to ensure stable module resolution during HMR
@@ -116,7 +117,7 @@ const CartItem = memo(({ item, onRemove, onUpdateQty }: { item: any; onRemove: (
               min="1"
               value={item.qty}
               onChange={(e) => handleQtyChange(Number(e.target.value))}
-              className="w-12 border-0 bg-transparent text-center text-sm font-semibold text-gray-900 focus:outline-none focus:ring-0"
+              className="w-12 border-0 bg-transparent text-center text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1"
               aria-label="Quantity"
             />
             <button
@@ -194,6 +195,12 @@ export default function MiniCartDrawer() {
     const handleUpdateQty = useCallback((id: string, qty: number) => {
         updateItemQty(id, qty);
     }, [updateItemQty]);
+
+    const { containerRef } = useFocusTrap({
+      enabled: isOpen,
+      onEscape: close,
+      initialFocusSelector: 'button[aria-label="Close"]',
+    });
    
  
     // Combined discount effects
@@ -214,7 +221,14 @@ export default function MiniCartDrawer() {
                 />
                
                 {/* Panel */}
-                <aside className={`absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${isOpen ? "translate-x-0" : "translate-x-full"}`} suppressHydrationWarning>
+                <aside
+                  ref={containerRef as any}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Shopping cart drawer"
+                  className={`absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+                  suppressHydrationWarning
+                >
                     {/* Header - Compact */}
                     <div className="bg-linear-to-r from-gray-900 to-gray-800 px-4 py-3 flex items-center justify-between shrink-0" suppressHydrationWarning>
                         <div>

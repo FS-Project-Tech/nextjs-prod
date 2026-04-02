@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { addPaymentStatusNote, addStatusUpdateNote } from "@/lib/order-notes";
+import crypto from "crypto";
 
 /**
  * Webhook endpoint for payment status updates
@@ -55,27 +56,37 @@ export async function POST(req: Request) {
  * IMPORTANT: In production, ALWAYS verify signatures to prevent unauthorized access
  */
 function verifyWebhookSignature(payload: any, signature: string | null, headers: Headers): boolean {
-  // TODO: Implement actual signature verification
-  // Payment gateway webhook verification would go here
-  // PayPal: Verify X-PAYPAL-TRANSMISSION-SIG header using PayPal SDK
-  
-  // For development/testing, you might want to skip verification
-  // In production, ALWAYS verify signatures
+  // For local development only, allow explicit bypass.
   if (process.env.NODE_ENV === "development" && process.env.SKIP_WEBHOOK_VERIFICATION === "true") {
     console.warn("⚠️  Webhook signature verification skipped (development mode)");
-    return true; // Skip in development if explicitly enabled
+    return true;
   }
-  
-  // Production: Verify signature
-  if (!signature) {
-    console.error("Webhook signature missing");
+
+  const sharedSecret = process.env.PAYMENTS_WEBHOOK_SECRET?.trim();
+  if (!sharedSecret) {
+    // Fail closed if not configured.
+    console.error("PAYMENTS_WEBHOOK_SECRET is missing");
     return false;
   }
-  
-  // TODO: Implement actual signature verification based on payment gateway
-  // This is a placeholder - replace with actual verification
-  console.warn("⚠️  Webhook signature verification not implemented - implement before production!");
-  return true;
+
+  const provided =
+    headers.get("x-webhook-signature") ||
+    headers.get("x-signature") ||
+    signature ||
+    "";
+
+  if (!provided) return false;
+
+  // Generic HMAC SHA-256 scheme: providers should send hex digest in x-webhook-signature.
+  const rawBody = JSON.stringify(payload);
+  const expected = crypto
+    .createHmac("sha256", sharedSecret)
+    .update(rawBody)
+    .digest("hex");
+  const lhs = Buffer.from(provided);
+  const rhs = Buffer.from(expected);
+  if (lhs.length !== rhs.length) return false;
+  return crypto.timingSafeEqual(lhs, rhs);
 }
 
 /**

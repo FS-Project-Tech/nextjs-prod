@@ -215,11 +215,18 @@ wcAPI.interceptors.response.use(
         // Always log - we guarantee at least status, statusText, url, and message
         console.error('WooCommerce API Server Error:', JSON.stringify(errorDetails, null, 2));
       } else {
-        // 404 rest_no_route = route not registered (e.g. product reviews disabled) – warn only, callers fall back
+        // 404 non-critical routes/resources that callers can recover from.
         const code = data && typeof data === 'object' && 'code' in data ? (data as { code?: string }).code : undefined;
-        if (status === 404 && code === 'rest_no_route') {
+        const isRecoverable404 =
+          status === 404 &&
+          (code === 'rest_no_route' || code === 'woocommerce_rest_product_invalid_id');
+        if (isRecoverable404) {
           if (process.env.NODE_ENV === 'development') {
-            console.warn('WooCommerce API route not found (fallback may be used):', url);
+            const label =
+              code === 'woocommerce_rest_product_invalid_id'
+                ? 'WooCommerce product not found (likely stale cart item)'
+                : 'WooCommerce API route not found (fallback may be used)';
+            console.warn(`${label}:`, url);
           }
           return Promise.reject(error);
         }

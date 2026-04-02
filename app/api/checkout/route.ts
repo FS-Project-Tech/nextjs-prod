@@ -17,6 +17,10 @@ import { syncCartToWooCommerce } from "@/lib/cart-sync";
 import { INSURANCE_OPTION_META_KEY } from "@/lib/checkout-parcel-protection";
 import type { CartItem } from "@/lib/types/cart";
 import { getToken } from 'next-auth/jwt';
+import {
+  PAY_ON_ACCOUNT_PAYMENT_METHODS,
+  assertPayOnAccountAllowed,
+} from "@/lib/checkout-payment-roles";
  
 /**
  * POST /api/checkout
@@ -29,6 +33,7 @@ import { getToken } from 'next-auth/jwt';
  * - WooCommerce order creation
  */
 export const dynamic = "force-dynamic";
+const WOOCOMMERCE_CHECKOUT_PLACE_ORDER = "woocommerce_checkout_place_order";
  
 export async function POST(req: NextRequest) {
   try {
@@ -75,6 +80,26 @@ export async function POST(req: NextRequest) {
         { error: "Payment method is required" },
         { status: 400 }
       );
+    }
+
+    if (String(payment_method).toLowerCase() === "eway") {
+      return NextResponse.json(
+        {
+          error:
+            "Card payments use the eWAY secure redirect from checkout — do not POST eWAY to this endpoint.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (PAY_ON_ACCOUNT_PAYMENT_METHODS.has(String(payment_method).toLowerCase())) {
+      const gate = await assertPayOnAccountAllowed();
+      if (gate.ok === false) {
+        return NextResponse.json(
+          { error: gate.error },
+          { status: 403 }
+        );
+      }
     }
  
     // 2. CSRF Protection (only for authenticated users)
@@ -257,6 +282,10 @@ metaData.push({
  
       // Add idempotency key to meta for tracking
       metaData.push({ key: "_idempotency_key", value: idempotencyKey });
+      metaData.push({
+        key: "_checkout_button_name",
+        value: WOOCOMMERCE_CHECKOUT_PLACE_ORDER,
+      });
  
       // Add quote information if order is from quote conversion
       if (quote_id) {
@@ -421,6 +450,7 @@ try {
         },
         idempotency_key: idempotencyKey,
         redirect_url: redirectUrl,
+        checkout_button_name: WOOCOMMERCE_CHECKOUT_PLACE_ORDER,
       };
  
       const successRes = NextResponse.json(successResponse, {
@@ -513,6 +543,7 @@ function getPaymentMethodTitle(method: string): string {
     cod: "Cash on Delivery",
     cheque: "Cheque Payment",
     stripe: "Credit Card (Stripe)",
+    eway: "eWAY",
   };
   return titles[method] || method;
 }

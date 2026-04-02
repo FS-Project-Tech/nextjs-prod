@@ -9,7 +9,7 @@ type Brand = {
   name: string;
   slug: string;
   count?: number;
-  image?: string | null;
+  image?: string | null | { src?: string; thumbnail?: string };
 };
 
 const ALPHABETS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -77,21 +77,27 @@ export default function BrandsLazy({ brands }: { brands: Brand[] }) {
               className="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm transition-all hover:border-teal-300 hover:shadow-md"
             >
               <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-gray-50 p-3">
-                {brand.image ? (
+                {(() => {
+                  const imageUrl =
+                    typeof brand.image === "string"
+                      ? brand.image
+                      : brand.image?.src || brand.image?.thumbnail || "";
+                  return imageUrl ? (
                   <div className="relative h-32 w-32">
                     <Image
-                      src={brand.image}
+                      src={imageUrl}
                       alt={brand.name}
                       fill
                       className="object-contain"
                       sizes="150px"
                     />
                   </div>
-                ) : (
+                  ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 text-2xl font-semibold text-teal-700">
                     {brand.name.charAt(0).toUpperCase()}
                   </div>
-                )}
+                  );
+                })()}
               </div>
 
               <span className="mt-3 text-sm font-medium text-gray-900">
