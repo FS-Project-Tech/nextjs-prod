@@ -102,6 +102,108 @@ const checkoutSchema = yup.object({
 
 type CheckoutFormData = yup.InferType<typeof checkoutSchema>;
 
+const ON_ACCOUNT_BANK_LINES = [
+  { label: "Bank name", value: "National Australia Bank" },
+  { label: "Account name", value: "Joya Medical Australia Pty Ltd" },
+  { label: "Account number", value: "852237649" },
+  { label: "BSB number", value: "084-004" },
+] as const;
+
+/**
+ * Some proxies wrap JSON as `{ data: { ... }`.
+ * Merge with **outer raw winning** so nested `data` cannot clobber top-level fields with
+ * `undefined` (e.g. `{ orderId: 123, data: { orderId: undefined } }` would otherwise drop id).
+ */
+function flattenCreateOrderResponse(raw: Record<string, unknown>): Record<string, unknown> {
+  let out: Record<string, unknown> = { ...raw };
+  const mergeInner = (inner: Record<string, unknown>) => {
+    out = { ...inner, ...out };
+  };
+  const d = raw.data;
+  if (d != null && typeof d === "object" && !Array.isArray(d)) {
+    mergeInner(d as Record<string, unknown>);
+  }
+  const r = raw.result;
+  if (r != null && typeof r === "object" && !Array.isArray(r)) {
+    mergeInner(r as Record<string, unknown>);
+  }
+  return out;
+}
+
+/** Parse order ref from create-order JSON (handles extra key aliases and nesting). */
+function extractOrderIdFromCreateOrderJson(apiJson: Record<string, unknown>): string | number | undefined {
+  const nestedOrder =
+    typeof apiJson.order === "object" && apiJson.order != null
+      ? (apiJson.order as Record<string, unknown>)
+      : null;
+  const nestedResult =
+    typeof apiJson.result === "object" && apiJson.result != null
+      ? (apiJson.result as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [
+    apiJson.orderId,
+    apiJson.order_id,
+    apiJson.wooOrderId,
+    apiJson.orderRef,
+    apiJson.id,
+    apiJson.number,
+    apiJson.orderNumber,
+    nestedOrder?.id,
+    nestedOrder?.order_id,
+    nestedOrder?.ID,
+    nestedResult?.id,
+    nestedResult?.order_id,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
+    if (typeof c === "string") {
+      const t = c.trim();
+      if (!t) continue;
+      const n = Number.parseInt(t, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+      return t;
+    }
+  }
+  return undefined;
+}
+
+function messageFromCreateOrderError(apiJson: Record<string, unknown>): string | null {
+  const e = apiJson.error;
+  if (typeof e === "string" && e.trim()) return e.trim();
+  if (e != null && typeof e === "object" && "message" in e) {
+    const em = (e as { message?: unknown }).message;
+    if (typeof em === "string" && em.trim()) return em.trim();
+  }
+  const m = apiJson.message;
+  if (typeof m === "string" && m.trim()) return m.trim();
+  const issues = apiJson.issues;
+  if (Array.isArray(issues) && issues.length > 0) {
+    const first = issues[0] as { message?: unknown };
+    if (typeof first?.message === "string" && first.message.trim()) return first.message.trim();
+  }
+  return null;
+}
+
+/** WCAG 2.4.7 — visible focus on interactive controls */
+const FOCUS_RING =
+  "focus-visible:border-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2";
+const FOCUS_RING_LINK =
+  "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2";
+const FOCUS_RING_BTN =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2";
+
+function RequiredMark() {
+  return (
+    <>
+      <span className="text-rose-600" aria-hidden="true">
+        *
+      </span>
+      <span className="sr-only"> (required)</span>
+    </>
+  );
+}
+
 function CheckoutPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -118,7 +220,12 @@ function CheckoutPageContent() {
   const [openHcpSection, setOpenHcpSection] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "on_account">("eway");
-  
+
+  /** When true, eWAY uses token handoff to Woo (create-session → ?checkout_token=). Requires WP mu-plugin + server secret. */
+  const ewayTokenFlowEnabled =
+    typeof process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "string" &&
+    process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "true";
+
   const { user } = useUser();
   const { data: session } = useSession();
   const { addresses } = useAddresses();
@@ -220,13 +327,22 @@ function CheckoutPageContent() {
   const watchedInsuranceOption = watch("insurance_option");
   const insuranceOptionResolved: InsuranceOption =
     watchedInsuranceOption === "yes" ? "yes" : "no";
-  const canUseOnAccount =
-    (session?.user as any)?.role === "administrator" &&
-    (session?.user as any)?.meta?.ndis_approved === true;
-  const paymentMethods = [
-    "eway",
-    ...(canUseOnAccount ? (["on_account"] as const) : []),
-  ];
+  /** NextAuth exposes `roles` from WP; there is no singular `role` on session.user. */
+  const sessionRoles = Array.isArray((session?.user as any)?.roles)
+    ? ((session?.user as any).roles as string[])
+    : [];
+  const normalizeCheckoutRole = (r: string) =>
+    String(r || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+  const onAccountRoleSlugs = new Set(["administrator", "ndis_approved"]);
+  const hasOnAccountRole = sessionRoles.some((r) => onAccountRoleSlugs.has(normalizeCheckoutRole(r)));
+  const isNdisApprovedMeta = (session?.user as any)?.meta?.ndis_approved === true;
+  const canUseOnAccount = hasOnAccountRole || isNdisApprovedMeta;
+  const paymentMethods = canUseOnAccount
+  ? (["on_account", "eway"] as const)
+  : (["eway"] as const);
 
   const billingFirst = watchedBilling?.first_name ?? "";
   const billingLast = watchedBilling?.last_name ?? "";
@@ -340,6 +456,9 @@ function CheckoutPageContent() {
       showError("Your cart is empty");
       return;
     }
+    if (placing) {
+      return;
+    }
 
     setPlacing(true);
 
@@ -369,7 +488,9 @@ function CheckoutPageContent() {
     };
 
     try {
-      await syncWithWooCommerce();
+      // Prices and stock are re-validated server-side in create-order (syncCartToWooCommerce +
+      // shipping recomputation). Skipping another client sync here avoids duplicate Woo POST/DELETE
+      // order cycles and speeds up checkout.
 
       const finalShipping = data.shipToDifferentAddress ? shipping : billing;
       const shippingMethodData = data.shippingMethod as ShippingMethodType | undefined;
@@ -393,11 +514,20 @@ function CheckoutPageContent() {
           postcode: finalShipping.postcode || "",
           country: finalShipping.country || "AU",
         },
-        line_items: items.map((i) => ({
-          product_id: i.productId,
-          variation_id: i.variationId || undefined,
-          quantity: i.qty,
-        })),
+        line_items: items.map((i) => {
+          const sku =
+            i.sku != null && String(i.sku).trim() !== ""
+              ? String(i.sku).trim()
+              : undefined;
+          const pid = Number(i.productId);
+          const vidRaw = i.variationId != null ? Number(i.variationId) : NaN;
+          return {
+            ...(sku ? { sku } : {}),
+            ...(Number.isFinite(pid) && pid > 0 ? { product_id: pid } : {}),
+            ...(Number.isFinite(vidRaw) && vidRaw > 0 ? { variation_id: vidRaw } : {}),
+            quantity: i.qty,
+          };
+        }),
         shipping_method_id: shippingMethodData.id,
         payment_method: selectedPaymentMethod,
         coupon_code: appliedCoupon?.code || searchParams.get("coupon") || undefined,
@@ -406,34 +536,99 @@ function CheckoutPageContent() {
           (data.cust_woo_ndis_funding_type ?? data.ndis_funding_type) || undefined,
       };
 
-      const endpoint = "/api/checkout/create-order";
+      const useTokenHandoff = selectedPaymentMethod === "eway" && ewayTokenFlowEnabled;
+      const endpoint = useTokenHandoff ? "/api/checkout/create-session" : "/api/checkout/create-order";
 
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(useTokenHandoff && typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? { "Idempotency-Key": crypto.randomUUID() }
+            : {}),
+        },
         body: JSON.stringify(checkoutPayload),
         cache: "no-store",
         credentials: "same-origin",
       });
 
-      const responseText = await res.text();
-      let apiJson: any = {};
+      const responseText = (await res.text()).replace(/^\uFEFF/, "");
+      let apiJson: Record<string, unknown> = {};
       if (responseText?.trim()) {
         try {
-          apiJson = JSON.parse(responseText);
+          apiJson = flattenCreateOrderResponse(
+            JSON.parse(responseText) as Record<string, unknown>
+          );
         } catch {
           apiJson = {};
         }
       }
-      if (!res.ok || apiJson?.success === false) {
-        showError(apiJson?.message || apiJson?.error || "Unable to place order.");
+
+      const explicitlyFailed =
+        apiJson.success === false ||
+        apiJson.success === "false" ||
+        (Array.isArray(apiJson.issues) &&
+          apiJson.issues.length > 0 &&
+          apiJson.success !== true);
+      if (!res.ok || explicitlyFailed) {
+        const detail = messageFromCreateOrderError(apiJson);
+        if (process.env.NODE_ENV === "development" && !detail) {
+          console.error("[checkout] create-order failed", {
+            status: res.status,
+            bodyPreview: responseText.slice(0, 800),
+          });
+        }
+        showError(
+          detail ||
+            `Unable to place order${!res.ok ? ` (HTTP ${res.status})` : ""}. Please try again or contact support.`
+        );
         return;
       }
 
-      const orderId = apiJson?.orderId;
-      if (!orderId) {
-        showError("Order ID was not returned.");
+      if (useTokenHandoff) {
+        const redirectUrl =
+          typeof apiJson.redirectUrl === "string" ? apiJson.redirectUrl.trim() : "";
+        if (!redirectUrl) {
+          showError(
+            (typeof apiJson.error === "string" && apiJson.error) ||
+              "Secure checkout redirect URL was not returned."
+          );
+          return;
+        }
+        try {
+          clear();
+          if (user?.id) {
+            fetch("/api/dashboard/cart/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ items: [] }),
+            }).catch(() => {});
+          }
+        } catch {
+          /* ignore */
+        }
+        window.location.assign(redirectUrl);
         return;
+      }
+
+      let orderId = extractOrderIdFromCreateOrderJson(apiJson);
+      if (orderId == null && typeof res.headers?.get === "function") {
+        const hdr = res.headers.get("X-Create-Order-Id");
+        if (hdr) {
+          try {
+            const decoded = decodeURIComponent(hdr).trim();
+            if (decoded) {
+              const n = Number.parseInt(decoded, 10);
+              orderId = Number.isFinite(n) && n > 0 ? n : decoded;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (selectedPaymentMethod === "on_account") {
+        setIsRedirecting(true);
       }
       try {
         clear();
@@ -450,17 +645,58 @@ function CheckoutPageContent() {
       }
 
       if (selectedPaymentMethod === "on_account") {
+        console.log("[checkout] create-order response", apiJson);
         success("Order placed successfully.");
-        setIsRedirecting(true);
-        window.location.assign(
-          `/order-review?order_id=${encodeURIComponent(String(orderId))}`
+        const redirectFromApi =
+          typeof apiJson.redirect === "string" ? apiJson.redirect.trim() : "";
+        const target =
+          redirectFromApi && redirectFromApi.startsWith("/")
+            ? redirectFromApi
+            : orderId != null && String(orderId).trim() !== ""
+              ? `/order-review?order_id=${encodeURIComponent(String(orderId))}`
+              : "";
+        if (!target) {
+          showError(
+            (typeof apiJson.error === "string" && apiJson.error) ||
+              "Order was created but redirect URL is missing."
+          );
+          return;
+        }
+        window.location.href = target;
+        return;
+      }
+
+      if (orderId === undefined || orderId === null || String(orderId).trim() === "") {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[checkout] create-order success but no order id", {
+            keys: Object.keys(apiJson),
+            sample: JSON.stringify(apiJson).slice(0, 500),
+          });
+        }
+        showError(
+          (typeof apiJson.error === "string" && apiJson.error) ||
+            "Order ID was not returned. The order may still have been created — check your email or order history."
         );
         return;
       }
 
-      const paymentUrl = String(apiJson?.paymentUrl || "");
+      const paymentUrlRaw =
+        typeof apiJson.paymentUrl === "string" ? apiJson.paymentUrl : "";
+      const paymentUrl = paymentUrlRaw.trim();
       if (!paymentUrl) {
         showError("Payment URL was not returned.");
+        return;
+      }
+      // Safety: only allow redirects to eWAY hosted payment pages
+      try {
+        const u = new URL(paymentUrl);
+        const host = u.hostname.toLowerCase();
+        if (!host.includes("ewaypayments.com")) {
+          showError("Unexpected payment URL returned. Please contact support.");
+          return;
+        }
+      } catch {
+        showError("Invalid payment URL returned. Please contact support.");
         return;
       }
       window.location.assign(paymentUrl);
@@ -475,9 +711,12 @@ function CheckoutPageContent() {
   if (!isMounted) {
     return (
       <div className="container min-h-screen bg-gray-50 py-10 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+        <div className="text-center" role="status" aria-live="polite">
+          <div
+            className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent"
+            aria-hidden="true"
+          />
+          <p className="mt-4 text-gray-900">Loading checkout…</p>
         </div>
       </div>
     );
@@ -487,50 +726,72 @@ function CheckoutPageContent() {
     if (isRedirecting) {
       return (
         <div className="container min-h-screen py-10">
-          <div className="text-center py-20">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent mb-4"></div>
-            <h1 className="text-2xl font-semibold mb-4">Redirecting to order confirmation...</h1>
+          <div className="text-center py-20" role="status" aria-live="polite">
+            <div
+              className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent mb-4"
+              aria-hidden="true"
+            />
+            <h1 className="text-2xl font-semibold mb-4 text-gray-900">Redirecting to order confirmation…</h1>
           </div>
         </div>
       );
     }
     return (
       <div className="container min-h-screen py-10">
-          <div className="text-center py-20">
-            <h1 className="text-2xl font-semibold mb-4">Your cart is empty</h1>
-            <Link
-              href="/shop"
-              className="inline-block rounded-md bg-gray-900 px-6 py-3 text-white hover:bg-black"
-            >
-              Continue Shopping
-            </Link>
-          </div>
+        <div className="text-center py-20">
+          <h1 className="text-2xl font-semibold mb-4 text-gray-900">Your cart is empty</h1>
+          <Link
+            href="/shop"
+            className={`inline-block rounded-md bg-gray-900 px-6 py-3 text-white hover:bg-black ${FOCUS_RING_BTN}`}
+          >
+            Continue Shopping
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-10 container">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Checkout</h1>
+    <>
+      <a
+        href="#checkout-main"
+        className={`fixed left-4 top-4 z-[200] -translate-y-[200%] rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white opacity-0 transition focus:translate-y-0 focus:opacity-100 ${FOCUS_RING_BTN} focus:ring-white focus:ring-offset-gray-900`}
+      >
+        Skip to checkout form
+      </a>
+      <div className="min-h-screen py-10 container">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold text-gray-900">Checkout</h1>
           <Link
             href={getCartUrl()}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={`rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
           >
             View Cart
           </Link>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6 lg:grid-cols-3">
+        <form
+          id="checkout-main"
+          onSubmit={handleSubmit(onSubmit)}
+          className="grid gap-6 lg:grid-cols-3"
+          noValidate
+          aria-label="Checkout and place order"
+        >
           <div className="lg:col-span-2 space-y-6">
-            <div className="rounded-xl bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold">Billing Details</h2>
+            <section className="rounded-xl bg-white p-6" aria-labelledby="checkout-billing-heading">
+              <h2 id="checkout-billing-heading" className="mb-4 text-lg font-semibold text-gray-900">
+                Billing details
+              </h2>
               {user && billingAddresses.length > 0 && (
                 <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Select Saved Billing Address
+                  <label
+                    htmlFor="checkout-select-billing-saved"
+                    className="mb-2 block text-sm font-medium text-gray-900"
+                  >
+                    Select saved billing address
                   </label>
                   <select
+                    id="checkout-select-billing-saved"
                     value={selectedBillingAddress}
                     onChange={(e) => {
                       const addressId = e.target.value;
@@ -586,7 +847,7 @@ function CheckoutPageContent() {
                         setValue('cust_woo_hcp_approval', false);
                       }
                     }}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
                   >
                     <option value="">Enter address manually</option>
                     {billingAddresses.map((address) => (
@@ -596,7 +857,10 @@ function CheckoutPageContent() {
                     ))}
                   </select>
                   {selectedBillingAddress ? (
-                    <p className="mt-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    <p
+                      className="mt-2 rounded border border-amber-800 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+                      role="note"
+                    >
                       To edit this address, select &quot;Enter address manually&quot; above.
                     </p>
                   ) : null}
@@ -605,8 +869,8 @@ function CheckoutPageContent() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    First Name <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-first-name" className="mb-1 block text-sm font-medium text-gray-900">
+                    First name <RequiredMark />
                   </label>
                   <Controller
                     name="billing_first_name"
@@ -614,20 +878,29 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-first-name"
                         type="text"
+                        autoComplete="given-name"
                         disabled={!!selectedBillingAddress}
+                        aria-invalid={errors.billing_first_name ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={
+                          errors.billing_first_name ? "checkout-billing-first-name-err" : undefined
+                        }
                         onChange={(e) => field.onChange(nameCharsOnly(e.target.value))}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_first_name ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_first_name ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_first_name && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_first_name.message}</p>
+                    <p id="checkout-billing-first-name-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_first_name.message}
+                    </p>
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Last Name <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-last-name" className="mb-1 block text-sm font-medium text-gray-900">
+                    Last name <RequiredMark />
                   </label>
                   <Controller
                     name="billing_last_name"
@@ -635,20 +908,29 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-last-name"
                         type="text"
+                        autoComplete="family-name"
                         disabled={!!selectedBillingAddress}
+                        aria-invalid={errors.billing_last_name ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={
+                          errors.billing_last_name ? "checkout-billing-last-name-err" : undefined
+                        }
                         onChange={(e) => field.onChange(nameCharsOnly(e.target.value))}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_last_name ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_last_name ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_last_name && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_last_name.message}</p>
+                    <p id="checkout-billing-last-name-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_last_name.message}
+                    </p>
                   )}
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Email <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-email" className="mb-1 block text-sm font-medium text-gray-900">
+                    Email <RequiredMark />
                   </label>
                   <Controller
                     name="billing_email"
@@ -656,19 +938,26 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-email"
                         type="email"
+                        autoComplete="email"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_email ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        aria-invalid={errors.billing_email ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={errors.billing_email ? "checkout-billing-email-err" : undefined}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_email ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_email && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_email.message}</p>
+                    <p id="checkout-billing-email-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_email.message}
+                    </p>
                   )}
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Phone <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-phone" className="mb-1 block text-sm font-medium text-gray-900">
+                    Phone <RequiredMark />
                   </label>
                   <Controller
                     name="billing_phone"
@@ -676,42 +965,55 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-phone"
                         type="tel"
+                        autoComplete="tel"
+                        inputMode="numeric"
                         disabled={!!selectedBillingAddress}
                         maxLength={10}
+                        aria-invalid={errors.billing_phone ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={errors.billing_phone ? "checkout-billing-phone-err" : undefined}
                         onChange={(e) => field.onChange(digitsOnly(e.target.value).slice(0, 10))}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_phone ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_phone ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_phone && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_phone.message}</p>
+                    <p id="checkout-billing-phone-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_phone.message}
+                    </p>
                   )}
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Company (Optional)</label>
+                  <label htmlFor="checkout-billing-company" className="mb-1 block text-sm font-medium text-gray-900">
+                    Company <span className="font-normal text-gray-600">(optional)</span>
+                  </label>
                   <Controller
                     name="billing_company"
                     control={control}
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-company"
                         type="text"
+                        autoComplete="organization"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Address <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-address-1" className="mb-1 block text-sm font-medium text-gray-900">
+                    Address <RequiredMark />
                   </label>
                   <Controller
                     name="billing_address_1"
                     control={control}
                     render={({ field }) => (
                       <AddressAutocomplete
+                        id="checkout-billing-address-1"
                         value={field.value}
                         onChange={field.onChange}
                         onPlaceSelect={(addr) => {
@@ -724,32 +1026,44 @@ function CheckoutPageContent() {
                         disabled={!!selectedBillingAddress}
                         error={!!errors.billing_address_1}
                         placeholder="Start typing your address..."
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_address_1 ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        aria-label="Street address"
+                        aria-invalid={errors.billing_address_1 ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={
+                          errors.billing_address_1 ? "checkout-billing-address-1-err" : undefined
+                        }
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_address_1 ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_address_1 && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_address_1.message}</p>
+                    <p id="checkout-billing-address-1-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_address_1.message}
+                    </p>
                   )}
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Address 2 (Optional)</label>
+                  <label htmlFor="checkout-billing-address-2" className="mb-1 block text-sm font-medium text-gray-900">
+                    Address line 2 <span className="font-normal text-gray-600">(optional)</span>
+                  </label>
                   <Controller
                     name="billing_address_2"
                     control={control}
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-address-2"
                         type="text"
+                        autoComplete="address-line2"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    City <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-city" className="mb-1 block text-sm font-medium text-gray-900">
+                    City <RequiredMark />
                   </label>
                   <Controller
                     name="billing_city"
@@ -757,19 +1071,26 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-city"
                         type="text"
+                        autoComplete="address-level2"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_city ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        aria-invalid={errors.billing_city ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={errors.billing_city ? "checkout-billing-city-err" : undefined}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_city ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_city && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_city.message}</p>
+                    <p id="checkout-billing-city-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_city.message}
+                    </p>
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Postcode <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-postcode" className="mb-1 block text-sm font-medium text-gray-900">
+                    Postcode <RequiredMark />
                   </label>
                   <Controller
                     name="billing_postcode"
@@ -777,19 +1098,26 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-postcode"
                         type="text"
+                        autoComplete="postal-code"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_postcode ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        aria-invalid={errors.billing_postcode ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={errors.billing_postcode ? "checkout-billing-postcode-err" : undefined}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_postcode ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_postcode && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_postcode.message}</p>
+                    <p id="checkout-billing-postcode-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_postcode.message}
+                    </p>
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    State <span className="text-rose-600">*</span>
+                  <label htmlFor="checkout-billing-state" className="mb-1 block text-sm font-medium text-gray-900">
+                    State <RequiredMark />
                   </label>
                   <Controller
                     name="billing_state"
@@ -797,58 +1125,72 @@ function CheckoutPageContent() {
                     render={({ field }) => (
                       <input
                         {...field}
+                        id="checkout-billing-state"
                         type="text"
+                        autoComplete="address-level1"
                         disabled={!!selectedBillingAddress}
-                        className={`w-full rounded border px-3 py-2 text-sm ${errors.billing_state ? "border-rose-500" : "border-gray-300"} ${selectedBillingAddress ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        aria-invalid={errors.billing_state ? "true" : "false"}
+                        aria-required="true"
+                        aria-describedby={errors.billing_state ? "checkout-billing-state-err" : undefined}
+                        className={`w-full rounded border px-3 py-2 text-sm text-gray-900 ${FOCUS_RING} ${errors.billing_state ? "border-rose-600" : "border-gray-300"} ${selectedBillingAddress ? "cursor-not-allowed bg-gray-100" : ""}`}
                       />
                     )}
                   />
                   {errors.billing_state && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.billing_state.message}</p>
+                    <p id="checkout-billing-state-err" className="mt-1 text-xs text-rose-700">
+                      {errors.billing_state.message}
+                    </p>
                   )}
                 </div>
                 <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Country <span className="text-rose-600">*</span>
-                </label>
+                  <span className="mb-1 block text-sm font-medium text-gray-900" id="checkout-billing-country-label">
+                    Country <RequiredMark />
+                  </span>
 
-                <>
-                  {/* Hidden field sent to WooCommerce */}
-                  <input
-                    type="hidden"
-                    value="AU"
-                    {...register("billing_country", { required: true })}
-                  />
+                  <>
+                    <input type="hidden" value="AU" {...register("billing_country", { required: true })} />
+                    <input
+                      type="text"
+                      readOnly
+                      value="Australia"
+                      tabIndex={0}
+                      id="checkout-billing-country-display"
+                      aria-labelledby="checkout-billing-country-label"
+                      aria-readonly="true"
+                      className={`w-full cursor-default rounded border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
+                    />
+                  </>
 
-                  {/* Display only */}
-                  <input
-                    type="text"
-                    value="Australia"
-                    disabled
-                    className="w-full rounded border border-gray-300 bg-gray-100 px-3 py-2 text-sm"
-                  />
-                </>
-
-                {errors.billing_country && (
-                  <p className="mt-1 text-xs text-rose-600">
-                    Country is required
-                  </p>
-                )}
-              </div>
+                  {errors.billing_country && (
+                    <p id="checkout-billing-country-err" className="mt-1 text-xs text-rose-700">
+                      Country is required
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
                   <div className="rounded-lg border border-gray-200 bg-gray-50/50">
                     <button
                       type="button"
+                      id="checkout-ndis-toggle"
+                      aria-expanded={openNdisSection}
+                      aria-controls="checkout-ndis-panel"
                       onClick={() => setOpenNdisSection((v) => !v)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left"
+                      className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-900 ${FOCUS_RING_BTN}`}
                     >
-                      <span className="text-sm font-medium text-gray-700">Enter your NDIS information</span>
-                      <span className="text-gray-500 text-sm">{openNdisSection ? "−" : "+"}</span>
+                      <span>Enter your NDIS information</span>
+                      <span className="text-gray-600 text-sm" aria-hidden="true">
+                        {openNdisSection ? "−" : "+"}
+                      </span>
                     </button>
-                    {openNdisSection && (
-                      <div className="border-t border-gray-200 bg-white px-4 py-4">
+                    <div
+                      id="checkout-ndis-panel"
+                      role="region"
+                      aria-labelledby="checkout-ndis-toggle"
+                      hidden={!openNdisSection}
+                      className="border-t border-gray-200 bg-white px-4 py-4"
+                    >
                         <p className="mb-4 text-xs text-gray-500">Add your NDIS information before checkout.</p>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div className="sm:col-span-2">
@@ -933,20 +1275,29 @@ function CheckoutPageContent() {
                             </label>
                           </div>
                         </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-gray-200 bg-gray-50/50">
                     <button
                       type="button"
+                      id="checkout-hcp-toggle"
+                      aria-expanded={openHcpSection}
+                      aria-controls="checkout-hcp-panel"
                       onClick={() => setOpenHcpSection((v) => !v)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left"
+                      className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-900 ${FOCUS_RING_BTN}`}
                     >
-                      <span className="text-sm font-medium text-gray-700">Enter your Home Care Package information</span>
-                      <span className="text-gray-500 text-sm">{openHcpSection ? "−" : "+"}</span>
+                      <span>Enter your Home Care Package information</span>
+                      <span className="text-gray-600 text-sm" aria-hidden="true">
+                        {openHcpSection ? "−" : "+"}
+                      </span>
                     </button>
-                    {openHcpSection && (
-                      <div className="border-t border-gray-200 bg-white px-4 py-4">
+                    <div
+                      id="checkout-hcp-panel"
+                      role="region"
+                      aria-labelledby="checkout-hcp-toggle"
+                      hidden={!openHcpSection}
+                      className="border-t border-gray-200 bg-white px-4 py-4"
+                    >
                         <p className="mb-4 text-xs text-gray-500">Enter their details to get access to their package.</p>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div className="sm:col-span-2">
@@ -992,14 +1343,16 @@ function CheckoutPageContent() {
                             </label>
                           </div>
                         </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-xl bg-white p-6">
-              <label className="flex items-center gap-2">
+            <section className="rounded-xl bg-white p-6" aria-labelledby="checkout-shipping-heading">
+              <h2 id="checkout-shipping-heading" className="mb-4 text-lg font-semibold text-gray-900">
+                Shipping
+              </h2>
+              <label className="flex cursor-pointer items-center gap-2 text-gray-900">
                 <Controller
                   name="shipToDifferentAddress"
                   control={control}
@@ -1009,21 +1362,25 @@ function CheckoutPageContent() {
                       {...field}
                       checked={value || false}
                       onChange={(e) => onChange(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
+                      className={`h-4 w-4 rounded border-gray-300 text-gray-900 ${FOCUS_RING}`}
                     />
                   )}
                 />
-                <span className="text-sm font-medium text-gray-700">Ship to a different address</span>
+                <span className="text-sm font-medium">Ship to a different address</span>
               </label>
 
               {watchedShipToDifferent ? (
                 <div className="mt-4 space-y-4">
                   {user && shippingAddresses.length > 0 && (
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">
-                        Select Saved Shipping Address
+                      <label
+                        htmlFor="checkout-select-shipping-saved"
+                        className="mb-2 block text-sm font-medium text-gray-900"
+                      >
+                        Select saved shipping address
                       </label>
                       <select
+                        id="checkout-select-shipping-saved"
                         value={selectedShippingAddress}
                         onChange={(e) => {
                           const addressId = e.target.value;
@@ -1055,7 +1412,7 @@ function CheckoutPageContent() {
                             setValue('shipping_country', 'AU', { shouldDirty: true });
                           }
                         }}
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
                       >
                         <option value="">Enter address manually</option>
                         {shippingAddresses.map((address) => (
@@ -1065,7 +1422,7 @@ function CheckoutPageContent() {
                         ))}
                       </select>
                       {selectedShippingAddress ? (
-                        <p className="mt-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                        <p className="mt-2 rounded border border-amber-800 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                           To edit this address, select &quot;Enter address manually&quot; above.
                         </p>
                       ) : null}
@@ -1172,254 +1529,254 @@ function CheckoutPageContent() {
                   </div>
                 </div>
               ) : null}
-            </div>
+            </section>
 
-{/* Additional Information */}
-<div className="rounded-xl bg-white p-6">
-  <h2 className="mb-4 text-lg font-semibold">Additional Information</h2>
+            <section className="rounded-xl bg-white p-6" aria-labelledby="checkout-additional-heading">
+              <h2 id="checkout-additional-heading" className="mb-4 text-lg font-semibold text-gray-900">
+                Additional information
+              </h2>
 
-  <div className="space-y-6">
+              <div className="space-y-6">
+                <Controller
+                  name="deliveryAuthority"
+                  control={control}
+                  render={({ field }) => (
+                    <fieldset className="min-w-0 border-0 p-0">
+                      <legend className="mb-2 block text-sm font-medium text-gray-900">
+                        Delivery authority
+                      </legend>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
+                        <label className="flex cursor-pointer items-center gap-2 text-gray-900">
+                          <input
+                            type="radio"
+                            name="checkout-delivery-authority"
+                            value="with_signature"
+                            checked={field.value !== "without_signature"}
+                            onChange={() => field.onChange("with_signature")}
+                            className={`h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                          />
+                          <span className="text-sm">Signature required on delivery</span>
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 text-gray-900">
+                          <input
+                            type="radio"
+                            name="checkout-delivery-authority"
+                            value="without_signature"
+                            checked={field.value === "without_signature"}
+                            onChange={() => field.onChange("without_signature")}
+                            className={`h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                          />
+                          <span className="text-sm">No signature required</span>
+                        </label>
+                      </div>
+                    </fieldset>
+                  )}
+                />
 
-    {/* Delivery Authority */}
-    <div>
-      <label className="mb-2 block text-sm font-medium text-gray-700">
-        Delivery Authority
-      </label>
+                <label className="flex cursor-pointer items-center gap-2 text-gray-900">
+                  <Controller
+                    name="doNotSendPaperwork"
+                    control={control}
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <input
+                        type="checkbox"
+                        {...field}
+                        checked={!!value}
+                        onChange={(e) => onChange(e.target.checked)}
+                        className={`h-4 w-4 rounded border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                      />
+                    )}
+                  />
+                  <span className="text-sm">
+                    Do not send paperwork with delivery{" "}
+                    <span className="text-gray-600">(optional)</span>
+                  </span>
+                </label>
 
-      <div className="flex gap-6">
+                <label className="flex cursor-pointer items-center gap-2 text-gray-900">
+                  <Controller
+                    name="discreetPackaging"
+                    control={control}
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <input
+                        type="checkbox"
+                        {...field}
+                        checked={value || false}
+                        onChange={(e) => onChange(e.target.checked)}
+                        className={`h-4 w-4 rounded border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                      />
+                    )}
+                  />
+                  <span className="text-sm">
+                    Discreet packaging <span className="text-gray-600">(optional)</span>
+                  </span>
+                </label>
 
-        {/* With Signature */}
-        <label className="flex items-center gap-2">
-          <Controller
-            name="deliveryAuthority"
-            control={control}
-            render={({ field }) => (
-              <input
-                type="checkbox"
-                checked={field.value === "with_signature"}
-                onChange={() =>
-                  field.onChange(
-                    field.value === "with_signature" ? "" : "with_signature"
-                  )
-                }
-                className="h-4 w-4 rounded border-gray-300"
-              />
-            )}
-          />
-          <span className="text-sm text-gray-700">
-            With Signature Required
-          </span>
-        </label>
+                <label className="flex cursor-pointer items-center gap-2 text-gray-900">
+                  <Controller
+                    name="subscribe_newsletter"
+                    control={control}
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <input
+                        type="checkbox"
+                        {...field}
+                        checked={value || false}
+                        onChange={(e) => onChange(e.target.checked)}
+                        className={`h-4 w-4 rounded border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                      />
+                    )}
+                  />
+                  <span className="text-sm">Subscribe to our newsletter</span>
+                </label>
 
-        {/* Without Signature */}
-        <label className="flex items-center gap-2">
-          <Controller
-            name="deliveryAuthority"
-            control={control}
-            render={({ field }) => (
-              <input
-                type="checkbox"
-                checked={field.value === "without_signature"}
-                onChange={() =>
-                  field.onChange(
-                    field.value === "without_signature"
-                      ? ""
-                      : "without_signature"
-                  )
-                }
-                className="h-4 w-4 rounded border-gray-300"
-              />
-            )}
-          />
-          <span className="text-sm text-gray-700">
-            Without Signature
-          </span>
-        </label>
-
-      </div>
-    </div>
-
-    {/* Do not send paperwork */}
-    <label className="flex items-center gap-2">
-      <Controller
-        name="doNotSendPaperwork"
-        control={control}
-        render={({ field: { value, onChange, ...field } }) => (
-          <input
-            type="checkbox"
-            {...field}
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-        )}
-      />
-      <span className="text-sm text-gray-700">
-        Do not Send Paperwork With Delivery (optional)
-      </span>
-    </label>
-
-    {/* Discreet Packaging */}
-    <label className="flex items-center gap-2">
-      <Controller
-        name="discreetPackaging"
-        control={control}
-        render={({ field: { value, onChange, ...field } }) => (
-          <input
-            type="checkbox"
-            {...field}
-            checked={value || false}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-        )}
-      />
-      <span className="text-sm text-gray-700">
-        Discreet Packaging (optional)
-      </span>
-    </label>
-
-    {/* Newsletter */}
-    <label className="flex items-center gap-2">
-      <Controller
-        name="subscribe_newsletter"
-        control={control}
-        render={({ field: { value, onChange, ...field } }) => (
-          <input
-            type="checkbox"
-            {...field}
-            checked={value || false}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-        )}
-      />
-      <span className="text-sm text-gray-700">
-        Subscribe to our newsletter
-      </span>
-    </label>
-
-    {/* Delivery Instructions */}
-    <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
-        Delivery Instructions (Optional)
-      </label>
-      <Controller
-        name="deliveryInstructions"
-        control={control}
-        render={({ field }) => (
-          <textarea
-            {...field}
-            rows={3}
-            placeholder="Special delivery instructions..."
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          />
-        )}
-      />
-    </div>
-
-  </div>
-</div>
+                <div>
+                  <label
+                    htmlFor="checkout-delivery-instructions"
+                    className="mb-1 block text-sm font-medium text-gray-900"
+                  >
+                    Delivery instructions <span className="font-normal text-gray-600">(optional)</span>
+                  </label>
+                  <Controller
+                    name="deliveryInstructions"
+                    control={control}
+                    render={({ field }) => (
+                      <textarea
+                        {...field}
+                        id="checkout-delivery-instructions"
+                        rows={3}
+                        placeholder="Special delivery instructions…"
+                        className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            </section>
           </div>
 
-          <div className="lg:col-span-1">
-            <div className="rounded-xl bg-white p-6 sticky top-[12.5rem]">
-              <h2 className="mb-4 text-lg font-semibold">Order Summary</h2>
+          <aside className="lg:col-span-1" aria-labelledby="checkout-order-summary-heading">
+            <div className="sticky top-[12.5rem] rounded-xl bg-white p-6">
+              <h2 id="checkout-order-summary-heading" className="mb-4 text-lg font-semibold text-gray-900">
+                Order summary
+              </h2>
 
-              <div className="mb-4 space-y-2">
+              <ul className="mb-4 list-none space-y-2 p-0">
                 {items.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 text-sm">
+                  <li key={item.id} className="flex items-start gap-3 text-sm">
                     <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-gray-100">
                       {item.imageUrl ? (
-                        <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
+                        <Image
+                          src={item.imageUrl}
+                          alt={`${item.name} — product thumbnail`}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
                       ) : (
-                        <div className="grid h-full w-full place-items-center text-xs text-gray-400">No Image</div>
+                        <div
+                          className="grid h-full w-full place-items-center text-xs text-gray-600"
+                          role="img"
+                          aria-label={`No image available for ${item.name}`}
+                        >
+                          No image
+                        </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-gray-900">{item.name}</div>
-                      <div className="text-xs text-gray-500">Qty: {item.qty}</div>
+                      <div className="text-xs text-gray-600">Quantity: {item.qty}</div>
                       <div className="font-semibold text-gray-900">{formatPrice(Number(item.price) * item.qty)}</div>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
 
               <div className="mb-4">
                 <CouponInput />
               </div>
 
-              <div className="space-y-2 border-t pt-4 text-sm">
+              <div className="space-y-2 border-t border-gray-200 pt-4 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium">{formatPrice(subtotal)}</span>
+                  <span className="text-gray-800">Subtotal</span>
+                  <span className="font-medium text-gray-900">{formatPrice(subtotal)}</span>
                 </div>
                 {couponDiscount > 0 && (
-                  <div className="flex items-center justify-between text-emerald-600">
+                  <div className="flex items-center justify-between text-emerald-800">
                     <span>Discount {appliedCoupon && `(${appliedCoupon.code})`}</span>
                     <span className="font-medium">-{formatPrice(couponDiscount)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Shipping</span>
-                  <span className="font-medium">{formatPrice(shippingCost)}</span>
+                  <span className="text-gray-800">Shipping</span>
+                  <span className="font-medium text-gray-900">{formatPrice(shippingCost)}</span>
                 </div>
                 {parcelProtectionFee > 0 && (
                   <div className="flex animate-in fade-in slide-in-from-top-1 duration-200 items-center justify-between">
-                    <span className="text-gray-600">Parcel Protection</span>
-                    <span className="font-medium">{formatPrice(PARCEL_PROTECTION_FEE_AUD)}</span>
+                    <span className="text-gray-800">Parcel protection</span>
+                    <span className="font-medium text-gray-900">{formatPrice(PARCEL_PROTECTION_FEE_AUD)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">GST (10%)</span>
-                  <span className="font-medium">{formatPrice(gst)}</span>
+                  <span className="text-gray-800">GST (10%)</span>
+                  <span className="font-medium text-gray-900">{formatPrice(gst)}</span>
                 </div>
-                <div className="mt-4 border-t pt-3">
+                <div className="mt-4 border-t border-gray-200 pt-3">
                   <div className="flex items-center justify-between text-base">
-                    <span className="font-semibold">Total</span>
-                    <span className="font-bold text-lg">{formatPrice(orderTotal)}</span>
+                    <span className="font-semibold text-gray-900">Total</span>
+                    <span className="text-lg font-bold text-gray-900">{formatPrice(orderTotal)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 border-t pt-4">
-                <h2 className="mb-4 text-lg font-semibold">Shipping Method</h2>
-                <Controller
-                  name="shippingMethod"
-                  control={control}
-                  render={({ field }) => {
-                    const shipCountry = watchedShipToDifferent ? shippingCountry : billingCountry;
-                    const shipPostcode = watchedShipToDifferent ? shippingPostcode : billingPostcode;
-                    const shipState = watchedShipToDifferent ? shippingState : billingState;
-                    const shipCity = watchedShipToDifferent ? shippingCity : billingCity;
-                    return (
-                      <ShippingOptions
-                        key={`shipping-${shipCountry}-${shipPostcode}-${shipState}-${shipCity}`}
-                        country={shipCountry}
-                        postcode={shipPostcode}
-                        state={shipState}
-                        city={shipCity}
-                        subtotal={cartSubtotal}
-                        items={items}
-                        selectedRateId={(field.value as ShippingMethodType | undefined)?.id}
-                        onRateChange={(rateId, rate) => {
-                          field.onChange({
-                            id: rateId,
-                            method_id: rate.id,
-                            label: rate.label,
-                            cost: rate.cost,
-                            total: rate.cost,
-                            description: rate.description,
-                          });
-                        }}
-                        showLabel={false}
-                        className=""
-                      />
-                    );
-                  }}
-                />
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h3 id="checkout-sidebar-shipping-method" className="mb-4 text-base font-semibold text-gray-900">
+                  Shipping method
+                </h3>
+                <fieldset
+                  className="min-w-0 border-0 p-0"
+                  aria-labelledby="checkout-sidebar-shipping-method"
+                  aria-describedby={errors.shippingMethod ? "checkout-shipping-method-err" : undefined}
+                >
+                  <legend className="sr-only">Choose a shipping method for your order</legend>
+                  <Controller
+                    name="shippingMethod"
+                    control={control}
+                    render={({ field }) => {
+                      const shipCountry = watchedShipToDifferent ? shippingCountry : billingCountry;
+                      const shipPostcode = watchedShipToDifferent ? shippingPostcode : billingPostcode;
+                      const shipState = watchedShipToDifferent ? shippingState : billingState;
+                      const shipCity = watchedShipToDifferent ? shippingCity : billingCity;
+                      return (
+                        <ShippingOptions
+                          key={`shipping-${shipCountry}-${shipPostcode}-${shipState}-${shipCity}`}
+                          country={shipCountry}
+                          postcode={shipPostcode}
+                          state={shipState}
+                          city={shipCity}
+                          subtotal={cartSubtotal}
+                          items={items}
+                          selectedRateId={(field.value as ShippingMethodType | undefined)?.id}
+                          onRateChange={(rateId, rate) => {
+                            field.onChange({
+                              id: rateId,
+                              method_id: rate.id,
+                              label: rate.label,
+                              cost: rate.cost,
+                              total: rate.cost,
+                              description: rate.description,
+                            });
+                          }}
+                          showLabel={false}
+                          className=""
+                        />
+                      );
+                    }}
+                  />
+                </fieldset>
                 {errors.shippingMethod && (
-                  <p className="mt-2 text-xs text-rose-600">{errors.shippingMethod.message}</p>
+                  <p id="checkout-shipping-method-err" className="mt-2 text-xs text-rose-700">
+                    {errors.shippingMethod.message}
+                  </p>
                 )}
               </div>
 
@@ -1440,84 +1797,129 @@ function CheckoutPageContent() {
                 />
               </div>
 
-              <div className="mt-6 border-t pt-4">
-                <h2 className="mb-4 text-lg font-semibold">Payment Method</h2>
-                <div className="space-y-2">
-                  {paymentMethods.map((method) => {
-                    const id = method === "on_account" ? "on_account" : "eway";
-                    const title =
-                      id === "on_account" ? "On Account (manual payment)" : "Credit Card (eWAY)";
-                    const description =
-                      id === "on_account"
-                        ? "Approved administrator + NDIS accounts only."
-                        : "Secure hosted payment via eWAY.";
-                    return (
-                      <label
-                        key={id}
-                        className="flex cursor-pointer items-start gap-3 rounded border p-3 hover:bg-gray-50"
-                      >
-                        <input
-                          type="radio"
-                          name="checkout_payment_method"
-                          value={id}
-                          checked={selectedPaymentMethod === id}
-                          onChange={() =>
-                            setSelectedPaymentMethod(id as "eway" | "on_account")
-                          }
-                          className="mt-1 h-4 w-4"
-                        />
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{title}</div>
-                          <div className="mt-1 text-xs text-gray-500">{description}</div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <h3 id="checkout-payment-heading" className="mb-4 text-base font-semibold text-gray-900">
+                  Payment method
+                </h3>
+                <fieldset
+                  className="min-w-0 border-0 p-0"
+                  aria-labelledby="checkout-payment-heading"
+                >
+                  <legend className="sr-only">Choose how you will pay</legend>
+                  <div className="space-y-2">
+                    {paymentMethods.map((method) => {
+                      const id = method === "on_account" ? "on_account" : "eway";
+                      const title =
+                        id === "on_account" ? "On account (manual payment)" : "Credit card (eWAY)";
+                      const radioId = `checkout-payment-${id}`;
+                      return (
+                        <label
+                          key={id}
+                          htmlFor={radioId}
+                          className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
+                        >
+                          <input
+                            id={radioId}
+                            type="radio"
+                            name="checkout_payment_method"
+                            value={id}
+                            checked={selectedPaymentMethod === id}
+                            onChange={() =>
+                              setSelectedPaymentMethod(id as "eway" | "on_account")
+                            }
+                            className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{title}</div>
+                            {id === "on_account" ? (
+                              <div className="mt-1 space-y-0.5 text-xs text-gray-700">
+                                {ON_ACCOUNT_BANK_LINES.map((line) => (
+                                  <div key={line.label}>
+                                    <span className="font-medium text-gray-800">{line.label}:</span>{" "}
+                                    {line.value}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-xs text-gray-700">
+                                Secure hosted payment via eWAY.
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               </div>
 
-              <div className="mt-6 border-t pt-4">
-                <label className="flex items-start gap-2">
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <label className="flex cursor-pointer items-start gap-2 text-gray-900" htmlFor="checkout-terms">
                   <Controller
                     name="termsAccepted"
                     control={control}
                     render={({ field: { value, onChange, ...field } }) => (
                       <input
-                        type="checkbox"
                         {...field}
+                        id="checkout-terms"
+                        type="checkbox"
                         checked={value || false}
                         onChange={(e) => onChange(e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                        aria-invalid={errors.termsAccepted ? "true" : "false"}
+                        aria-describedby={
+                          errors.termsAccepted ? "checkout-terms-err" : undefined
+                        }
+                        aria-required="true"
+                        className={`mt-1 h-4 w-4 rounded border-gray-300 text-gray-900 ${FOCUS_RING}`}
                       />
                     )}
                   />
-                  <span className="text-sm text-gray-700">
-                    I agree to the <Link href="/terms" className="text-blue-600 hover:underline">Terms and Conditions</Link> and{" "}
-                    <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>
+                  <span className="text-sm">
+                    I agree to the{" "}
+                    <Link
+                      href="/terms"
+                      className={`font-medium text-blue-800 underline decoration-blue-800 underline-offset-2 hover:text-blue-950 ${FOCUS_RING_LINK}`}
+                    >
+                      Terms and Conditions
+                    </Link>{" "}
+                    and{" "}
+                    <Link
+                      href="/privacy"
+                      className={`font-medium text-blue-800 underline decoration-blue-800 underline-offset-2 hover:text-blue-950 ${FOCUS_RING_LINK}`}
+                    >
+                      Privacy Policy
+                    </Link>
+                    <RequiredMark />
                   </span>
                 </label>
                 {errors.termsAccepted && (
-                  <p className="mt-1 text-xs text-rose-600">{errors.termsAccepted.message}</p>
+                  <p id="checkout-terms-err" className="mt-1 text-xs text-rose-700">
+                    {errors.termsAccepted.message}
+                  </p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={placing}
-                className="mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
+                aria-busy={placing}
+                className={`mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING_BTN} focus:ring-offset-white`}
               >
                 {placing
                   ? selectedPaymentMethod === "eway"
                     ? "Redirecting to secure payment…"
                     : "Placing on-account order…"
                   : selectedPaymentMethod === "eway"
-                    ? "Pay Securely with Card"
-                    : "Place On Account Order"}
+                    ? ewayTokenFlowEnabled
+                      ? "Verify & pay"
+                      : "Pay securely with card"
+                    : "Place on account order"}
               </button>
             </div>
-          </div>
+          </aside>
         </form>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -1525,10 +1927,13 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-50 py-10 container flex items-center justify-center">
-          <div className="text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
+        <div className="container flex min-h-screen items-center justify-center bg-gray-50 py-10">
+          <div className="text-center" role="status" aria-live="polite">
+            <div
+              className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent"
+              aria-hidden="true"
+            />
+            <p className="mt-4 text-gray-900">Loading checkout…</p>
           </div>
         </div>
       }

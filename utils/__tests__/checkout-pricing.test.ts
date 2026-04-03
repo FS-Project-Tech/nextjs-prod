@@ -1,43 +1,48 @@
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 
-jest.mock("@/lib/cart-sync", () => ({
-  syncCartToWooCommerce: jest.fn(),
+jest.mock("@/lib/woo/resolveLineItems", () => ({
+  resolveWooLineItems: jest.fn(),
 }));
 
-const { syncCartToWooCommerce } = jest.requireMock("@/lib/cart-sync") as {
-  syncCartToWooCommerce: jest.Mock;
+jest.mock("@/lib/shipping-rates-server", () => ({
+  computeShippingRates: jest.fn(),
+}));
+
+jest.mock("@/lib/woocommerce", () => ({
+  __esModule: true,
+  default: { get: jest.fn() },
+}));
+
+const { resolveWooLineItems } = jest.requireMock("@/lib/woo/resolveLineItems") as {
+  resolveWooLineItems: jest.Mock;
 };
+
+const { computeShippingRates } = jest.requireMock("@/lib/shipping-rates-server") as {
+  computeShippingRates: jest.Mock;
+};
+
+const wcAPI = jest.requireMock("@/lib/woocommerce").default as { get: jest.Mock };
 
 describe("validateAndRecalculateCheckout", () => {
   beforeEach(() => {
-    syncCartToWooCommerce.mockReset();
-    (global as any).fetch = jest.fn();
+    resolveWooLineItems.mockReset();
+    computeShippingRates.mockReset();
+    wcAPI.get.mockReset();
+    computeShippingRates.mockResolvedValue({
+      rates: [{ id: "flat_rate:1", label: "Flat", cost: 0 }],
+    });
   });
 
   it("fails when Woo validation drops requested items (stale cart)", async () => {
-    syncCartToWooCommerce.mockResolvedValue({
-      items: [
+    resolveWooLineItems.mockResolvedValue({
+      ok: false,
+      unavailableItems: [
         {
-          id: "1",
-          product_id: 111,
-          variation_id: undefined,
-          quantity: 1,
-          name: "Valid",
-          price: "10.00",
+          product_id: 222,
+          variation_id: null,
+          reason: "not found",
         },
       ],
-      subtotal: "10",
-      total: "10",
-      tax_total: "0",
-      shipping_total: "0",
-      discount_total: "0",
-    });
-
-    (global as any).fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        rates: [{ id: "flat_rate:1", label: "Flat", cost: 0 }],
-      }),
     });
 
     await expect(
@@ -70,7 +75,7 @@ describe("validateAndRecalculateCheckout", () => {
         },
         line_items: [
           { product_id: 111, quantity: 1 },
-          { product_id: 222, quantity: 1 }, // dropped by Woo -> should fail
+          { product_id: 222, quantity: 1 },
         ],
         shipping_method_id: "flat_rate:1",
         payment_method: "eway",
@@ -81,4 +86,3 @@ describe("validateAndRecalculateCheckout", () => {
     ).rejects.toThrow(/no longer available/i);
   });
 });
-

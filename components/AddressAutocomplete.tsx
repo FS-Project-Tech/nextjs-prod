@@ -28,6 +28,10 @@ interface AddressAutocompleteProps {
   id?: string;
   className?: string;
   "aria-label"?: string;
+  "aria-invalid"?: boolean | "true" | "false";
+  "aria-describedby"?: string;
+  "aria-required"?: boolean | "true" | "false";
+  autoComplete?: string;
 }
 
 const GOOGLE_MAPS_SCRIPT_ID = "google-maps-places-script";
@@ -113,6 +117,10 @@ export default function AddressAutocomplete({
   id,
   className = "",
   "aria-label": ariaLabel = "Address",
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
+  "aria-required": ariaRequired,
+  autoComplete = "street-address",
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
@@ -203,6 +211,10 @@ export default function AddressAutocomplete({
         placeholder={placeholder}
         id={id}
         aria-label={ariaLabel}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        aria-required={ariaRequired}
+        autoComplete={autoComplete}
         className={className}
       />
     );
@@ -218,6 +230,9 @@ export default function AddressAutocomplete({
       placeholder={placeholder}
       id={id}
       aria-label={ariaLabel}
+      aria-invalid={ariaInvalid}
+      aria-describedby={ariaDescribedBy}
+      aria-required={ariaRequired}
       autoComplete="off"
       className={className}
     />

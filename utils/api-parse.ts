@@ -13,9 +13,12 @@ export async function readJsonBody(req: NextRequest): Promise<unknown> {
 
 export function zodFail(err: unknown) {
   if (err instanceof z.ZodError) {
+    const first = err.issues[0];
+    const firstDetail = first ? `${first.path.join(".") || "request"}: ${first.message}` : "Validation error";
     return {
       success: false as const,
       message: "Validation error",
+      error: firstDetail,
       code: "VALIDATION_ERROR" as const,
       issues: err.issues.map((i) => ({
         path: i.path.join("."),

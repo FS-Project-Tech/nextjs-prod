@@ -12,7 +12,7 @@ module.exports = {
     'lib/**/*.{js,jsx,ts,tsx}',
     'hooks/**/*.{js,jsx,ts,tsx}',
     'hoc/**/*.{js,jsx,ts,tsx}',
-    'middleware.ts',
+    'proxy.ts',
     'middleware-api.ts',
   ],
   ignore: [

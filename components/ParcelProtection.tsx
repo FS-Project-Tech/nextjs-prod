@@ -20,7 +20,7 @@ export default function ParcelProtection({
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4">
       <div className="mb-3 flex items-start gap-3">
-        <div className="relative mt-0.5 h-10 w-10 flex-shrink-0" title="Parcel protection icon">
+        <div className="relative mt-0.5 h-10 w-10 flex-shrink-0" aria-hidden="true">
           <Image
             src={PARCEL_PROTECTION_ICON_URL}
             alt=""
@@ -37,19 +37,22 @@ export default function ParcelProtection({
         </div>
       </div>
 
-      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <label
+        htmlFor="checkout-parcel-protection-select"
+        className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-700"
+      >
         Coverage
       </label>
       <select
+        id="checkout-parcel-protection-select"
         value={insurance_option}
         onChange={(e) => onInsuranceChange(e.target.value as InsuranceOption)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-        aria-label="Parcel protection option"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus-visible:border-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
       >
         <option value="no">No</option>
         <option value="yes">Yes ({formatPrice(PARCEL_PROTECTION_FEE_AUD)})</option>
       </select>
-      <p className="mt-2 text-xs text-gray-500" title="Optional add-on at checkout">
+      <p className="mt-2 text-xs text-gray-700">
         Optional. Fee is added to your order total when you select Yes.
       </p>
     </div>

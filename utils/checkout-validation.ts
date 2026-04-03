@@ -15,11 +15,19 @@ const addressSchema = z.object({
   country: z.string().trim().min(2),
 });
 
-const cartItemSchema = z.object({
-  product_id: z.number().int().positive(),
-  variation_id: z.number().int().positive().optional(),
-  quantity: z.number().int().positive(),
-});
+const cartItemSchema = z
+  .object({
+    product_id: z.number().int().positive().optional(),
+    variation_id: z.number().int().positive().optional(),
+    quantity: z.number().int().positive(),
+    sku: z.string().trim().optional(),
+  })
+  .refine(
+    (row) =>
+      (typeof row.sku === "string" && row.sku.length > 0) ||
+      (row.product_id != null && row.product_id > 0),
+    { message: "Each line item must include a SKU or a positive product_id." }
+  );
 
 export const checkoutInitiateSchema = z.object({
   billing: addressSchema,

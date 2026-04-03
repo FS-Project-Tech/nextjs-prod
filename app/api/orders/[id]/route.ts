@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/wp-utils";
+import { verifyEwayAccessCode } from "@/lib/eway-responsive-shared";
 
 /**
  * GET - Fetch order details by ID (post ID) or order number
@@ -14,6 +15,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const reqUrl = new URL(req.url);
+    const accessCode =
+      reqUrl.searchParams.get("AccessCode") ||
+      reqUrl.searchParams.get("accessCode") ||
+      "";
+
     // Await params (Next.js 15+ requires this)
     const resolvedParams = await params;
     const orderId = resolvedParams?.id;
@@ -33,6 +40,78 @@ export async function GET(
       const { data: order } = await wcAPI.get(`/orders/${orderId}`);
 
       if (order) {
+        if (
+          accessCode &&
+          String(order.status || "").toLowerCase() === "pending" &&
+          String(order.payment_method || "").toLowerCase() === "eway"
+        ) {
+          const verification = await verifyEwayAccessCode(accessCode);
+          if (verification.ok && verification.success) {
+            try {
+              const patch: Record<string, unknown> = {
+                status: "processing",
+                set_paid: true,
+              };
+              if (verification.transactionId) {
+                patch.transaction_id = verification.transactionId;
+              }
+              const updated = await wcAPI.put(`/orders/${order.id}`, patch);
+              const updatedOrder = updated.data;
+              // Best-effort: add payment verification audit trail in Woo order notes.
+              try {
+                const note = [
+                  "eWAY payment verified from order-review return.",
+                  verification.transactionId
+                    ? `TransactionID: ${verification.transactionId}.`
+                    : null,
+                  verification.responseCode
+                    ? `ResponseCode: ${verification.responseCode}.`
+                    : null,
+                  "Order moved to Processing and marked paid.",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                await wcAPI.post(`/orders/${order.id}/notes`, {
+                  note,
+                  customer_note: false,
+                });
+              } catch (noteErr) {
+                console.warn("Order API: eWAY verified but note write failed", noteErr);
+              }
+              console.log(
+                `Order API: eWAY verified. Updated order ${order.id} to processing`
+              );
+              return NextResponse.json({ order: updatedOrder });
+            } catch (updateErr) {
+              console.warn("Order API: eWAY verified but order update failed", updateErr);
+            }
+          } else {
+            // Best-effort: keep an audit note for failed/unsuccessful verification attempts.
+            try {
+              const note = [
+                "eWAY payment verification attempt was not successful.",
+                verification.ok
+                  ? "Verification response indicates payment is not complete."
+                  : `Verification error: ${verification.ok === false ? verification.error : "Unknown"}`,
+                verification.ok && verification.responseCode
+                  ? `ResponseCode: ${verification.responseCode}.`
+                  : null,
+                "Order remains Pending.",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              await wcAPI.post(`/orders/${order.id}/notes`, {
+                note,
+                customer_note: false,
+              });
+            } catch (noteErr) {
+              console.warn(
+                "Order API: eWAY unsuccessful verification note write failed",
+                noteErr
+              );
+            }
+          }
+        }
         console.log(`Order API: Successfully fetched order ${orderId} (post ID: ${order.id})`);
         return NextResponse.json({ order });
       }

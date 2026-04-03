@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextAuthOptions";
 import wcAPI from "@/lib/woocommerce";
+import { userCanUsePayOnAccount } from "@/lib/checkout-payment-roles";
 import type { CheckoutActor } from "@/types/checkout";
 
 function norm(input: unknown): string {
@@ -35,7 +36,17 @@ async function lookupNdisApprovedByEmail(email?: string): Promise<boolean> {
   }
 }
 
-export async function resolveCheckoutActor(): Promise<CheckoutActor> {
+export type ResolveCheckoutActorOptions = {
+  /**
+   * When false (default), may call WooCommerce to read customer `ndis_approved` meta by email.
+   * Set true for card checkout to skip that HTTP round-trip — on-account eligibility is not evaluated.
+   */
+  skipNdisCustomerLookup?: boolean;
+};
+
+export async function resolveCheckoutActor(
+  options?: ResolveCheckoutActorOptions
+): Promise<CheckoutActor> {
   const session = await getServerSession(authOptions);
   const user = (session?.user ?? {}) as any;
   const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
@@ -48,7 +59,11 @@ export async function resolveCheckoutActor(): Promise<CheckoutActor> {
     parseNumericId(user?.wcCustomerId) ??
     parseNumericId(user?.customerId);
   const fromMeta = parseBooleanish(user?.meta?.ndis_approved);
-  const fromCustomerMeta = fromMeta ? true : await lookupNdisApprovedByEmail(email);
+  const fromCustomerMeta = fromMeta
+    ? true
+    : options?.skipNdisCustomerLookup
+      ? false
+      : await lookupNdisApprovedByEmail(email);
 
   return {
     authenticated: Boolean(session?.user),
@@ -61,6 +76,6 @@ export async function resolveCheckoutActor(): Promise<CheckoutActor> {
 }
 
 export function canUseOnAccount(actor: CheckoutActor): boolean {
-  return norm(actor.role) === "administrator" && actor.ndisApproved === true;
+  return userCanUsePayOnAccount(actor.roles) || actor.ndisApproved === true;
 }
 

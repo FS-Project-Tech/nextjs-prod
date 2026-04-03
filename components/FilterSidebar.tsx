@@ -40,6 +40,8 @@ interface Props {
   /** Match ProductGrid on-sale filter for facet counts */
   onSaleOnly?: boolean;
   isMobileDrawer?: boolean;
+  /** Remove card chrome when embedded in full-screen mobile filter overlay */
+  mobileFullscreen?: boolean;
   onClose?: () => void;
 }
 
@@ -47,6 +49,7 @@ const BRAND_FACET_FIELD =
   process.env.NEXT_PUBLIC_TYPESENSE_BRAND_FACET || "brand";
 
 const CATEGORY_FACET_FIELD =
+
   process.env.NEXT_PUBLIC_TYPESENSE_CATEGORY_FACET || "category";
 
 let categoriesTreeCache: Category[] | null = null;
@@ -201,7 +204,8 @@ export default function FilterSidebar({
   categorySlug,
   brandSlug,
   onSaleOnly,
-  isMobileDrawer,
+  isMobileDrawer: _isMobileDrawer,
+  mobileFullscreen,
   onClose,
 }: Props) {
   const router = useRouter();
@@ -729,235 +733,336 @@ export default function FilterSidebar({
     );
   };
 
-  return (
-    <aside className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-5">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">
-            {brandSlug ? "Categories in this brand" : "Categories"}
-          </h3>
-          {!brandSlug && (
-            <button
-              type="button"
-              disabled={filtersLocked}
-              onClick={() => setShowAllCategories((prev) => !prev)}
-              className="text-xs font-medium text-teal-700 hover:text-teal-800 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {showAllCategories ? "Focused View" : "See All Categories"}
-            </button>
-          )}
-        </div>
+  const shellClass = mobileFullscreen
+    ? "space-y-5"
+    : "rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-5";
+  const ShellTag = mobileFullscreen ? "div" : "aside";
 
-        <div className="space-y-1 transition-all duration-200">
-          {brandSlug ? (
-            <>
-              <button
-                type="button"
-                disabled={filtersLocked}
-                onClick={() => {
-                  if (filtersLocked) return;
-                  const params = new URLSearchParams(searchParams.toString());
-                  stripDeprecatedFilterParams(params);
-                  params.delete("category");
-                  params.delete("page");
-                  const q = params.toString();
-                  router.replace(`/brands/${encodeURIComponent(brandSlug)}${q ? `?${q}` : ""}`, {
-                    scroll: false,
-                  });
-                  onClose?.();
-                }}
-                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                  !activeCategory
-                    ? "bg-teal-600 text-white font-semibold shadow-sm"
-                    : "text-gray-700 hover:bg-gray-100"
-                } disabled:opacity-50 disabled:pointer-events-none`}
-              >
-                <span className="truncate">All products</span>
-              </button>
-              {brandCategoriesLoading ? (
-                <p className="text-sm text-gray-500">Loading categories…</p>
-              ) : brandRelatedCategories.length === 0 ? (
-                <p className="text-sm text-gray-500">No categories found</p>
-              ) : (
-                brandRelatedCategories.map((cat) => (
-                  <button
-                    key={cat.slug}
-                    type="button"
-                    disabled={filtersLocked}
-                    onClick={() => handleCategorySelect(cat.slug)}
-                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                      activeCategory === cat.slug
-                        ? "bg-teal-600 text-white font-semibold shadow-sm"
-                        : "text-gray-700 hover:bg-gray-100"
-                    } disabled:opacity-50 disabled:pointer-events-none`}
-                  >
-                    <span className="truncate">{cat.name}</span>
-                    {typeof cat.count === "number" && cat.count > 0 && (
-                      <span
-                        className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}
-                      >
-                        {cat.count}
-                      </span>
-                    )}
-                  </button>
-                ))
-              )}
-            </>
-          ) : showAllCategories ? (
-            rootCategorySlugs.map((slug) => renderTree(slug, 0))
-          ) : (
-            visibleCategoryRows.map(({ cat, level }) => (
-              <button
-                key={cat.slug}
-                type="button"
-                disabled={filtersLocked}
-                onClick={() => handleCategorySelect(cat.slug)}
-                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                  activeCategory === cat.slug
-                    ? "bg-teal-600 text-white font-semibold shadow-sm"
-                    : "text-gray-700 hover:bg-gray-100"
-                } disabled:opacity-50 disabled:pointer-events-none`}
-                style={{ marginLeft: `${level * 10}px` }}
-              >
-                <span className="truncate">{cat.name}</span>
-                {typeof cat.count === "number" && (
-                  <span className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}>
-                    {cat.count}
-                  </span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      </div>
+  const brandsListClass =
+    mobileFullscreen && !isBrandContext
+      ? "pr-1 space-y-1"
+      : "max-h-64 overflow-y-auto pr-1 space-y-1";
 
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-900">Price</h3>
-        <p className="text-xs text-gray-500">
-          Catalogue range {formatPrice(priceBounds.min)} –{" "}
-          {formatPrice(priceBounds.max)} (incl. GST)
-        </p>
-        <PriceRangeSlider
-          minBound={priceSliderValues.lo}
-          maxBound={priceSliderValues.hi}
-          valueMin={priceSliderValues.minN}
-          valueMax={priceSliderValues.maxN}
-          disabled={filtersLocked}
-          onChange={handleSliderChange}
-        />
-        <p className="text-center text-xs font-medium text-gray-700">
-          {formatPrice(priceSliderValues.minN)} –{" "}
-          {formatPrice(priceSliderValues.maxN)}
-        </p>
-        <div className="flex gap-2">
-          <label className="flex-1 text-xs text-gray-600">
-            Min
-            <input
-              type="number"
-              min={priceBounds.min}
-              max={priceBounds.max}
-              step={1}
-              value={priceMinDraft}
-              disabled={filtersLocked}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPriceMinDraft(v);
-                schedulePriceUrl(v, priceMaxDraft);
-              }}
-              className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
-            />
-          </label>
-          <label className="flex-1 text-xs text-gray-600">
-            Max
-            <input
-              type="number"
-              min={priceBounds.min}
-              max={priceBounds.max}
-              step={1}
-              value={priceMaxDraft}
-              disabled={filtersLocked}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPriceMaxDraft(v);
-                schedulePriceUrl(priceMinDraft, v);
-              }}
-              className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
-            />
-          </label>
-        </div>
-        <div className="flex gap-2">
+  const categoriesBlock = (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">
+          {brandSlug ? "Categories in this brand" : "Categories"}
+        </h3>
+        {!brandSlug && (
           <button
             type="button"
             disabled={filtersLocked}
-            onClick={applyPriceFilter}
-            className="flex-1 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+            onClick={() => setShowAllCategories((prev) => !prev)}
+            className="shrink-0 text-xs font-medium text-teal-700 hover:text-teal-800 disabled:opacity-50 disabled:pointer-events-none"
           >
-            Apply price
+            {showAllCategories ? "Focused View" : "See All Categories"}
           </button>
-          <button
-            type="button"
-            disabled={
-              filtersLocked ||
-              (!searchParams.get("min_price") && !searchParams.get("max_price"))
-            }
-            onClick={clearPriceFilter}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Clear
-          </button>
-        </div>
+        )}
       </div>
 
-      {!isBrandContext && (
-        <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900">Brands</h3>
-            <div className="max-h-64 overflow-y-auto pr-1 space-y-1">
-              {categoryBrands.length === 0 && (
-                <p className="text-sm text-gray-500">No brands found</p>
+      <div className="space-y-1 transition-all duration-200">
+        {brandSlug ? (
+          <>
+            <button
+              type="button"
+              disabled={filtersLocked}
+              onClick={() => {
+                if (filtersLocked) return;
+                const params = new URLSearchParams(searchParams.toString());
+                stripDeprecatedFilterParams(params);
+                params.delete("category");
+                params.delete("page");
+                const q = params.toString();
+                router.replace(`/brands/${encodeURIComponent(brandSlug)}${q ? `?${q}` : ""}`, {
+                  scroll: false,
+                });
+                onClose?.();
+              }}
+              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                !activeCategory
+                  ? "bg-teal-600 text-white font-semibold shadow-sm"
+                  : "text-gray-700 hover:bg-gray-100"
+              } disabled:opacity-50 disabled:pointer-events-none`}
+            >
+              <span className="truncate">All products</span>
+            </button>
+            {brandCategoriesLoading ? (
+              <p className="text-sm text-gray-500">Loading categories…</p>
+            ) : brandRelatedCategories.length === 0 ? (
+              <p className="text-sm text-gray-500">No categories found</p>
+            ) : (
+              brandRelatedCategories.map((cat) => (
+                <button
+                  key={cat.slug}
+                  type="button"
+                  disabled={filtersLocked}
+                  onClick={() => handleCategorySelect(cat.slug)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                    activeCategory === cat.slug
+                      ? "bg-teal-600 text-white font-semibold shadow-sm"
+                      : "text-gray-700 hover:bg-gray-100"
+                  } disabled:opacity-50 disabled:pointer-events-none`}
+                >
+                  <span className="truncate">{cat.name}</span>
+                  {typeof cat.count === "number" && cat.count > 0 && (
+                    <span
+                      className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}
+                    >
+                      {cat.count}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </>
+        ) : showAllCategories ? (
+          rootCategorySlugs.map((slug) => renderTree(slug, 0))
+        ) : (
+          visibleCategoryRows.map(({ cat, level }) => (
+            <button
+              key={cat.slug}
+              type="button"
+              disabled={filtersLocked}
+              onClick={() => handleCategorySelect(cat.slug)}
+              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                activeCategory === cat.slug
+                  ? "bg-teal-600 text-white font-semibold shadow-sm"
+                  : "text-gray-700 hover:bg-gray-100"
+              } disabled:opacity-50 disabled:pointer-events-none`}
+              style={{ marginLeft: `${level * 10}px` }}
+            >
+              <span className="truncate">{cat.name}</span>
+              {typeof cat.count === "number" && (
+                <span className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}>
+                  {cat.count}
+                </span>
               )}
-              {categoryBrands.map((b) => {
-                const count = b.count;
-                const empty = typeof count === "number" && count === 0;
-                const disabled = filtersLocked || empty;
-                return (
-                  <label
-                    key={b.slug}
-                    className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition ${
-                      disabled
-                        ? "cursor-not-allowed opacity-50"
-                        : activeBrands.includes(b.slug)
-                          ? "bg-gray-100 text-gray-900 font-semibold"
-                          : "text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={activeBrands.includes(b.slug)}
-                        disabled={disabled}
-                        onChange={() => handleBrandToggle(b.slug)}
-                        className="h-4 w-4 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
-                      />
-                      <span className="truncate">
-                        {b.name}
-                        {typeof count === "number" ? ` (${count})` : ""}
-                      </span>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-        </div>
-      )}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
 
-      <button
-        type="button"
+  const priceBlock = (
+    <div
+      className={
+        mobileFullscreen && !isBrandContext
+          ? "space-y-2 rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm"
+          : "space-y-2"
+      }
+    >
+      <h3 className="text-sm font-semibold text-gray-900">Price</h3>
+      <p className="text-xs text-gray-500">
+        Catalogue range {formatPrice(priceBounds.min)} – {formatPrice(priceBounds.max)} (incl. GST)
+      </p>
+      <PriceRangeSlider
+        minBound={priceSliderValues.lo}
+        maxBound={priceSliderValues.hi}
+        valueMin={priceSliderValues.minN}
+        valueMax={priceSliderValues.maxN}
         disabled={filtersLocked}
-        onClick={clearFilters}
-        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
-      >
-        Clear all
-      </button>
-    </aside>
+        onChange={handleSliderChange}
+      />
+      <p className="text-center text-xs font-medium text-gray-700">
+        {formatPrice(priceSliderValues.minN)} – {formatPrice(priceSliderValues.maxN)}
+      </p>
+      <div className="flex gap-2">
+        <label className="flex-1 text-xs text-gray-600">
+          Min
+          <input
+            type="number"
+            min={priceBounds.min}
+            max={priceBounds.max}
+            step={1}
+            value={priceMinDraft}
+            disabled={filtersLocked}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPriceMinDraft(v);
+              schedulePriceUrl(v, priceMaxDraft);
+            }}
+            className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
+          />
+        </label>
+        <label className="flex-1 text-xs text-gray-600">
+          Max
+          <input
+            type="number"
+            min={priceBounds.min}
+            max={priceBounds.max}
+            step={1}
+            value={priceMaxDraft}
+            disabled={filtersLocked}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPriceMaxDraft(v);
+              schedulePriceUrl(priceMinDraft, v);
+            }}
+            className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm disabled:opacity-50"
+          />
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={filtersLocked}
+          onClick={applyPriceFilter}
+          className="flex-1 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+        >
+          Apply price
+        </button>
+        <button
+          type="button"
+          disabled={
+            filtersLocked ||
+            (!searchParams.get("min_price") && !searchParams.get("max_price"))
+          }
+          onClick={clearPriceFilter}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+
+  const brandsBlock =
+    !isBrandContext ? (
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900">Brands</h3>
+        <div className={brandsListClass}>
+          {categoryBrands.length === 0 && (
+            <p className="text-sm text-gray-500">No brands found</p>
+          )}
+          {categoryBrands.map((b) => {
+            const count = b.count;
+            const empty = typeof count === "number" && count === 0;
+            const disabled = filtersLocked || empty;
+            return (
+              <label
+                key={b.slug}
+                className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition ${
+                  disabled
+                    ? "cursor-not-allowed opacity-50"
+                    : activeBrands.includes(b.slug)
+                      ? "bg-gray-100 text-gray-900 font-semibold"
+                      : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={activeBrands.includes(b.slug)}
+                    disabled={disabled}
+                    onChange={() => handleBrandToggle(b.slug)}
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="truncate">
+                    {b.name}
+                    {typeof count === "number" ? ` (${count})` : ""}
+                  </span>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
+  const clearAllButton = (
+    <button
+      type="button"
+      disabled={filtersLocked}
+      onClick={clearFilters}
+      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
+    >
+      Clear all
+    </button>
+  );
+
+  const useMobileSplitLayout = Boolean(mobileFullscreen && !isBrandContext && brandsBlock);
+
+  if (useMobileSplitLayout) {
+    return (
+      <ShellTag className={shellClass}>
+        <div className="flex max-h-[min(52vh,480px)] min-h-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <div className="flex w-[42%] max-w-[14rem] shrink-0 flex-col border-r border-gray-200 bg-slate-50">
+            <div className="border-b border-gray-200 bg-slate-100 px-2 py-2">
+              <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                Brands
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+              <div className="space-y-1 pr-1">
+                {categoryBrands.length === 0 && (
+                  <p className="text-sm text-gray-500">No brands found</p>
+                )}
+                {categoryBrands.map((b) => {
+                  const count = b.count;
+                  const empty = typeof count === "number" && count === 0;
+                  const disabled = filtersLocked || empty;
+                  return (
+                    <label
+                      key={b.slug}
+                      className={`flex items-center justify-between rounded-lg px-1.5 py-1.5 text-sm transition ${
+                        disabled
+                          ? "cursor-not-allowed opacity-50"
+                          : activeBrands.includes(b.slug)
+                            ? "bg-white text-gray-900 shadow-sm ring-1 ring-teal-200"
+                            : "text-gray-700 hover:bg-white/80"
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={activeBrands.includes(b.slug)}
+                          disabled={disabled}
+                          onChange={() => handleBrandToggle(b.slug)}
+                          className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
+                        />
+                        <span className="truncate text-xs leading-tight">
+                          {b.name}
+                          {typeof count === "number" ? ` (${count})` : ""}
+                        </span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+              {categoriesBlock}
+            </div>
+          </div>
+        </div>
+
+        {priceBlock}
+
+        {clearAllButton}
+      </ShellTag>
+    );
+  }
+
+  if (mobileFullscreen && isBrandContext) {
+    return (
+      <ShellTag className={shellClass}>
+        {categoriesBlock}
+        {priceBlock}
+        {clearAllButton}
+      </ShellTag>
+    );
+  }
+
+  return (
+    <ShellTag className={shellClass}>
+      {categoriesBlock}
+      {priceBlock}
+      {brandsBlock}
+      {clearAllButton}
+    </ShellTag>
   );
 }

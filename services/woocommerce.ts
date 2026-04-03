@@ -14,6 +14,7 @@ export type WooCreateOrderInput = {
   payment_method_title: string;
   set_paid: boolean;
   status: string;
+  customer_id?: number;
   line_items: WooLineItem[];
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
@@ -67,6 +68,9 @@ export async function createWooOrder(input: WooCreateOrderInput): Promise<any> {
     payment_method_title: input.payment_method_title,
     set_paid: input.set_paid,
     status: input.status,
+    ...(input.customer_id && input.customer_id > 0
+      ? { customer_id: input.customer_id }
+      : {}),
     line_items: input.line_items,
     billing: input.billing,
     shipping: input.shipping,

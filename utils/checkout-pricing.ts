@@ -1,17 +1,10 @@
 import type { CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
-import type { CartItem as LocalCartItem } from "@/lib/types/cart";
 import { calculateGST, calculateTotal } from "@/lib/cart-utils";
-import { syncCartToWooCommerce } from "@/lib/cart-sync";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
-
-function baseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "http://localhost:3000"
-  ).replace(/\/+$/, "");
-}
+import { computeShippingRates } from "@/lib/shipping-rates-server";
+import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
+import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
+import wcAPI from "@/lib/woocommerce";
 
 function normCountry(v?: string): string {
   const c = String(v || "").trim().toUpperCase();
@@ -28,60 +21,95 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   const toItemKey = (productId: number, variationId?: number) =>
     `${productId}:${variationId ?? 0}`;
 
-  const cartItems: LocalCartItem[] = payload.line_items.map((li) => ({
-    id: `${li.product_id}${li.variation_id ? `:${li.variation_id}` : ""}`,
-    productId: li.product_id,
-    variationId: li.variation_id,
-    name: "",
-    slug: "",
-    price: "0",
-    qty: li.quantity,
-    sku: null,
-  }));
-
-  const sync = await syncCartToWooCommerce(cartItems, payload.coupon_code);
-  if (!sync?.items?.length) {
-    throw new Error("Unable to validate cart with WooCommerce.");
-  }
-
-  const requestedKeys = new Set(
-    payload.line_items.map((li) => toItemKey(li.product_id, li.variation_id))
+  logWooBaseUrl();
+  logRequestedItems(
+    payload.line_items.map((li) => ({
+      sku: typeof li.sku === "string" ? li.sku : undefined,
+      product_id: li.product_id,
+      variation_id: li.variation_id,
+      quantity: li.quantity,
+    }))
   );
-  const validatedKeys = new Set(
-    sync.items.map((li) => toItemKey(li.product_id, li.variation_id))
+
+  const resolved = await resolveWooLineItems(
+    payload.line_items.map((li) => ({
+      sku: li.sku,
+      product_id: li.product_id,
+      variation_id: li.variation_id,
+      quantity: li.quantity,
+    }))
   );
-  const hasUnavailableItems = [...requestedKeys].some((k) => !validatedKeys.has(k));
-  if (hasUnavailableItems) {
-    throw new Error(
+  if (resolved.ok === false) {
+    const err = new Error(
       "Some cart items are no longer available. Please refresh your cart and try again."
     );
+    (err as any).data = {
+      type: "cart_items_unavailable",
+      missing: resolved.unavailableItems.map((it) => ({
+        product_id: it.product_id,
+        variation_id: it.variation_id,
+      })),
+      details: resolved.unavailableItems,
+    };
+    throw err;
   }
 
-  const validatedLineItems = sync.items.map((it) => ({
+  const validatedLineItems = resolved.line_items.map((it) => ({
     product_id: it.product_id,
     variation_id: it.variation_id,
     quantity: it.quantity,
   }));
 
-  const subtotal = Number.parseFloat(String(sync.subtotal || "0")) || 0;
-  const discount = Number.parseFloat(String(sync.discount_total || "0")) || 0;
-
-  const shippingRatesRes = await fetch(
-    `${baseUrl()}/api/shipping/rates?country=${encodeURIComponent(
-      normCountry(payload.shipping.country)
-    )}&state=${encodeURIComponent(payload.shipping.state || "")}&postcode=${encodeURIComponent(
-      payload.shipping.postcode
-    )}&city=${encodeURIComponent(payload.shipping.city || "")}&subtotal=${encodeURIComponent(
-      String(subtotal)
-    )}&items=${encodeURIComponent(JSON.stringify(validatedLineItems))}`,
-    { cache: "no-store" }
+  const unitPrices = await Promise.all(
+    validatedLineItems.map(async (li) => {
+      const endpoint = li.variation_id
+        ? `/products/${li.product_id}/variations/${li.variation_id}`
+        : `/products/${li.product_id}`;
+      const res = await wcAPI.get(endpoint);
+      const p = (res?.data || {}) as Record<string, unknown>;
+      const unit = Number.parseFloat(String(p.price ?? "0")) || 0;
+      return {
+        key: toItemKey(li.product_id, li.variation_id),
+        unit,
+        qty: li.quantity,
+      };
+    })
   );
 
-  if (!shippingRatesRes.ok) {
-    throw new Error("Failed to verify shipping rates.");
+  const subtotal = unitPrices.reduce((sum, row) => sum + row.unit * row.qty, 0);
+
+  let discount = 0;
+  if (payload.coupon_code) {
+    try {
+      const couponRes = await wcAPI.get("/coupons", {
+        params: { code: payload.coupon_code, per_page: 1 },
+      });
+      const coupon = Array.isArray(couponRes.data) ? couponRes.data[0] : null;
+      if (coupon) {
+        const amount = Number.parseFloat(String(coupon.amount || "0")) || 0;
+        const type = String(coupon.discount_type || "");
+        if (type === "percent") {
+          discount = (subtotal * amount) / 100;
+        } else if (type === "fixed_cart") {
+          discount = amount;
+        } else if (type === "fixed_product") {
+          const qtyTotal = validatedLineItems.reduce((n, li) => n + li.quantity, 0);
+          discount = amount * qtyTotal;
+        }
+      }
+    } catch {
+      discount = 0;
+    }
   }
-  const ratesData: any = await shippingRatesRes.json().catch(() => ({}));
-  const rates = Array.isArray(ratesData?.rates) ? ratesData.rates : [];
+  if (discount > subtotal) discount = subtotal;
+
+  const { rates } = await computeShippingRates({
+    country: normCountry(payload.shipping.country),
+    state: payload.shipping.state || "",
+    postcode: payload.shipping.postcode || "",
+    city: payload.shipping.city || "",
+    cartSubtotal: subtotal,
+  });
   const selectedRate = rates.find((r: any) => String(r.id) === String(payload.shipping_method_id));
   if (!selectedRate || typeof selectedRate.cost !== "number") {
     throw new Error("Selected shipping method is no longer available.");

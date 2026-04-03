@@ -25,6 +25,8 @@ interface Order {
   subtotal?: string;
   total_shipping?: string;
   shipping_total?: string;
+  /** WooCommerce REST uses `total_tax`; some callers use `tax_total`. */
+  total_tax?: string;
   tax_total?: string;
   discount_total?: string;
   payment_method: string;
@@ -64,7 +66,15 @@ function OrderReviewContent() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const orderIdFromUrl = searchParams.get("order_id") || searchParams.get("orderId");
+  const accessCodeFromUrl =
+    searchParams.get("AccessCode") || searchParams.get("accessCode");
   const recoverKey = searchParams.get("recover");
+  /** Set by checkout when redirecting after Place on account order (Woo may still return another gateway id). */
+  const paymentMethodHint = (
+    searchParams.get("pm") ||
+    searchParams.get("payment_method") ||
+    ""
+  ).toLowerCase();
  
   useEffect(() => {
     // Suppress "lab" color function parsing errors from html2canvas/css parsing
@@ -159,7 +169,13 @@ function OrderReviewContent() {
       }
 
       try {
-        const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+        const orderApiUrl = accessCodeFromUrl
+          ? `/api/orders/${orderId}?AccessCode=${encodeURIComponent(accessCodeFromUrl)}`
+          : `/api/orders/${orderId}`;
+        const res = await fetch(orderApiUrl, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
         if (!res.ok) {
           throw new Error("Failed to fetch order");
         }
@@ -182,7 +198,7 @@ function OrderReviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [orderIdFromUrl, recoverKey, router]);
+  }, [orderIdFromUrl, recoverKey, router, accessCodeFromUrl]);
  
   const handleDownloadPDF = useCallback(async () => {
     if (!order || typeof window === "undefined") return;
@@ -325,7 +341,51 @@ function OrderReviewContent() {
   };
  
   const isPaid = order.status === "processing" || order.status === "completed";
-  const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque"];
+  const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque", "on_account"];
+
+  const isOnAccountFlow =
+    paymentMethodHint === "on_account" ||
+    String(order.payment_method || "").toLowerCase() === "on_account";
+
+  const paymentMethodDisplay = isOnAccountFlow
+    ? "On Account"
+    : order.payment_method_title;
+
+  /** Receipt label: show Completed once payment is successful/processing */
+  const orderStatusLabel = (() => {
+    const s = String(order.status || "").toLowerCase();
+    const pm = String(order.payment_method || "").toLowerCase();
+    if (isOnAccountFlow) {
+      if (s === "cancelled") return "Cancelled";
+      if (s === "refunded") return "Refunded";
+      if (s === "failed") return "Failed";
+      return "Order Placed";
+    }
+    if (pm === "eway" && (s === "processing" || s === "completed")) {
+      return "Payment Done";
+    }
+    if (s === "processing") return "Completed";
+    if (s === "completed") return "Completed";
+    if (s === "pending") return "Pending";
+    if (s === "on-hold") return "On hold";
+    if (s === "cancelled") return "Cancelled";
+    if (s === "refunded") return "Refunded";
+    if (s === "failed") return "Failed";
+    return order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "—";
+  })();
+
+  const orderStatusToneClass = (() => {
+    const s = String(order.status || "").toLowerCase();
+    if (isOnAccountFlow) {
+      if (s === "cancelled" || s === "refunded" || s === "failed") {
+        return s === "cancelled" ? "text-amber-800" : "text-red-700";
+      }
+      return "text-blue-700";
+    }
+    if (s === "completed") return "text-green-700";
+    if (s === "processing") return "text-blue-700";
+    return "text-amber-800";
+  })();
  
   // Calculate totals
   // Subtotal: use order.subtotal if present, otherwise sum line items (WooCommerce may omit subtotal)
@@ -342,7 +402,10 @@ function OrderReviewContent() {
   const shipping = (order.shipping_total ?? order.total_shipping)
     ? parseFloat(String(order.shipping_total ?? order.total_shipping))
     : 0;
-  const tax = order.tax_total ? parseFloat(order.tax_total) : 0;
+  const taxRaw = order.total_tax ?? order.tax_total;
+  let tax =
+    taxRaw != null && String(taxRaw).trim() !== "" ? parseFloat(String(taxRaw)) : 0;
+  if (!Number.isFinite(tax)) tax = 0;
   const discount = order.discount_total ? parseFloat(order.discount_total) : 0;
   const total = parseFloat(order.total);
  
@@ -400,10 +463,13 @@ function OrderReviewContent() {
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">From</h3>
                 <div className="text-sm text-gray-700">
                   <p className="font-bold text-lg text-gray-900 mb-1">
-                    {process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
+                    {process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical PTY LTD"}
                   </p>
-                  <p className="text-gray-600">Medical Supplies & Healthcare Products</p>
+                  <p className="text-gray-600">6/7 Hansen Court</p>
+                  <p className="text-gray-600">Coomera, 4209, QLD</p>
                   <p className="text-gray-600 mt-2">Australia</p>
+                  <p className="text-gray-600 mt-2">Phone: 1300 005 032</p>
+                  <p className="text-gray-600 mt-2">Email: info@joyamedical.com.au</p>
                 </div>
               </div>
  
@@ -515,12 +581,10 @@ function OrderReviewContent() {
                       <span className="font-medium text-gray-900">${shipping.toFixed(2)}</span>
                     </div>
                   )}
-                  {tax > 0 && (
-                    <div className="flex justify-between py-2">
-                      <span className="text-gray-600">Tax:</span>
-                      <span className="font-medium text-gray-900">${tax.toFixed(2)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between py-2">
+                    <span className="text-gray-600">GST:</span>
+                    <span className="font-medium text-gray-900">${tax.toFixed(2)}</span>
+                  </div>
                   {discount > 0 && (
                     <div className="flex justify-between py-2 text-emerald-600">
                       <span>Discount:</span>
@@ -541,22 +605,51 @@ function OrderReviewContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 pb-8 border-b">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">Payment Method</h3>
-                <p className="text-sm text-gray-700">{order.payment_method_title}</p>
-                {!isPaid && offlinePaymentMethods.includes(order.payment_method) && (
-                  <p className="text-xs text-yellow-600 mt-1">Payment Pending</p>
+                <p className="text-sm text-gray-700">{paymentMethodDisplay}</p>
+                {!isOnAccountFlow &&
+                  !isPaid &&
+                  offlinePaymentMethods.includes(order.payment_method) && (
+                  <p className="mt-1 text-xs text-amber-800">Payment pending</p>
+                )}
+                {isOnAccountFlow && (
+                  <p className="mt-1 text-xs text-gray-600">
+                    Pay on account — your order has been submitted.
+                  </p>
                 )}
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">Order Status</h3>
-                <p className={`text-sm font-medium ${
-                  order.status === "completed" ? "text-green-600" :
-                  order.status === "processing" ? "text-blue-600" :
-                  "text-yellow-600"
-                }`}>
-                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">Order status</h3>
+                <p className={`text-sm font-medium ${orderStatusToneClass}`}>
+                  {orderStatusLabel}
                 </p>
               </div>
             </div>
+
+            {isOnAccountFlow && (
+              <div className="mb-8 pb-8 border-b rounded-lg border border-slate-200 bg-slate-50 p-6">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">
+                  Bank transfer details
+                </h3>
+                <ul className="space-y-1 text-sm text-gray-700">
+                  <li>
+                    <span className="font-medium text-gray-800">Bank name:</span> National Australia Bank
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">Account name:</span> Joya Medical Australia Pty
+                    Ltd
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">Account number:</span> 852237649
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">BSB:</span> 084-004
+                  </li>
+                </ul>
+                <p className="mt-4 text-sm font-medium text-gray-900">
+                  Please transfer the total amount and include your order number as reference.
+                </p>
+              </div>
+            )}
  
             {/* Additional Information */}
             {(getNDISNumber() || getHCPNumber() || getDeliveryAuthority() || getDeliveryInstructions() || getDoNotSendPaperwork() || getDiscreetPackaging() || getNewsletterSubscription()) && (

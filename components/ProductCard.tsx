@@ -370,7 +370,7 @@ function ProductCardComponent({
         </div>
 
         {/* Actions */}
-        <div className="mt-auto flex items-center gap-2 pt-2">
+        {/* <div className="mt-auto flex items-center gap-2 pt-2">
           <button
             type="button"
             onClick={handleAddToCart}
@@ -397,7 +397,7 @@ function ProductCardComponent({
           </button>
           
          
-        </div>
+        </div> */}
       </div>
     </article>
   );

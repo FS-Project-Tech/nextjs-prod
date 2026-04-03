@@ -1,9 +1,0 @@
----
-alwaysApply: true
-- Write tests before implementation
-- Use Jest for unit tests
-- Use Playwright for E2E
-- Use Zod for validation
-- Never trust client-side data
-- Optimize for performance and scalability
----

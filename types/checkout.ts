@@ -1,9 +1,12 @@
 export type PaymentMethod = "eway" | "on_account";
 
 export type CheckoutCartItem = {
-  product_id: number;
+  /** Resolved from SKU server-side when possible; optional if `sku` is sent. */
+  product_id?: number;
   variation_id?: number;
   quantity: number;
+  /** Preferred for resolution — mapped to Woo `product_id` / `variation_id` before order creation. */
+  sku?: string;
 };
 
 export type CheckoutAddress = {

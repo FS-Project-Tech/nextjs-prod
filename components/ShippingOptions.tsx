@@ -116,12 +116,13 @@ export default function ShippingOptions({
         <label className="block text-sm font-semibold text-gray-900 mb-2">Shipping Options</label>
       )}
       {loadingRates && (
-        <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+        <div className="flex items-center gap-2 py-2 text-sm text-gray-800" role="status" aria-live="polite">
           <svg
-            className="animate-spin h-4 w-4"
+            className="h-4 w-4 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <circle
               className="opacity-25"
@@ -137,11 +138,13 @@ export default function ShippingOptions({
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          <span>Loading rates…</span>
+          <span>Loading shipping rates…</span>
         </div>
       )}
       {!loadingRates && rates.length === 0 && (
-        <div className="text-sm text-gray-500 py-2">No shipping rates found</div>
+        <div className="py-2 text-sm text-gray-800" role="status">
+          No shipping rates found for this address.
+        </div>
       )}
       <div className="space-y-2">
         {rates.map((r) => {
@@ -162,8 +165,8 @@ export default function ShippingOptions({
                 value={r.id}
                 checked={isSelected}
                 onChange={() => handleRateChange(r)}
-                className="h-4 w-4 text-teal-600 focus:ring-teal-500"
-                aria-label={`Select ${safeLabel}`}
+                className="h-4 w-4 text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                aria-label={`${safeLabel || "Shipping option"}, ${isFree ? "free" : `$${r.cost.toFixed(2)}`}`}
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">

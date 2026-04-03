@@ -75,6 +75,32 @@ export async function syncCartToWooCommerce(
       coupon_lines?: Array<{ code: string; discount: string }>;
     };
 
+    const fullLineItems = Array.isArray(order.line_items) ? order.line_items : [];
+    console.info("[woo-sync] order response line_items", {
+      orderId: order.id,
+      line_items: fullLineItems.map((li) => ({
+        product_id: Number(li.product_id || 0),
+        variation_id:
+          li.variation_id != null ? Number(li.variation_id || 0) : null,
+        name: li.name || "",
+        quantity: Number(li.quantity || 0),
+        subtotal: String(li.subtotal ?? ""),
+      })),
+    });
+
+    const zeroMapped = fullLineItems.some((li) => Number(li.product_id || 0) <= 0);
+    if (zeroMapped) {
+      console.error("[woo-sync] invalid product mapping in Woo order response", {
+        orderId: order.id,
+        warning:
+          "Possible plugin modifying REST order (woocommerce_rest_pre_insert_shop_order_object).",
+        raw_line_items: fullLineItems,
+      });
+      throw new Error(
+        "Invalid product mapping from WooCommerce. Likely product type or plugin issue."
+      );
+    }
+
     const lineList = order.line_items || [];
     const subtotalFromApi =
       parseFloat(order.total_line_items_price || order.subtotal || "") || 0;
