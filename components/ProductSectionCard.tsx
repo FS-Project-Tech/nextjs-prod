@@ -50,9 +50,7 @@ export default function ProductSectionCard({
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-              {subtitle && (
-                <p className="text-sm text-gray-600">{subtitle}</p>
-              )}
+              {subtitle && <p className="text-sm text-gray-600">{subtitle}</p>}
             </div>
             {viewAllHref && (
               <Link
@@ -68,13 +66,10 @@ export default function ProductSectionCard({
           ) : products && products.length > 0 ? (
             <ProductsSlider products={products} gridCols={gridCols} />
           ) : (
-            <div className="rounded-lg bg-white p-8 text-center text-gray-600">
-              {emptyMessage}
-            </div>
+            <div className="rounded-lg bg-white p-8 text-center text-gray-600">{emptyMessage}</div>
           )}
         </div>
       </Container>
     </section>
   );
 }
-

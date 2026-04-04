@@ -35,8 +35,7 @@ async function CategoriesNavContent() {
   let childCategories: Category[] = [];
 
   try {
-    const { parentCategories: parent, childCategories: child } =
-      await getCategoriesForNav();
+    const { parentCategories: parent, childCategories: child } = await getCategoriesForNav();
 
     parentCategories = parent;
     childCategories = child;
@@ -47,22 +46,18 @@ async function CategoriesNavContent() {
   }
 
   // Build map: parentId → children[]
-  const subCategoriesMap = childCategories.reduce<Record<number, Category[]>>(
-    (acc, cat) => {
-      if (cat.parent) {
-        acc[cat.parent] = acc[cat.parent] || [];
-        acc[cat.parent].push(cat);
-      }
-      return acc;
-    },
-    {}
-  );
+  const subCategoriesMap = childCategories.reduce<Record<number, Category[]>>((acc, cat) => {
+    if (cat.parent) {
+      acc[cat.parent] = acc[cat.parent] || [];
+      acc[cat.parent].push(cat);
+    }
+    return acc;
+  }, {});
 
   return (
     <nav className="bg-nav-header hidden md:block">
       <div className="container mx-auto w-full sm:w-[85vw]">
         <ul className="flex items-center gap-3 text-sm">
-
           {/* All Categories Drawer */}
           <li>
             <AllCategoriesDrawer className="px-3 py-2 text-white" />
@@ -70,15 +65,14 @@ async function CategoriesNavContent() {
 
           {/* Dynamic Categories */}
           {parentCategories.map((category) => {
-            const subCategories =
-              (subCategoriesMap[category.id] || [])
-                .sort((a, b) => a.name.localeCompare(b.name));
+            const subCategories = (subCategoriesMap[category.id] || []).sort((a, b) =>
+              a.name.localeCompare(b.name)
+            );
 
             const columns = splitIntoColumns(subCategories, 10);
 
             return (
               <li key={category.id} className="relative group">
-
                 {/* Parent */}
                 <PrefetchLink
                   href={`/product-category/${category.slug}`}
@@ -96,7 +90,6 @@ async function CategoriesNavContent() {
                 {/* Mega Menu */}
                 {subCategories.length > 0 && (
                   <div className="absolute left-0 top-full z-50 hidden group-hover:flex rounded-lg border bg-white shadow-xl p-4 gap-6">
-
                     {columns.map((col, i) => (
                       <ul key={i} className="space-y-2 min-w-[200px]">
                         {col.map((sub) => (
@@ -111,7 +104,6 @@ async function CategoriesNavContent() {
                         ))}
                       </ul>
                     ))}
-
                   </div>
                 )}
               </li>
@@ -120,10 +112,7 @@ async function CategoriesNavContent() {
 
           {/* Brands */}
           <li>
-            <PrefetchLink
-              href="/brands/"
-              className="px-3 py-2 text-white hover:bg-nav-hover"
-            >
+            <PrefetchLink href="/brands/" className="px-3 py-2 text-white hover:bg-nav-hover">
               Brands
             </PrefetchLink>
           </li>
@@ -200,10 +189,7 @@ async function CategoriesNavContent() {
 
           {/* B2B */}
           <li>
-            <PrefetchLink
-              href="/b2b/"
-              className="px-3 py-2 text-white hover:bg-nav-hover"
-            >
+            <PrefetchLink href="/b2b/" className="px-3 py-2 text-white hover:bg-nav-hover">
               B2B
             </PrefetchLink>
           </li>
@@ -216,8 +202,7 @@ async function CategoriesNavContent() {
             >
               Health Professionals
             </PrefetchLink>
-           </li>
-
+          </li>
         </ul>
       </div>
     </nav>

@@ -1,13 +1,8 @@
 import wcAPI from "@/lib/woocommerce";
 import { validateProduct, validateVariation } from "@/lib/woo/validateProduct";
-import {
-  resolveProductRefBySku,
-  type SkuResolveResult,
-} from "@/lib/woo/resolveSku";
+import { resolveProductRefBySku, type SkuResolveResult } from "@/lib/woo/resolveSku";
 
-function isSkuResolveFailure(
-  result: SkuResolveResult
-): result is { ok: false; message: string } {
+function isSkuResolveFailure(result: SkuResolveResult): result is { ok: false; message: string } {
   return result.ok === false;
 }
 
@@ -48,16 +43,13 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
 
   const forceSimpleId = Number(process.env.WOO_DEBUG_FORCE_SIMPLE_PRODUCT_ID || 0);
   const effectiveItems =
-    forceSimpleId > 0
-      ? [{ product_id: forceSimpleId, quantity: 1 } as RequestedLineItem]
-      : items;
+    forceSimpleId > 0 ? [{ product_id: forceSimpleId, quantity: 1 } as RequestedLineItem] : items;
 
   for (const item of effectiveItems) {
     const quantity = Number(item.quantity || 0);
     const skuTrim = typeof item.sku === "string" ? item.sku.trim() : "";
     let productId = Number(item.product_id || 0);
-    let requestedVariationId =
-      item.variation_id != null ? Number(item.variation_id || 0) : 0;
+    let requestedVariationId = item.variation_id != null ? Number(item.variation_id || 0) : 0;
 
     if (quantity <= 0) {
       unavailable.push({
@@ -70,10 +62,7 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
     }
 
     if (skuTrim) {
-      const fromSku = await resolveProductRefBySku(
-        skuTrim,
-        productId > 0 ? productId : undefined
-      );
+      const fromSku = await resolveProductRefBySku(skuTrim, productId > 0 ? productId : undefined);
       if (isSkuResolveFailure(fromSku)) {
         if (productId <= 0) {
           unavailable.push({
@@ -201,4 +190,3 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
 
   return { ok: true, line_items: resolved };
 }
-

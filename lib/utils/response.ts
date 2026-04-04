@@ -3,11 +3,11 @@
  * Standardized response helpers for API routes
  */
 
-import { NextResponse, type NextRequest } from 'next/server';
-import type { ApiResponse, ApiErrorResponse, ApiSuccessResponse, ApiErrorCode } from '../types/api';
-import { secureResponse } from '../security-headers';
-import { applyCorsHeaders } from '../cors';
-import { logger } from './logger';
+import { NextResponse, type NextRequest } from "next/server";
+import type { ApiResponse, ApiErrorResponse, ApiSuccessResponse, ApiErrorCode } from "../types/api";
+import { secureResponse } from "../security-headers";
+import { applyCorsHeaders } from "../cors";
+import { logger } from "./logger";
 
 /**
  * Create a standardized success response
@@ -32,13 +32,15 @@ export function createSuccessResponse<T>(
     {
       status,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...headers,
       },
     }
   );
 
-  return (request ? applyCorsHeaders(request, response) : response) as NextResponse<ApiSuccessResponse<T>>;
+  return (request ? applyCorsHeaders(request, response) : response) as NextResponse<
+    ApiSuccessResponse<T>
+  >;
 }
 
 /**
@@ -56,17 +58,10 @@ export function createErrorResponse(
     error?: Error;
   } = {}
 ): NextResponse<ApiErrorResponse> {
-  const {
-    status = 500,
-    details,
-    headers = {},
-    request,
-    logError = true,
-    error,
-  } = options;
+  const { status = 500, details, headers = {}, request, logError = true, error } = options;
 
   if (logError) {
-    logger.error(message, 'API', { code, details }, error);
+    logger.error(message, "API", { code, details }, error);
   }
 
   const response = secureResponse(
@@ -81,13 +76,15 @@ export function createErrorResponse(
     {
       status,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...headers,
       },
     }
   );
 
-  return (request ? applyCorsHeaders(request, response) : response) as NextResponse<ApiErrorResponse>;
+  return (
+    request ? applyCorsHeaders(request, response) : response
+  ) as NextResponse<ApiErrorResponse>;
 }
 
 /**
@@ -97,16 +94,12 @@ export function createValidationErrorResponse(
   errors: Array<{ field: string; message: string }>,
   request?: NextRequest
 ): NextResponse<ApiErrorResponse> {
-  return createErrorResponse(
-    'VALIDATION_ERROR',
-    'Validation failed',
-    {
-      status: 400,
-      details: { errors },
-      request,
-      logError: false, // Validation errors are expected, don't log as errors
-    }
-  );
+  return createErrorResponse("VALIDATION_ERROR", "Validation failed", {
+    status: 400,
+    details: { errors },
+    request,
+    logError: false, // Validation errors are expected, don't log as errors
+  });
 }
 
 /**
@@ -118,29 +111,25 @@ export function createRateLimitResponse(
 ): NextResponse<ApiErrorResponse> {
   const headers: Record<string, string> = {};
   if (retryAfter) {
-    headers['Retry-After'] = retryAfter.toString();
+    headers["Retry-After"] = retryAfter.toString();
   }
 
-  return createErrorResponse(
-    'RATE_LIMIT_EXCEEDED',
-    'Too many requests. Please try again later.',
-    {
-      status: 429,
-      request,
-      headers,
-      logError: false, // Rate limits are expected, don't log as errors
-    }
-  );
+  return createErrorResponse("RATE_LIMIT_EXCEEDED", "Too many requests. Please try again later.", {
+    status: 429,
+    request,
+    headers,
+    logError: false, // Rate limits are expected, don't log as errors
+  });
 }
 
 /**
  * Create an unauthorized response
  */
 export function createUnauthorizedResponse(
-  message = 'Authentication required',
+  message = "Authentication required",
   request?: NextRequest
 ): NextResponse<ApiErrorResponse> {
-  return createErrorResponse('UNAUTHORIZED', message, {
+  return createErrorResponse("UNAUTHORIZED", message, {
     status: 401,
     request,
     logError: false,
@@ -151,10 +140,10 @@ export function createUnauthorizedResponse(
  * Create a forbidden response
  */
 export function createForbiddenResponse(
-  message = 'Access forbidden',
+  message = "Access forbidden",
   request?: NextRequest
 ): NextResponse<ApiErrorResponse> {
-  return createErrorResponse('FORBIDDEN', message, {
+  return createErrorResponse("FORBIDDEN", message, {
     status: 403,
     request,
     logError: false,
@@ -165,10 +154,10 @@ export function createForbiddenResponse(
  * Create a not found response
  */
 export function createNotFoundResponse(
-  message = 'Resource not found',
+  message = "Resource not found",
   request?: NextRequest
 ): NextResponse<ApiErrorResponse> {
-  return createErrorResponse('NOT_FOUND', message, {
+  return createErrorResponse("NOT_FOUND", message, {
     status: 404,
     request,
     logError: false,
@@ -179,15 +168,14 @@ export function createNotFoundResponse(
  * Create an internal server error response
  */
 export function createInternalErrorResponse(
-  message = 'An internal error occurred',
+  message = "An internal error occurred",
   error?: Error,
   request?: NextRequest
 ): NextResponse<ApiErrorResponse> {
-  return createErrorResponse('INTERNAL_ERROR', message, {
+  return createErrorResponse("INTERNAL_ERROR", message, {
     status: 500,
     request,
     error,
     logError: true,
   });
 }
-

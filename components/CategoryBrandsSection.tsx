@@ -22,9 +22,7 @@ export default function CategoryBrandsSection({ brands }: CategoryBrandsSectionP
   return (
     <Container className="my-12">
       <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-white p-8 shadow-sm">
-        <h2 className="mb-6 text-2xl font-bold text-gray-900">
-          Other brands for this product
-        </h2>
+        <h2 className="mb-6 text-2xl font-bold text-gray-900">Other brands for this product</h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {brands.map((brand) => (
             <div
@@ -46,9 +44,7 @@ export default function CategoryBrandsSection({ brands }: CategoryBrandsSectionP
                   {brand.name.charAt(0).toUpperCase()}
                 </div>
               )}
-              <span className="text-xs font-medium text-gray-700">
-                {brand.name}
-              </span>
+              <span className="text-xs font-medium text-gray-700">{brand.name}</span>
             </div>
           ))}
         </div>
@@ -56,4 +52,3 @@ export default function CategoryBrandsSection({ brands }: CategoryBrandsSectionP
     </Container>
   );
 }
-

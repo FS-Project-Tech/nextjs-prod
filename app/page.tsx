@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import { WebsiteStructuredData, OrganizationStructuredData } from "@/components/StructuredData";
 import HeroDualSliderServer from "@/components/HeroDualSliderServer";
 
-
 // ============================================================================
 // ISR Configuration - Revalidate homepage every 5 minutes
 // ============================================================================
@@ -13,10 +12,12 @@ export const revalidate = 300; // 5 minutes
 // SEO Metadata for homepage
 export const metadata: Metadata = {
   title: "Home",
-  description: "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping on orders over $50.",
+  description:
+    "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping on orders over $50.",
   openGraph: {
     title: "WooCommerce Store - Shop Latest Products",
-    description: "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping.",
+    description:
+      "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping.",
     type: "website",
   },
   alternates: {
@@ -37,14 +38,12 @@ import AnimatedSection from "@/components/AnimatedSection";
 import HomePageClient from "@/components/HomePageClient";
 import FeatureStrip from "@/components/FeaturedSection";
 
-
 export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{ Search?: string; search?: string }>;
 }) {
-  const continenceSlug =
-    process.env.NEXT_PUBLIC_CONTINENCE_CATEGORY_SLUG || "continence-care";
+  const continenceSlug = process.env.NEXT_PUBLIC_CONTINENCE_CATEGORY_SLUG || "continence-care";
 
   const params = await searchParams;
   const searchQuery = params?.Search || params?.search;
@@ -65,26 +64,18 @@ export default async function Home({
       <OrganizationStructuredData siteUrl={siteUrl} />
 
       <div className="min-h-screen relative">
-        
-        {/* Hero */}
-        <AnimatedSection>
+         {/* Hero */}
+         <AnimatedSection>
           <div className="py-4">
             <HeroDualSliderServer />
           </div>
         </AnimatedSection>
-
         {/* Categories */}
-    
-          <Suspense fallback={<div className="h-64 bg-gray-100 rounded mb-10 animate-pulse" />}>
-            <CategoriesSection />
-          </Suspense>
-      
-
+        <Suspense fallback={<div className="h-64 bg-gray-100 rounded mb-10 animate-pulse" />}>
+          <CategoriesSection />
+        </Suspense>
         {/* Marketing */}
-    
-          <MarketingUpdatesSection />
-       
-
+        <MarketingUpdatesSection />
         {/* Product Section */}
         <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
           <ProductSection
@@ -94,19 +85,12 @@ export default async function Home({
             query={{ categorySlug: continenceSlug }}
           />
         </Suspense>
-
         {/* CTA */}
-      
-          <NDISCTASection />
-       
-
+        <NDISCTASection />
         {/* Trending */}
-      
-          <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
-            <TrendingSection />
-          </Suspense>
-    
-
+        <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
+          <TrendingSection />
+        </Suspense>
         {/* Latest */}
         <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
           <ProductSection
@@ -116,16 +100,10 @@ export default async function Home({
             query={{ orderby: "date", order: "desc" }}
           />
         </Suspense>
-
         {/* Newsletter */}
-  
-          <NewsletterSection />
-  
-
-        {/* Features */}    {/* <AnimatedSection> */}
-          <FeatureStrip />
-       
-
+        <NewsletterSection />
+        {/* Features */} {/* <AnimatedSection> */}
+        <FeatureStrip />
       </div>
     </>
   );

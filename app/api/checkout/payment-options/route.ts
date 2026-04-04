@@ -16,8 +16,7 @@ export async function GET() {
   try {
     const methods: Method[] = [];
     const hasEway =
-      Boolean(process.env.EWAY_API_KEY?.trim()) &&
-      Boolean(process.env.EWAY_PASSWORD?.trim());
+      Boolean(process.env.EWAY_API_KEY?.trim()) && Boolean(process.env.EWAY_PASSWORD?.trim());
 
     if (hasEway) {
       methods.push({
@@ -37,10 +36,7 @@ export async function GET() {
           ? [gatewaysRes.data]
           : [];
       for (const g of gateways) {
-        if (
-          g?.id &&
-          (g.enabled === true || g.enabled === "yes" || g.enabled === 1)
-        ) {
+        if (g?.id && (g.enabled === true || g.enabled === "yes" || g.enabled === 1)) {
           wcEnabledIds.add(String(g.id));
         }
       }

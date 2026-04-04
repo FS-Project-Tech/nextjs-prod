@@ -1,10 +1,10 @@
 "use client";
 
-import { useOrders } from '@/hooks/useOrders';
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import { useToast } from '@/components/ToastProvider';
-import CancelOrderModal from '@/components/dashboard/CancelOrderModal';
+import { useOrders } from "@/hooks/useOrders";
+import Link from "next/link";
+import { useState, useEffect } from "react";
+import { useToast } from "@/components/ToastProvider";
+import CancelOrderModal from "@/components/dashboard/CancelOrderModal";
 
 export default function DashboardOrders() {
   const [currentPage, setCurrentPage] = useState(1);
@@ -15,7 +15,7 @@ export default function DashboardOrders() {
 
   // Scroll to top when page changes
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentPage]);
 
   if (isLoading) {
@@ -87,15 +87,15 @@ export default function DashboardOrders() {
                 <div>
                   <span
                     className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                      order.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : order.status === 'processing'
-                        ? 'bg-blue-100 text-blue-800'
-                        : order.status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : order.status === 'cancelled'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
+                      order.status === "completed"
+                        ? "bg-green-100 text-green-800"
+                        : order.status === "processing"
+                          ? "bg-blue-100 text-blue-800"
+                          : order.status === "pending"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : order.status === "cancelled"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
                     }`}
                   >
                     {order.status}
@@ -105,7 +105,7 @@ export default function DashboardOrders() {
 
               <div className="flex items-center space-x-2">
                 {/* Action buttons based on order status */}
-                {order.status === 'processing' && (
+                {order.status === "processing" && (
                   <button
                     onClick={() => setCancelOrderId(order.id)}
                     disabled={isCancelling}
@@ -114,28 +114,31 @@ export default function DashboardOrders() {
                     Cancel
                   </button>
                 )}
-                {order.status === 'pending' && (
+                {order.status === "pending" && (
                   <button
                     onClick={async () => {
                       try {
-                        const response = await fetch(`/api/dashboard/orders/${order.order_number}/pay`, {
-                          method: 'POST',
-                          credentials: 'include',
-                        });
+                        const response = await fetch(
+                          `/api/dashboard/orders/${order.order_number}/pay`,
+                          {
+                            method: "POST",
+                            credentials: "include",
+                          }
+                        );
                         if (response.ok) {
                           const data = await response.json();
                           if (data.payment_url) {
                             window.location.href = data.payment_url;
                           } else {
-                            success('Payment initiated successfully');
+                            success("Payment initiated successfully");
                             refetch();
                           }
                         } else {
                           const error = await response.json();
-                          showError(error.error || 'Failed to initiate payment');
+                          showError(error.error || "Failed to initiate payment");
                         }
                       } catch (err: any) {
-                        showError('Failed to initiate payment');
+                        showError("Failed to initiate payment");
                       }
                     }}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md transition-colors"
@@ -159,17 +162,18 @@ export default function DashboardOrders() {
       {pagination && pagination.total_pages > 1 && (
         <div className="flex items-center justify-between border-t border-gray-200 pt-4">
           <div className="text-sm text-gray-700">
-            Showing {((currentPage - 1) * 10) + 1} to {Math.min(currentPage * 10, pagination.total)} of {pagination.total} orders
+            Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, pagination.total)}{" "}
+            of {pagination.total} orders
           </div>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               disabled={currentPage === 1 || isLoading}
               className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
-            
+
             {/* Page numbers */}
             <div className="flex items-center space-x-1">
               {Array.from({ length: Math.min(5, pagination.total_pages) }, (_, i) => {
@@ -183,7 +187,7 @@ export default function DashboardOrders() {
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
-                
+
                 return (
                   <button
                     key={pageNum}
@@ -191,8 +195,8 @@ export default function DashboardOrders() {
                     disabled={isLoading}
                     className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                       currentPage === pageNum
-                        ? 'bg-teal-600 text-white'
-                        : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                        ? "bg-teal-600 text-white"
+                        : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {pageNum}
@@ -202,7 +206,7 @@ export default function DashboardOrders() {
             </div>
 
             <button
-              onClick={() => setCurrentPage(prev => Math.min(pagination.total_pages, prev + 1))}
+              onClick={() => setCurrentPage((prev) => Math.min(pagination.total_pages, prev + 1))}
               disabled={currentPage === pagination.total_pages || isLoading}
               className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -220,11 +224,10 @@ export default function DashboardOrders() {
           onSuccess={() => {
             setCancelOrderId(null);
             refetch();
-            success('Order cancelled successfully');
+            success("Order cancelled successfully");
           }}
         />
       )}
     </div>
   );
 }
-

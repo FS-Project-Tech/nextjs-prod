@@ -116,10 +116,7 @@ export async function POST(req: NextRequest) {
 
     const token = (nextAuthToken as any)?.wpToken;
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -141,10 +138,7 @@ export async function POST(req: NextRequest) {
 
     const wpBase = getWpBaseUrl();
     if (!wpBase) {
-      return NextResponse.json(
-        { error: "WordPress URL not configured" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
     const meRes = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
@@ -156,30 +150,24 @@ export async function POST(req: NextRequest) {
     });
 
     if (!meRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to get user" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Failed to get user" }, { status: 401 });
     }
 
     const user = await meRes.json();
 
-    const changeRes = await fetch(
-      `${wpBase}/wp-json/custom-auth/v1/change-password`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          current_password,
-          new_password,
-          user_id: user.id,
-        }),
-        cache: "no-store",
-      }
-    );
+    const changeRes = await fetch(`${wpBase}/wp-json/custom-auth/v1/change-password`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        current_password,
+        new_password,
+        user_id: user.id,
+      }),
+      cache: "no-store",
+    });
 
     if (changeRes.ok) {
       return NextResponse.json({ message: "Password updated successfully" });

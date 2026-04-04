@@ -1,23 +1,24 @@
 /**
  * GraphQL Client for WordPress/WooCommerce
- * 
+ *
  * Requires WPGraphQL and WooGraphQL plugins on WordPress
- * 
+ *
  * Setup:
  * 1. Install WPGraphQL plugin: https://www.wpgraphql.com/
  * 2. Install WooGraphQL plugin: https://woographql.com/
  * 3. Configure GraphQL endpoint in .env: NEXT_PUBLIC_GRAPHQL_URL
  */
 
-import { isAbortError } from '@/lib/utils/errors';
+import { isAbortError } from "@/lib/utils/errors";
 
-const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL || 
-  (process.env.WC_API_URL 
-    ? process.env.WC_API_URL.replace('/wp-json/wc/v3', '/graphql')
-    : null);
+const GRAPHQL_URL =
+  process.env.NEXT_PUBLIC_GRAPHQL_URL ||
+  (process.env.WC_API_URL ? process.env.WC_API_URL.replace("/wp-json/wc/v3", "/graphql") : null);
 
-if (!GRAPHQL_URL && typeof window === 'undefined') {
-  console.warn('[GraphQL] NEXT_PUBLIC_GRAPHQL_URL not configured. GraphQL features will be disabled.');
+if (!GRAPHQL_URL && typeof window === "undefined") {
+  console.warn(
+    "[GraphQL] NEXT_PUBLIC_GRAPHQL_URL not configured. GraphQL features will be disabled."
+  );
 }
 
 interface GraphQLOptions {
@@ -34,19 +35,19 @@ export async function graphqlQuery<T = any>(
   options: GraphQLOptions = {}
 ): Promise<T> {
   if (!GRAPHQL_URL) {
-    throw new Error('GraphQL URL not configured');
+    throw new Error("GraphQL URL not configured");
   }
 
   const { variables = {}, headers = {}, timeout = 20000 } = options;
 
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timeoutId = controller ? setTimeout(() => controller.abort(), timeout) : null;
 
   try {
     const response = await fetch(GRAPHQL_URL, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...headers,
       },
       body: JSON.stringify({
@@ -54,7 +55,7 @@ export async function graphqlQuery<T = any>(
         variables,
       }),
       signal: controller?.signal,
-      cache: 'no-store',
+      cache: "no-store",
     }).finally(() => {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -74,7 +75,7 @@ export async function graphqlQuery<T = any>(
     return result.data as T;
   } catch (error: unknown) {
     if (isAbortError(error)) {
-      throw new Error('GraphQL request timeout');
+      throw new Error("GraphQL request timeout");
     }
     throw error;
   }
@@ -96,4 +97,3 @@ export async function graphqlMutation<T = any>(
 export function isGraphQLAvailable(): boolean {
   return !!GRAPHQL_URL;
 }
-

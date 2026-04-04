@@ -1,4 +1,4 @@
-'use server';
+"use server";
 
 /**
  * WooCommerce Session Management
@@ -6,11 +6,11 @@
  * This is a server-only module
  */
 
-import { cookies } from 'next/headers';
-import { getWpBaseUrl } from './wp-utils';
-import { getErrorMessage } from '@/lib/utils/errors';
+import { cookies } from "next/headers";
+import { getWpBaseUrl } from "./wp-utils";
+import { getErrorMessage } from "@/lib/utils/errors";
 
-const WC_SESSION_COOKIE_NAME = 'wc-session';
+const WC_SESSION_COOKIE_NAME = "wc-session";
 const WC_SESSION_MAX_AGE = 48 * 60 * 60; // 48 hours (WooCommerce default)
 
 /**
@@ -27,14 +27,14 @@ export async function getWCSessionCookie(): Promise<string | null> {
  */
 export async function setWCSessionCookie(sessionToken: string): Promise<void> {
   const cookieStore = await cookies();
-  const isProduction = process.env.NODE_ENV === 'production';
-  
+  const isProduction = process.env.NODE_ENV === "production";
+
   cookieStore.set(WC_SESSION_COOKIE_NAME, sessionToken, {
     httpOnly: true,
     secure: true, // Always secure (required for SameSite=None)
-    sameSite: 'none', // None for cross-site requests
+    sameSite: "none", // None for cross-site requests
     maxAge: WC_SESSION_MAX_AGE,
-    path: '/',
+    path: "/",
   });
 }
 
@@ -45,12 +45,12 @@ export async function setWCSessionCookie(sessionToken: string): Promise<void> {
 export async function clearWCSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
   // Delete with same settings as when setting (for proper cross-site deletion)
-  cookieStore.set(WC_SESSION_COOKIE_NAME, '', {
+  cookieStore.set(WC_SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     secure: true,
-    sameSite: 'none',
+    sameSite: "none",
     maxAge: 0,
-    path: '/',
+    path: "/",
   });
 }
 
@@ -62,7 +62,7 @@ export async function createWCSession(customerId?: number): Promise<string | nul
   try {
     const wpBase = getWpBaseUrl();
     if (!wpBase) {
-      console.error('WordPress base URL not configured');
+      console.error("WordPress base URL not configured");
       return null;
     }
 
@@ -73,19 +73,21 @@ export async function createWCSession(customerId?: number): Promise<string | nul
       : `${wpBase}/wp-json/wc/store/v1/sessions`;
 
     const response = await fetch(sessionUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      cache: 'no-store',
+      cache: "no-store",
     });
 
     if (!response.ok) {
       // Store API (wc/store/v1/sessions) may not exist on all WordPress sites;
       // WordPress returns "No route was found matching the URL and request method" in that case.
       // Session will be created automatically on first cart operation. Do not surface this to the user.
-      if (process.env.NODE_ENV === 'development') {
-        console.debug('WooCommerce Store API session not available, using cart-based session instead');
+      if (process.env.NODE_ENV === "development") {
+        console.debug(
+          "WooCommerce Store API session not available, using cart-based session instead"
+        );
       }
       return null;
     }
@@ -106,8 +108,8 @@ export async function createWCSession(customerId?: number): Promise<string | nul
     return null;
   } catch (error: unknown) {
     // Only log in development - session will be created automatically on first cart operation
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('WooCommerce session creation skipped:', getErrorMessage(error));
+    if (process.env.NODE_ENV === "development") {
+      console.debug("WooCommerce session creation skipped:", getErrorMessage(error));
     }
     return null;
   }
@@ -119,13 +121,13 @@ export async function createWCSession(customerId?: number): Promise<string | nul
  */
 export async function getWCSessionHeaders(): Promise<Record<string, string>> {
   const sessionToken = await getWCSessionCookie();
-  
+
   if (!sessionToken) {
     return {};
   }
 
   return {
-    'X-WC-Session': sessionToken,
+    "X-WC-Session": sessionToken,
   };
 }
 
@@ -142,4 +144,3 @@ export async function syncWCSessionAfterLogin(customerId?: number): Promise<void
     // This is expected behavior for WooCommerce installations without Store API
   }
 }
-

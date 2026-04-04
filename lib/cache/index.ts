@@ -1,6 +1,6 @@
 /**
  * Response Layer Caching System for Next.js
- * 
+ *
  * Features:
  * - In-memory cache with TTL (Time-To-Live)
  * - Tag-based cache invalidation
@@ -55,32 +55,32 @@ export const CACHE_TTL = {
   // Short-lived (30 seconds)
   CART: 30,
   SESSION: 30,
-  
+
   // Medium (2 minutes)
   PRODUCTS: 120,
   SEARCH: 120,
-  
+
   // Long (10 minutes)
   CATEGORIES: 600,
   BRANDS: 600,
-  
+
   // Very long (1 hour)
   STATIC: 3600,
   CMS: 3600,
-  
+
   // Permanent until invalidated (24 hours)
   PERMANENT: 86400,
 } as const;
 
 // Cache tags for invalidation
 export const CACHE_TAGS = {
-  PRODUCTS: 'products',
-  CATEGORIES: 'categories',
-  BRANDS: 'brands',
-  CMS: 'cms',
-  USER: 'user',
-  CART: 'cart',
-  ORDERS: 'orders',
+  PRODUCTS: "products",
+  CATEGORIES: "categories",
+  BRANDS: "brands",
+  CMS: "cms",
+  USER: "user",
+  CART: "cart",
+  ORDERS: "orders",
 } as const;
 
 // ============================================================================
@@ -104,7 +104,7 @@ class ResponseCache {
    */
   get<T>(key: string): { data: T; isStale: boolean } | null {
     const entry = this.cache.get(key);
-    
+
     if (!entry) {
       this.stats.misses++;
       return null;
@@ -191,7 +191,7 @@ class ResponseCache {
     for (const key of keys) {
       if (this.delete(key)) count++;
     }
-    
+
     this.tagIndex.delete(tag);
     return count;
   }
@@ -264,7 +264,7 @@ class ResponseCache {
 
     for (const [key, entry] of this.cache) {
       if (deleted >= entriesToDelete) break;
-      
+
       // Only delete expired or old entries
       if (Date.now() > entry.expiresAt) {
         this.delete(key);
@@ -330,17 +330,19 @@ export async function cached<T>(
   }
 
   // Create fetch promise
-  const fetchPromise = fetcher().then((data) => {
-    responseCache.set(key, data, options);
-    return data;
-  }).catch((error) => {
-    // On error, return stale data if available
-    if (cached?.data) {
-      console.warn(`[Cache] Fetch failed, returning stale data for ${key}`);
-      return cached.data;
-    }
-    throw error;
-  });
+  const fetchPromise = fetcher()
+    .then((data) => {
+      responseCache.set(key, data, options);
+      return data;
+    })
+    .catch((error) => {
+      // On error, return stale data if available
+      if (cached?.data) {
+        console.warn(`[Cache] Fetch failed, returning stale data for ${key}`);
+        return cached.data;
+      }
+      throw error;
+    });
 
   // Register pending request
   responseCache.setPending(key, fetchPromise);
@@ -365,10 +367,10 @@ export async function cached<T>(
 export function productsKey(params: Record<string, any>): string {
   const normalized = Object.keys(params)
     .sort()
-    .filter(k => params[k] !== undefined && params[k] !== null && params[k] !== '')
-    .map(k => `${k}=${params[k]}`)
-    .join('&');
-  return `products:${normalized || 'default'}`;
+    .filter((k) => params[k] !== undefined && params[k] !== null && params[k] !== "")
+    .map((k) => `${k}=${params[k]}`)
+    .join("&");
+  return `products:${normalized || "default"}`;
 }
 
 /**
@@ -377,10 +379,10 @@ export function productsKey(params: Record<string, any>): string {
 export function categoriesKey(params: Record<string, any>): string {
   const normalized = Object.keys(params)
     .sort()
-    .filter(k => params[k] !== undefined && params[k] !== null)
-    .map(k => `${k}=${params[k]}`)
-    .join('&');
-  return `categories:${normalized || 'all'}`;
+    .filter((k) => params[k] !== undefined && params[k] !== null)
+    .map((k) => `${k}=${params[k]}`)
+    .join("&");
+  return `categories:${normalized || "all"}`;
 }
 
 /**
@@ -396,9 +398,9 @@ export function productKey(idOrSlug: string | number): string {
 export function searchKey(query: string, params: Record<string, any> = {}): string {
   const normalized = Object.keys(params)
     .sort()
-    .filter(k => params[k] !== undefined && params[k] !== null)
-    .map(k => `${k}=${params[k]}`)
-    .join('&');
+    .filter((k) => params[k] !== undefined && params[k] !== null)
+    .map((k) => `${k}=${params[k]}`)
+    .join("&");
   return `search:${query}:${normalized}`;
 }
 
@@ -443,10 +445,10 @@ export function invalidateAll(): void {
 // ============================================================================
 
 export interface CacheHeaders {
-  'Cache-Control': string;
-  'CDN-Cache-Control'?: string;
-  'Vercel-CDN-Cache-Control'?: string;
-  'Surrogate-Control'?: string;
+  "Cache-Control": string;
+  "CDN-Cache-Control"?: string;
+  "Vercel-CDN-Cache-Control"?: string;
+  "Surrogate-Control"?: string;
 }
 
 /**
@@ -477,14 +479,14 @@ export function getCacheHeaders(options: {
 
   if (noStore) {
     return {
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      "Cache-Control": "no-store, no-cache, must-revalidate",
     };
   }
 
   const directives: string[] = [];
 
   // Visibility
-  directives.push(isPrivate ? 'private' : 'public');
+  directives.push(isPrivate ? "private" : "public");
 
   // Browser max-age
   if (maxAge > 0) {
@@ -503,20 +505,20 @@ export function getCacheHeaders(options: {
 
   // Must revalidate
   if (mustRevalidate) {
-    directives.push('must-revalidate');
+    directives.push("must-revalidate");
   }
 
-  const cacheControl = directives.join(', ');
+  const cacheControl = directives.join(", ");
 
   const headers: CacheHeaders = {
-    'Cache-Control': cacheControl,
+    "Cache-Control": cacheControl,
   };
 
   // CDN-specific headers
   if (sMaxAge && sMaxAge > 0) {
-    headers['CDN-Cache-Control'] = `public, s-maxage=${sMaxAge}`;
-    headers['Vercel-CDN-Cache-Control'] = `public, s-maxage=${sMaxAge}`;
-    headers['Surrogate-Control'] = `public, max-age=${sMaxAge}`;
+    headers["CDN-Cache-Control"] = `public, s-maxage=${sMaxAge}`;
+    headers["Vercel-CDN-Cache-Control"] = `public, s-maxage=${sMaxAge}`;
+    headers["Surrogate-Control"] = `public, max-age=${sMaxAge}`;
   }
 
   return headers;
@@ -565,4 +567,3 @@ export const NO_CACHE_HEADERS = getCacheHeaders({
 // ============================================================================
 
 export default responseCache;
-

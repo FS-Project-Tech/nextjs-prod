@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchProducts } from "@/lib/woocommerce";
 import type { WooCommerceProduct } from "@/lib/woocommerce";
-import {
-  cached,
-  productsKey,
-  CACHE_TTL,
-  CACHE_TAGS,
-  PRODUCT_CACHE_HEADERS,
-} from "@/lib/cache";
+import { cached, productsKey, CACHE_TTL, CACHE_TAGS, PRODUCT_CACHE_HEADERS } from "@/lib/cache";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -88,9 +82,7 @@ export async function GET(request: NextRequest) {
             on_sale: p.on_sale || false,
             sale_percentage:
               regular && sale
-                ? Math.round(
-                    ((Number(regular) - Number(sale)) / Number(regular)) * 100
-                  )
+                ? Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100)
                 : null,
             image: p.images?.[0]?.src || "",
             image_alt: p.images?.[0]?.alt || p.name,

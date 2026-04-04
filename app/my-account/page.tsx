@@ -347,7 +347,6 @@
 
 // export default withAuth(MyAccountPage);
 
-
 // app/my-account/page.tsx
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextAuthOptions";

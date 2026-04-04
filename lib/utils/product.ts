@@ -17,9 +17,7 @@ function metaDataString(
  * WooCommerce list responses often omit variable parent `regular_price` / `sale_price`.
  * Uses parent `meta_data` min-variation keys (no extra API calls).
  */
-export function enrichWcListProductPricesForCard(
-  product: WooCommerceProduct
-): WooCommerceProduct {
+export function enrichWcListProductPricesForCard(product: WooCommerceProduct): WooCommerceProduct {
   const type = product.type;
   const regStr = product.regular_price != null ? String(product.regular_price).trim() : "";
   const saleStr = product.sale_price != null ? String(product.sale_price).trim() : "";
@@ -32,15 +30,9 @@ export function enrichWcListProductPricesForCard(
 
   const meta = product.meta_data as Array<{ key?: string; value?: unknown }> | undefined;
   const regular =
-    regStr ||
-    metaDataString(
-      meta,
-      "_min_variation_regular_price",
-      "min_variation_regular_price"
-    );
+    regStr || metaDataString(meta, "_min_variation_regular_price", "min_variation_regular_price");
   const sale =
-    saleStr ||
-    metaDataString(meta, "_min_variation_sale_price", "min_variation_sale_price");
+    saleStr || metaDataString(meta, "_min_variation_sale_price", "min_variation_sale_price");
 
   return {
     ...product,
@@ -48,33 +40,33 @@ export function enrichWcListProductPricesForCard(
     sale_price: sale || product.sale_price,
   };
 }
- 
+
 export interface ProductBrandInfo {
   id?: number;
   name: string;
   slug?: string;
   image?: string;
 }
- 
+
 // Extended product type with optional brands field
 interface ProductWithBrands extends WooCommerceProduct {
   brands?: Array<
     string | { id?: number; name?: string; slug?: string; image?: { src?: string } | string }
   >;
 }
- 
+
 // Meta data item type
 interface MetaDataItem {
   key: string;
   value: unknown;
 }
- 
+
 // Product attribute type
 interface ProductAttribute {
   name: string;
   options?: string[];
 }
- 
+
 /**
  * Match a variation based on selected attributes
  */
@@ -90,7 +82,7 @@ export function matchVariation(
     ) || null
   );
 }
- 
+
 /**
  * Find brand from product_brand taxonomy or attributes
  * WooCommerce REST API may include brands in the product response similar to categories
@@ -112,7 +104,7 @@ export function findBrand(product: WooCommerceProduct): string | null {
       return firstBrand.name;
     }
   }
- 
+
   // Check meta_data for product_brand taxonomy data
   const metaData = product.meta_data as MetaDataItem[] | undefined;
   if (metaData && Array.isArray(metaData)) {
@@ -141,7 +133,7 @@ export function findBrand(product: WooCommerceProduct): string | null {
       }
     }
   }
- 
+
   // Fallback: check attributes (for backward compatibility with attribute-based brands)
   const attributes = product.attributes as ProductAttribute[] | undefined;
   const attr = (attributes || []).find(
@@ -151,10 +143,10 @@ export function findBrand(product: WooCommerceProduct): string | null {
     const opts = attr.options || [];
     if (opts.length > 0) return opts[0];
   }
- 
+
   return null;
 }
- 
+
 /**
  * Extract all brand entries from a product.
  */
@@ -168,7 +160,7 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
     seen.add(key);
     brands.push(brand);
   };
- 
+
   const productWithBrands = product as ProductWithBrands;
   if (Array.isArray(productWithBrands.brands)) {
     productWithBrands.brands.forEach((brand) => {
@@ -185,7 +177,7 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
       });
     });
   }
- 
+
   const metaData = product.meta_data as MetaDataItem[] | undefined;
   if (Array.isArray(metaData)) {
     metaData.forEach((meta) => {
@@ -218,7 +210,7 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
       }
     });
   }
- 
+
   // Fallback to attribute-based brands
   const attributes = product.attributes as ProductAttribute[] | undefined;
   (attributes || []).forEach((attr) => {
@@ -227,7 +219,7 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
       opts.forEach((opt) => addBrand({ name: opt }));
     }
   });
- 
+
   // If we still have no brands, use the first brand name
   if (brands.length === 0) {
     const single = findBrand(product);
@@ -235,17 +227,17 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
       addBrand({ name: single });
     }
   }
- 
+
   return brands;
 }
- 
+
 /**
  * Case-insensitive string equality
  */
 export function eq(a?: string, b?: string): boolean {
   return (a || "").toLowerCase() === (b || "").toLowerCase();
 }
- 
+
 /**
  * Check if all required attributes are selected
  */
@@ -280,12 +272,14 @@ export function getSalePercentageFromProduct(product: {
  * Normalize products from API/caller: accept array or { products: array } and return a plain array.
  * Used by ProductSectionCard, ProductsSlider, etc.
  */
-export function normalizeProductsList<T>(
-  raw: T[] | { products?: T[] } | null | undefined
-): T[] {
+export function normalizeProductsList<T>(raw: T[] | { products?: T[] } | null | undefined): T[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
-  if (typeof raw === "object" && "products" in raw && Array.isArray((raw as { products?: T[] }).products))
+  if (
+    typeof raw === "object" &&
+    "products" in raw &&
+    Array.isArray((raw as { products?: T[] }).products)
+  )
     return (raw as { products: T[] }).products;
   return [];
 }

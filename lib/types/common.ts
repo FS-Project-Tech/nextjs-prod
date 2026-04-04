@@ -24,7 +24,7 @@ export interface PaginationParams {
  */
 export interface SortParams {
   orderby?: string;
-  order?: 'asc' | 'desc';
+  order?: "asc" | "desc";
 }
 
 /**
@@ -44,7 +44,7 @@ export interface FilterParams {
   attribute?: string;
   min_price?: number;
   max_price?: number;
-  stock_status?: 'instock' | 'outofstock' | 'onbackorder';
+  stock_status?: "instock" | "outofstock" | "onbackorder";
 }
 
 /**
@@ -96,4 +96,3 @@ export type DeepRequired<T> = {
  * Extract promise return type
  */
 export type Awaited<T> = T extends Promise<infer U> ? U : T;
-

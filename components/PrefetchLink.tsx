@@ -5,15 +5,16 @@ import { ReactNode, useMemo } from "react";
 
 /**
  * PrefetchLink - Enhanced Link component with optimized prefetching
- * 
+ *
  * Automatically enables prefetching for critical navigation paths.
  * For dynamic routes, includes fallback handling.
- * 
+ *
  * Usage:
  *   <PrefetchLink href="/shop">Shop</PrefetchLink>
  *   <PrefetchLink href="/product/[slug]" prefetch={true}>Product</PrefetchLink>
  */
-export interface PrefetchLinkProps extends LinkProps, Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {
+export interface PrefetchLinkProps
+  extends LinkProps, Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
   children: ReactNode;
   className?: string;
   /**
@@ -40,20 +41,20 @@ export default function PrefetchLink({
     if (prefetch !== undefined) {
       return prefetch;
     }
-    
+
     // Critical paths always prefetch
     if (critical) {
       return true;
     }
-    
+
     // For dynamic routes (containing [ or [[), default to false unless critical
     const hrefString = typeof href === "string" ? href : href.pathname || "";
     const isDynamicRoute = hrefString.includes("[") || hrefString.includes("[[");
-    
+
     if (isDynamicRoute) {
       return false; // Dynamic routes need explicit prefetch={true}
     }
-    
+
     // Static routes default to true (Next.js default behavior)
     return true;
   }, [prefetch, critical, href]);
@@ -64,4 +65,3 @@ export default function PrefetchLink({
     </Link>
   );
 }
-

@@ -23,7 +23,10 @@ export default function ProductLoading() {
               <div className="h-12 rounded-xl bg-gray-200 w-full" />
             </div>
             {/* Sidebar skeleton */}
-            <div className="hidden rounded-xl bg-gray-200 lg:block lg:col-span-1" style={{ minHeight: 320 }} />
+            <div
+              className="hidden rounded-xl bg-gray-200 lg:block lg:col-span-1"
+              style={{ minHeight: 320 }}
+            />
           </div>
           {/* Feature cards row */}
           <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
@@ -36,4 +39,3 @@ export default function ProductLoading() {
     </div>
   );
 }
-

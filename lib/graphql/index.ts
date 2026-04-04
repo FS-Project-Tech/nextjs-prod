@@ -1,15 +1,11 @@
 /**
  * GraphQL Module Exports
- * 
+ *
  * Centralized exports for all GraphQL-related utilities
  */
 
 // Client
-export {
-  graphqlQuery,
-  graphqlMutation,
-  isGraphQLAvailable,
-} from './client';
+export { graphqlQuery, graphqlMutation, isGraphQLAvailable } from "./client";
 
 // Auth (Client-safe)
 export {
@@ -26,7 +22,7 @@ export {
   type RefreshResult,
   type RegisterResult,
   type CustomerResult,
-} from './auth';
+} from "./auth";
 
 // Cart (Client-safe)
 export {
@@ -41,7 +37,6 @@ export {
   type Cart,
   type CartItem,
   type AddToCartResult,
-} from './cart';
+} from "./cart";
 
 // Note: auth-server.ts exports are server-only and should be imported directly where needed.
-

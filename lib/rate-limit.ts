@@ -6,6 +6,8 @@
 interface RateLimitEntry {
   count: number;
   resetTime: number;
+  windowMs: number;
+  maxRequests: number;
 }
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
@@ -18,31 +20,44 @@ type RateLimitOverride = {
   maxRequests?: number;
 };
 
+function scopedStoreKey(identifier: string, windowMs: number, maxRequests: number): string {
+  return `${windowMs}:${maxRequests}:${identifier}`;
+}
+
+function checkRateLimitInMemory(
+  identifier: string,
+  windowMs: number,
+  maxRequests: number
+): boolean {
+  const now = Date.now();
+  const key = scopedStoreKey(identifier, windowMs, maxRequests);
+  const entry = rateLimitStore.get(key);
+
+  if (!entry || now > entry.resetTime) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetTime: now + windowMs,
+      windowMs,
+      maxRequests,
+    });
+    return true;
+  }
+
+  if (entry.count >= maxRequests) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
 /**
  * Check if request should be rate limited
  * @param identifier - Unique identifier (IP, email, etc.)
  * @returns true if allowed, false if rate limited
  */
 export function checkRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitStore.get(identifier);
-
-  if (!entry || now > entry.resetTime) {
-    // Create new entry or reset expired entry
-    rateLimitStore.set(identifier, {
-      count: 1,
-      resetTime: now + RATE_LIMIT_WINDOW,
-    });
-    return true;
-  }
-
-  if (entry.count >= MAX_REQUESTS) {
-    return false; // Rate limited
-  }
-
-  // Increment count
-  entry.count++;
-  return true;
+  return checkRateLimitInMemory(identifier, RATE_LIMIT_WINDOW, MAX_REQUESTS);
 }
 
 /**
@@ -59,9 +74,11 @@ export async function checkRateLimitSafe(
   const windowMs = override.windowMs ?? RATE_LIMIT_WINDOW;
   const maxRequests = override.maxRequests ?? MAX_REQUESTS;
 
+  const distributedKey = scopedStoreKey(identifier, windowMs, maxRequests);
+
   try {
     const { checkRateLimitDistributed } = await import("./distributed-rate-limit");
-    const distributed = await checkRateLimitDistributed(identifier, {
+    const distributed = await checkRateLimitDistributed(distributedKey, {
       windowSeconds: Math.ceil(windowMs / 1000),
       maxRequests,
     });
@@ -70,31 +87,40 @@ export async function checkRateLimitSafe(
     // ignore and fall back to in-memory
   }
 
-  const ok = checkRateLimit(identifier);
-  const remaining = getRemainingRequests(identifier);
+  const ok = checkRateLimitInMemory(identifier, windowMs, maxRequests);
+  const remaining = getRemainingRequestsScoped(identifier, windowMs, maxRequests);
   const resetSeconds = Math.ceil(windowMs / 1000);
   return ok
     ? { ok: true, limit: maxRequests, remaining, resetSeconds }
     : { ok: false, limit: maxRequests, remaining: 0, resetSeconds };
 }
 
+function getRemainingRequestsScoped(
+  identifier: string,
+  windowMs: number,
+  maxRequests: number
+): number {
+  const key = scopedStoreKey(identifier, windowMs, maxRequests);
+  const entry = rateLimitStore.get(key);
+  if (!entry) return maxRequests;
+
+  const now = Date.now();
+  if (now > entry.resetTime) return maxRequests;
+
+  return Math.max(0, maxRequests - entry.count);
+}
+
 /**
  * Get remaining requests for identifier
  */
 export function getRemainingRequests(identifier: string): number {
-  const entry = rateLimitStore.get(identifier);
-  if (!entry) return MAX_REQUESTS;
-  
-  const now = Date.now();
-  if (now > entry.resetTime) return MAX_REQUESTS;
-  
-  return Math.max(0, MAX_REQUESTS - entry.count);
+  return getRemainingRequestsScoped(identifier, RATE_LIMIT_WINDOW, MAX_REQUESTS);
 }
 
 /**
  * Cleanup expired entries periodically
  */
-if (typeof setInterval !== 'undefined') {
+if (typeof setInterval !== "undefined") {
   setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of rateLimitStore.entries()) {
@@ -104,4 +130,3 @@ if (typeof setInterval !== 'undefined') {
     }
   }, 60 * 1000); // Run every minute
 }
-

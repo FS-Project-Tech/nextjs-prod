@@ -8,12 +8,11 @@
  * This is client-safe and can be used in both server and client components
  */
 export function getWpBaseUrl(): string {
-  const apiUrl = process.env.WC_API_URL || '';
+  const apiUrl = process.env.WC_API_URL || "";
   try {
     const url = new URL(apiUrl);
     return `${url.protocol}//${url.host}`;
   } catch {
-    return '';
+    return "";
   }
 }
-

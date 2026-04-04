@@ -23,7 +23,9 @@ export interface UnifiedCategoriesPayload {
   childrenByParentId: Record<string, UnifiedCategory[]>;
 }
 
-function normalizeCategory(raw: WooCommerceCategory & { image?: { src?: string; alt?: string } }): UnifiedCategory {
+function normalizeCategory(
+  raw: WooCommerceCategory & { image?: { src?: string; alt?: string } }
+): UnifiedCategory {
   return {
     id: raw.id,
     name: raw.name,
@@ -31,9 +33,7 @@ function normalizeCategory(raw: WooCommerceCategory & { image?: { src?: string; 
     parent: typeof raw.parent === "number" ? raw.parent : Number(raw.parent) || 0,
     count: raw.count ?? 0,
     description: raw.description,
-    image: raw.image?.src
-      ? { src: raw.image.src, alt: raw.image.alt }
-      : null,
+    image: raw.image?.src ? { src: raw.image.src, alt: raw.image.alt } : null,
   };
 }
 
@@ -68,9 +68,11 @@ export function buildUnifiedCategoriesPayload(
 /**
  * Single WooCommerce-backed category load for the whole app (memory cache + tags).
  */
-export async function getUnifiedCategories(options: {
-  skipCache?: boolean;
-} = {}): Promise<UnifiedCategoriesPayload> {
+export async function getUnifiedCategories(
+  options: {
+    skipCache?: boolean;
+  } = {}
+): Promise<UnifiedCategoriesPayload> {
   return cached(
     UNIFIED_CACHE_KEY,
     async () => {

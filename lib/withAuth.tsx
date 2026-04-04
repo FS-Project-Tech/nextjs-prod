@@ -1,13 +1,13 @@
 "use client";
 
-import { Component, useEffect, useState, useRef, ReactNode, ErrorInfo, useMemo } from 'react';
+import { Component, useEffect, useState, useRef, ReactNode, ErrorInfo, useMemo } from "react";
 
 /** Only show auth loading UI if verification takes longer than this (ms). */
 const AUTH_LOADING_DELAY_MS = 400;
-import { useRouter, usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import type { AuthStatus } from '@/contexts/AuthContext';
-import { sessionToAppUser, type AppSessionUser } from '@/lib/next-auth-user';
+import { useRouter, usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import type { AuthStatus } from "@/contexts/AuthContext";
+import { sessionToAppUser, type AppSessionUser } from "@/lib/next-auth-user";
 
 export type User = AppSessionUser;
 
@@ -47,7 +47,7 @@ class AuthErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Auth Error Boundary caught an error:', error, errorInfo);
+    console.error("Auth Error Boundary caught an error:", error, errorInfo);
     this.props.onError?.(error);
   }
 
@@ -71,11 +71,10 @@ class AuthErrorBoundary extends Component<
                 />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Something went wrong
-            </h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
             <p className="text-gray-600 mb-4">
-              {this.state.error?.message || 'An unexpected error occurred. Please try refreshing the page.'}
+              {this.state.error?.message ||
+                "An unexpected error occurred. Please try refreshing the page."}
             </p>
             <button
               onClick={() => {
@@ -98,7 +97,7 @@ class AuthErrorBoundary extends Component<
 /**
  * Loading Spinner Component
  */
-function AuthLoadingSpinner({ message = 'Verifying authentication...' }: { message?: string }) {
+function AuthLoadingSpinner({ message = "Verifying authentication..." }: { message?: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="text-center">
@@ -111,11 +110,11 @@ function AuthLoadingSpinner({ message = 'Verifying authentication...' }: { messa
 
 /**
  * Higher-Order Component for Protected Routes
- * 
+ *
  * @param Component - The component to protect
  * @param options - Configuration options
  * @returns Protected component with authentication check
- * 
+ *
  * Features:
  * - Uses NextAuth useSession() (single /api/auth/session on load)
  * - Shows loading spinner during verification
@@ -128,35 +127,30 @@ export default function withAuth<P extends object>(
   Component: React.ComponentType<P & WithAuthProps>,
   options: WithAuthOptions = {}
 ) {
-  const {
-    redirectTo = '/login',
-    requireRoles = [],
-    fallback,
-    showLoading = true,
-  } = options;
+  const { redirectTo = "/login", requireRoles = [], fallback, showLoading = true } = options;
 
   return function AuthenticatedComponent(props: P) {
     const router = useRouter();
     const pathname = usePathname();
     const { data: session, status: naStatus } = useSession();
     const user = useMemo(() => {
-      if (naStatus !== 'authenticated' || !session) return null;
+      if (naStatus !== "authenticated" || !session) return null;
       return sessionToAppUser(session);
     }, [session, naStatus]);
     const status: AuthStatus =
-      naStatus === 'loading'
-        ? 'loading'
-        : naStatus === 'authenticated' && user
-          ? 'authenticated'
-          : 'unauthenticated';
-    const isLoading = naStatus === 'loading';
+      naStatus === "loading"
+        ? "loading"
+        : naStatus === "authenticated" && user
+          ? "authenticated"
+          : "unauthenticated";
+    const isLoading = naStatus === "loading";
     const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
     const [roleError, setRoleError] = useState<string | null>(null);
     const redirectedRef = useRef(false);
     const [showLoadingUI, setShowLoadingUI] = useState(false);
     const loadingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const isAuthPending = status === 'loading' || isLoading || !hasCheckedAuth;
+    const isAuthPending = status === "loading" || isLoading || !hasCheckedAuth;
 
     // Only show "Verifying authentication..." after a delay (avoids flash when auth is fast)
     useEffect(() => {
@@ -187,7 +181,7 @@ export default function withAuth<P extends object>(
         return;
       }
 
-      if (status === 'loading' || isLoading) {
+      if (status === "loading" || isLoading) {
         return;
       }
 
@@ -195,7 +189,7 @@ export default function withAuth<P extends object>(
       setHasCheckedAuth(true);
 
       // Redirect if not authenticated
-      if (status === 'unauthenticated' || !user) {
+      if (status === "unauthenticated" || !user) {
         redirectedRef.current = true;
         const currentPath = pathname || window.location.pathname;
         const redirectUrl = `${redirectTo}?next=${encodeURIComponent(currentPath)}`;
@@ -205,14 +199,12 @@ export default function withAuth<P extends object>(
 
       // Check role-based access if required
       if (requireRoles.length > 0 && user.roles) {
-        const hasRequiredRole = requireRoles.some((role) =>
-          user.roles.includes(role)
-        );
+        const hasRequiredRole = requireRoles.some((role) => user.roles.includes(role));
 
         if (!hasRequiredRole) {
-          setRoleError('You do not have permission to access this page.');
+          setRoleError("You do not have permission to access this page.");
           redirectedRef.current = true;
-          router.replace('/');
+          router.replace("/");
           return;
         }
       }
@@ -249,12 +241,10 @@ export default function withAuth<P extends object>(
                 />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Access Denied
-            </h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
             <p className="text-gray-600 mb-6">{roleError}</p>
             <button
-              onClick={() => router.replace('/')}
+              onClick={() => router.replace("/")}
               className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors"
             >
               Go to Home
@@ -265,7 +255,7 @@ export default function withAuth<P extends object>(
     }
 
     // Check authentication status - if not authenticated, show nothing (redirect is happening)
-    if (status === 'unauthenticated' || !user) {
+    if (status === "unauthenticated" || !user) {
       return null;
     }
 
@@ -288,21 +278,21 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
   const pathname = usePathname();
   const { data: session, status: naStatus } = useSession();
   const user = useMemo(() => {
-    if (naStatus !== 'authenticated' || !session) return null;
+    if (naStatus !== "authenticated" || !session) return null;
     return sessionToAppUser(session);
   }, [session, naStatus]);
   const status: AuthStatus =
-    naStatus === 'loading'
-      ? 'loading'
-      : naStatus === 'authenticated' && user
-        ? 'authenticated'
-        : 'unauthenticated';
-  const isLoading = naStatus === 'loading';
+    naStatus === "loading"
+      ? "loading"
+      : naStatus === "authenticated" && user
+        ? "authenticated"
+        : "unauthenticated";
+  const isLoading = naStatus === "loading";
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const redirectedRef = useRef(false);
 
-  const { redirectTo = '/login', requireRoles = [] } = options;
+  const { redirectTo = "/login", requireRoles = [] } = options;
 
   useEffect(() => {
     // Skip if already redirected
@@ -311,7 +301,7 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
     }
 
     // Wait for auth to finish loading
-    if (status === 'loading' || isLoading) {
+    if (status === "loading" || isLoading) {
       return;
     }
 
@@ -319,7 +309,7 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
     setHasCheckedAuth(true);
 
     // Redirect if not authenticated
-    if (status === 'unauthenticated' || !user) {
+    if (status === "unauthenticated" || !user) {
       redirectedRef.current = true;
       const currentPath = pathname || window.location.pathname;
       router.replace(`${redirectTo}?next=${encodeURIComponent(currentPath)}`);
@@ -330,9 +320,9 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
     if (requireRoles.length > 0 && user.roles) {
       const hasRole = requireRoles.some((role) => user.roles.includes(role));
       if (!hasRole) {
-        setError('Insufficient permissions');
+        setError("Insufficient permissions");
         redirectedRef.current = true;
-        router.replace('/');
+        router.replace("/");
         return;
       }
     }
@@ -340,9 +330,8 @@ export function useProtectedPage(options: WithAuthOptions = {}) {
 
   return {
     user,
-    loading: status === 'loading' || isLoading || !hasCheckedAuth,
+    loading: status === "loading" || isLoading || !hasCheckedAuth,
     error,
-    isAuthenticated: status === 'authenticated' && !!user && hasCheckedAuth,
+    isAuthenticated: status === "authenticated" && !!user && hasCheckedAuth,
   };
 }
-

@@ -63,13 +63,10 @@ export default function RecentlyViewedSection() {
       try {
         setLoading(true);
 
-        const res = await fetch(
-          `/api/products-by-ids?ids=${ids.join(",")}`,
-          {
-            signal: controller.signal,
-            cache: "no-store",
-          }
-        );
+        const res = await fetch(`/api/products-by-ids?ids=${ids.join(",")}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
 
         if (!res.ok) throw new Error("Failed to fetch products");
 

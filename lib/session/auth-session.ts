@@ -11,7 +11,7 @@ import {
   SessionErrorCode,
   SessionValidationResult,
   DEFAULT_SESSION_CONFIG,
-} from './types';
+} from "./types";
 import {
   createSession,
   updateSession,
@@ -24,18 +24,18 @@ import {
   generateFingerprint,
   getTokenExpiry,
   shouldRefreshToken,
-} from './manager';
-import { secureFetch } from './secure-fetch';
-import { getWpBaseUrl } from '../wp-utils';
+} from "./manager";
+import { secureFetch } from "./secure-fetch";
+import { getWpBaseUrl } from "../wp-utils";
 
 /**
  * WordPress JWT endpoints
  */
 const WP_ENDPOINTS = {
-  token: '/wp-json/jwt-auth/v1/token',
-  validate: '/wp-json/jwt-auth/v1/token/validate',
-  refresh: '/wp-json/jwt-auth/v1/token/refresh',
-  user: '/wp-json/wp/v2/users/me',
+  token: "/wp-json/jwt-auth/v1/token",
+  validate: "/wp-json/jwt-auth/v1/token/validate",
+  refresh: "/wp-json/jwt-auth/v1/token/refresh",
+  user: "/wp-json/wp/v2/users/me",
 };
 
 /**
@@ -62,90 +62,89 @@ export async function authenticateWithCredentials(
     return {
       success: false,
       session: null,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   // Validate inputs
   if (!username || !password) {
     return {
       success: false,
       session: null,
-      error: 'Username and password are required',
+      error: "Username and password are required",
     };
   }
-  
+
   try {
     const response = await fetch(`${wpBase}${WP_ENDPOINTS.token}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
       body: JSON.stringify({ username, password }),
-      cache: 'no-store',
+      cache: "no-store",
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData?.message || errorData?.error || 'Authentication failed';
-      
+      const errorMessage = errorData?.message || errorData?.error || "Authentication failed";
+
       // Don't expose specific error details in production
-      const safeMessage = process.env.NODE_ENV === 'development'
-        ? errorMessage
-        : 'Invalid username or password';
-      
+      const safeMessage =
+        process.env.NODE_ENV === "development" ? errorMessage : "Invalid username or password";
+
       return {
         success: false,
         session: null,
         error: safeMessage,
       };
     }
-    
+
     const data = await response.json();
-    
+
     if (!data.token) {
       return {
         success: false,
         session: null,
-        error: 'No token received from server',
+        error: "No token received from server",
       };
     }
-    
+
     // Extract user data from JWT response
     const user: SessionUser = {
       id: data.user_id || 0,
-      email: data.user_email || '',
-      name: data.user_display_name || data.user_nicename || '',
-      username: data.user_nicename || '',
+      email: data.user_email || "",
+      name: data.user_display_name || data.user_nicename || "",
+      username: data.user_nicename || "",
       roles: Array.isArray(data.roles) ? data.roles : [],
     };
-    
+
     // Create session
     const session = createSession(SessionType.AUTH, {
       token: data.token,
       user,
       fingerprint: options.fingerprint,
     });
-    
+
     // Add refreshToken separately if it exists
     if (data.refresh_token) {
       (session as any).refreshToken = data.refresh_token;
     }
-    
+
     // Cache session
     cacheSession(session);
-    
+
     return {
       success: true,
       session,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Authentication failed';
+    const message = error instanceof Error ? error.message : "Authentication failed";
     return {
       success: false,
       session: null,
-      error: process.env.NODE_ENV === 'development' ? message : 'Authentication failed',
+      error: process.env.NODE_ENV === "development" ? message : "Authentication failed",
     };
   }
 }
@@ -153,9 +152,7 @@ export async function authenticateWithCredentials(
 /**
  * Validate token with WordPress
  */
-export async function validateAuthToken(
-  token: string
-): Promise<SessionValidationResult> {
+export async function validateAuthToken(token: string): Promise<SessionValidationResult> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
     return {
@@ -165,12 +162,12 @@ export async function validateAuthToken(
       expiresIn: 0,
       error: createSessionError(
         SessionErrorCode.VALIDATION_FAILED,
-        'WordPress URL not configured',
+        "WordPress URL not configured",
         false
       ),
     };
   }
-  
+
   // First check token expiry locally
   const expiry = getTokenExpiry(token);
   if (expiry && Date.now() >= expiry) {
@@ -179,33 +176,29 @@ export async function validateAuthToken(
       status: SessionStatus.EXPIRED,
       shouldRefresh: true,
       expiresIn: 0,
-      error: createSessionError(
-        SessionErrorCode.TOKEN_EXPIRED,
-        'Token has expired',
-        true
-      ),
+      error: createSessionError(SessionErrorCode.TOKEN_EXPIRED, "Token has expired", true),
     };
   }
-  
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
+
     const response = await fetch(`${wpBase}${WP_ENDPOINTS.validate}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      cache: 'no-store',
+      cache: "no-store",
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       const status = response.status;
-      
+
       if (status === 401 || status === 403) {
         return {
           isValid: false,
@@ -214,12 +207,12 @@ export async function validateAuthToken(
           expiresIn: 0,
           error: createSessionError(
             SessionErrorCode.TOKEN_INVALID,
-            'Token is invalid or revoked',
+            "Token is invalid or revoked",
             status === 401
           ),
         };
       }
-      
+
       return {
         isValid: false,
         status: SessionStatus.ERROR,
@@ -232,9 +225,9 @@ export async function validateAuthToken(
         ),
       };
     }
-    
+
     const expiresIn = expiry ? expiry - Date.now() : DEFAULT_SESSION_CONFIG.sessionTimeout;
-    
+
     return {
       isValid: true,
       status: SessionStatus.VALID,
@@ -246,7 +239,7 @@ export async function validateAuthToken(
     };
   } catch (error) {
     // Handle timeout gracefully
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && error.name === "AbortError") {
       return {
         isValid: false,
         status: SessionStatus.ERROR,
@@ -254,12 +247,12 @@ export async function validateAuthToken(
         expiresIn: 0,
         error: createSessionError(
           SessionErrorCode.NETWORK_ERROR,
-          'Validation request timed out',
+          "Validation request timed out",
           true
         ),
       };
     }
-    
+
     return {
       isValid: false,
       status: SessionStatus.ERROR,
@@ -267,7 +260,7 @@ export async function validateAuthToken(
       expiresIn: 0,
       error: createSessionError(
         SessionErrorCode.NETWORK_ERROR,
-        error instanceof Error ? error.message : 'Validation failed',
+        error instanceof Error ? error.message : "Validation failed",
         true
       ),
     };
@@ -277,9 +270,7 @@ export async function validateAuthToken(
 /**
  * Refresh authentication token
  */
-export async function refreshAuthToken(
-  session: SessionData
-): Promise<{
+export async function refreshAuthToken(session: SessionData): Promise<{
   success: boolean;
   session: SessionData | null;
   error?: string;
@@ -288,10 +279,10 @@ export async function refreshAuthToken(
     return {
       success: false,
       session: null,
-      error: 'No token to refresh',
+      error: "No token to refresh",
     };
   }
-  
+
   // Check for concurrent refresh
   const existingRefresh = refreshLocks.get(session.id);
   if (existingRefresh) {
@@ -299,20 +290,20 @@ export async function refreshAuthToken(
     return {
       success: !!result,
       session: result,
-      error: result ? undefined : 'Refresh failed',
+      error: result ? undefined : "Refresh failed",
     };
   }
-  
+
   // Create refresh promise
   const refreshPromise = performTokenRefresh(session);
   refreshLocks.set(session.id, refreshPromise);
-  
+
   try {
     const result = await refreshPromise;
     return {
       success: !!result,
       session: result,
-      error: result ? undefined : 'Token refresh failed',
+      error: result ? undefined : "Token refresh failed",
     };
   } finally {
     refreshLocks.delete(session.id);
@@ -322,26 +313,24 @@ export async function refreshAuthToken(
 /**
  * Perform the actual token refresh
  */
-async function performTokenRefresh(
-  session: SessionData
-): Promise<SessionData | null> {
+async function performTokenRefresh(session: SessionData): Promise<SessionData | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase || !session.token) {
     return null;
   }
-  
+
   try {
     // Some JWT plugins support refresh token endpoint
     if (session.refreshToken) {
       const response = await fetch(`${wpBase}${WP_ENDPOINTS.refresh}`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${session.refreshToken}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.refreshToken}`,
+          "Content-Type": "application/json",
         },
-        cache: 'no-store',
+        cache: "no-store",
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.token) {
@@ -349,34 +338,35 @@ async function performTokenRefresh(
             token: data.token,
             refreshToken: data.refresh_token || session.refreshToken,
             status: SessionStatus.VALID,
-            expiresAt: getTokenExpiry(data.token) || Date.now() + DEFAULT_SESSION_CONFIG.sessionTimeout,
+            expiresAt:
+              getTokenExpiry(data.token) || Date.now() + DEFAULT_SESSION_CONFIG.sessionTimeout,
           });
-          
+
           cacheSession(refreshedSession);
           return refreshedSession;
         }
       }
     }
-    
+
     // Fallback: Re-validate existing token
     // Some JWT implementations extend token validity on validation
     const validation = await validateAuthToken(session.token);
-    
+
     if (validation.isValid) {
       const validatedSession = updateSession(session, {
         status: SessionStatus.VALID,
         expiresAt: Date.now() + validation.expiresIn,
       });
-      
+
       cacheSession(validatedSession);
       return validatedSession;
     }
-    
+
     // Token is truly expired/invalid
     return null;
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Token refresh failed:', error);
+    if (process.env.NODE_ENV === "development") {
+      console.debug("Token refresh failed:", error);
     }
     return null;
   }
@@ -385,51 +375,49 @@ async function performTokenRefresh(
 /**
  * Get user data from WordPress
  */
-export async function fetchUserData(
-  token: string
-): Promise<SessionUser | null> {
+export async function fetchUserData(token: string): Promise<SessionUser | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
     return null;
   }
-  
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
+
     const response = await fetch(`${wpBase}${WP_ENDPOINTS.user}`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      cache: 'no-store',
+      cache: "no-store",
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       return null;
     }
-    
+
     const user = await response.json();
-    
+
     if (!user || !user.id) {
       return null;
     }
-    
+
     return {
       id: user.id,
-      email: user.email || '',
-      name: user.name || user.display_name || '',
-      username: user.slug || user.user_login || user.nicename || '',
+      email: user.email || "",
+      name: user.name || user.display_name || "",
+      username: user.slug || user.user_login || user.nicename || "",
       roles: user.roles || [],
-      avatarUrl: user.avatar_urls?.['96'] || user.avatar_urls?.['48'],
+      avatarUrl: user.avatar_urls?.["96"] || user.avatar_urls?.["48"],
     };
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Failed to fetch user data:', error);
+    if (process.env.NODE_ENV === "development") {
+      console.debug("Failed to fetch user data:", error);
     }
     return null;
   }
@@ -451,7 +439,7 @@ export async function validateAndRefreshSession(
 }> {
   // Validate session structure
   const validation = validateSession(session, options);
-  
+
   if (!validation.isValid) {
     // Check if we should try to refresh
     if (validation.shouldRefresh && session.token) {
@@ -463,18 +451,18 @@ export async function validateAndRefreshSession(
         };
       }
     }
-    
+
     return {
       valid: false,
       session: null,
-      error: validation.error?.message || 'Session invalid',
+      error: validation.error?.message || "Session invalid",
     };
   }
-  
+
   // Check if token needs server validation
   if (session.token) {
     const tokenValidation = await validateAuthToken(session.token);
-    
+
     if (!tokenValidation.isValid) {
       if (tokenValidation.shouldRefresh) {
         const refreshResult = await refreshAuthToken(session);
@@ -485,14 +473,14 @@ export async function validateAndRefreshSession(
           };
         }
       }
-      
+
       return {
         valid: false,
         session: null,
-        error: tokenValidation.error?.message || 'Token validation failed',
+        error: tokenValidation.error?.message || "Token validation failed",
       };
     }
-    
+
     // Token is valid, check if refresh is needed soon
     if (tokenValidation.shouldRefresh) {
       // Refresh in background (don't await)
@@ -500,19 +488,19 @@ export async function validateAndRefreshSession(
         // Ignore refresh errors
       });
     }
-    
+
     // Update session validation timestamp
     const validatedSession = updateSession(session, {
       lastValidated: Date.now(),
       expiresAt: Date.now() + tokenValidation.expiresIn,
     });
-    
+
     return {
       valid: true,
       session: validatedSession,
     };
   }
-  
+
   return {
     valid: true,
     session,
@@ -525,10 +513,10 @@ export async function validateAndRefreshSession(
 export async function logoutSession(session: SessionData): Promise<void> {
   // Expire the session
   expireSession(session);
-  
+
   // Remove from cache
   invalidateCachedSession(session.id);
-  
+
   // Note: JWT tokens can't be truly invalidated server-side
   // without a token blacklist. The token will remain valid
   // until it expires naturally. For true invalidation,
@@ -546,28 +534,27 @@ export async function createSessionFromToken(
 ): Promise<SessionData | null> {
   // Validate token first
   const validation = await validateAuthToken(token);
-  
+
   if (!validation.isValid) {
     return null;
   }
-  
+
   // Fetch user data
   const user = await fetchUserData(token);
-  
+
   if (!user) {
     return null;
   }
-  
+
   // Create session
   const session = createSession(SessionType.AUTH, {
     token,
     user,
     fingerprint: options.fingerprint,
   });
-  
+
   // Cache session
   cacheSession(session);
-  
+
   return session;
 }
-

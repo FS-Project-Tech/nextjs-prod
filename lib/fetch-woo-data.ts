@@ -1,6 +1,6 @@
 /**
  * WooCommerce API Optimization Utility
- * 
+ *
  * Features:
  * - Batched API requests
  * - Revalidation support (revalidate key)
@@ -9,30 +9,30 @@
  * - Fallback loading states
  */
 
-import { unstable_cache } from 'next/cache';
-import wcAPI, { WooCommerceProduct, WooCommerceCategory } from './woocommerce';
-import { getCachedResponse, generateCacheKey } from './api-cache';
+import { unstable_cache } from "next/cache";
+import wcAPI, { WooCommerceProduct, WooCommerceCategory } from "./woocommerce";
+import { getCachedResponse, generateCacheKey } from "./api-cache";
 
 // Redis client (optional - only if REDIS_URL is provided)
 let redisClient: any = null;
 
-if (process.env.REDIS_URL && typeof window === 'undefined') {
+if (process.env.REDIS_URL && typeof window === "undefined") {
   try {
     // Dynamically import Redis client only if REDIS_URL is set
     // Install: npm install ioredis
-    const Redis = require('ioredis');
+    const Redis = require("ioredis");
     redisClient = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true,
     });
-    
-    redisClient.on('error', (err: Error) => {
-      console.warn('Redis connection error:', err.message);
+
+    redisClient.on("error", (err: Error) => {
+      console.warn("Redis connection error:", err.message);
       redisClient = null; // Fallback to in-memory cache
     });
   } catch (error) {
-    console.warn('Redis not available, using in-memory cache:', error);
+    console.warn("Redis not available, using in-memory cache:", error);
   }
 }
 
@@ -54,23 +54,19 @@ class RequestBatcher {
   /**
    * Batch multiple requests together
    */
-  async batch<T>(
-    key: string,
-    fetchFn: () => Promise<T>,
-    groupKey?: string
-  ): Promise<T> {
+  async batch<T>(key: string, fetchFn: () => Promise<T>, groupKey?: string): Promise<T> {
     const batchKey = groupKey || key;
-    
+
     return new Promise<T>((resolve, reject) => {
       if (!this.batchQueue.has(batchKey)) {
         this.batchQueue.set(batchKey, []);
-        
+
         // Process batch after timeout
         setTimeout(() => {
           this.processBatch<T>(batchKey);
         }, this.batchTimeout);
       }
-      
+
       const queue = this.batchQueue.get(batchKey)!;
       queue.push({
         key,
@@ -78,7 +74,7 @@ class RequestBatcher {
         resolve,
         reject,
       });
-      
+
       // Process immediately if batch is full
       if (queue.length >= this.maxBatchSize) {
         this.processBatch<T>(batchKey);
@@ -98,13 +94,13 @@ class RequestBatcher {
 
     // Execute all requests in parallel
     const promises = queue.map((req) => req.promise);
-    
+
     try {
       const results = await Promise.allSettled(promises);
-      
+
       results.forEach((result, index) => {
         const req = queue[index];
-        if (result.status === 'fulfilled') {
+        if (result.status === "fulfilled") {
           req.resolve(result.value);
         } else {
           req.reject(result.reason);
@@ -136,16 +132,16 @@ interface CacheConfig {
  */
 async function getRedisCache<T>(key: string): Promise<T | null> {
   if (!redisClient) return null;
-  
+
   try {
     const cached = await redisClient.get(key);
     if (cached) {
       return JSON.parse(cached) as T;
     }
   } catch (error) {
-    console.warn('Redis get error:', error);
+    console.warn("Redis get error:", error);
   }
-  
+
   return null;
 }
 
@@ -154,12 +150,12 @@ async function getRedisCache<T>(key: string): Promise<T | null> {
  */
 async function setRedisCache<T>(key: string, data: T, ttl: number): Promise<void> {
   if (!redisClient) return;
-  
+
   try {
     const serialized = JSON.stringify(data);
     await redisClient.setex(key, Math.floor(ttl / 1000), serialized);
   } catch (error) {
-    console.warn('Redis set error:', error);
+    console.warn("Redis set error:", error);
   }
 }
 
@@ -194,12 +190,12 @@ export async function fetchWooData<T>(
       return response.data as T;
     } catch (error) {
       console.error(`Error fetching ${endpoint}:`, error);
-      
+
       // Return fallback if provided
       if (fallback !== undefined) {
         return fallback;
       }
-      
+
       throw error;
     }
   };
@@ -218,16 +214,16 @@ export async function fetchWooData<T>(
   }
 
   // Use Next.js unstable_cache for server-side caching with revalidation
-  if (typeof window === 'undefined' && cache.revalidate) {
+  if (typeof window === "undefined" && cache.revalidate) {
     const cachedFn = unstable_cache(
       async () => {
         const data = await fetchFn();
-        
+
         // Also cache in Redis if available
         if (redisClient && cache.ttl) {
           await setRedisCache(cacheKey, data, cache.ttl);
         }
-        
+
         return data;
       },
       [cacheKey],
@@ -241,17 +237,17 @@ export async function fetchWooData<T>(
   }
 
   // Fallback to in-memory cache (server-side) or direct fetch (client-side)
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return getCachedResponse(
       cacheKey,
       async () => {
         const data = await fetchFn();
-        
+
         // Also cache in Redis if available
         if (redisClient && cache.ttl) {
           await setRedisCache(cacheKey, data, cache.ttl);
         }
-        
+
         return data;
       },
       cache.ttl
@@ -275,17 +271,17 @@ export async function fetchProductsBatch(
 
   // WooCommerce supports include parameter for batch fetching
   return fetchWooData<WooCommerceProduct[]>(
-    '/products',
-    { include: productIds.join(','), stock_status: 'instock' },
+    "/products",
+    { include: productIds.join(","), stock_status: "instock" },
     {
       cache: {
         revalidate: 300,
-        tags: ['products'],
+        tags: ["products"],
         ttl: 5 * 60 * 1000,
         ...options?.cache,
       },
       batch: true,
-      batchGroup: 'products-batch',
+      batchGroup: "products-batch",
       fallback: options?.fallback || [],
     }
   );
@@ -303,17 +299,17 @@ export async function fetchCategoriesBatch(
   }
 
   return fetchWooData<WooCommerceCategory[]>(
-    '/products/categories',
-    { include: categoryIds.join(',') },
+    "/products/categories",
+    { include: categoryIds.join(",") },
     {
       cache: {
         revalidate: 600,
-        tags: ['categories'],
+        tags: ["categories"],
         ttl: 10 * 60 * 1000,
         ...options?.cache,
       },
       batch: true,
-      batchGroup: 'categories-batch',
+      batchGroup: "categories-batch",
       fallback: options?.fallback || [],
     }
   );
@@ -340,12 +336,12 @@ export async function prefetchProducts(
   try {
     // Fetch first page to get total count
     const firstPage = await fetchWooData<WooCommerceProduct[]>(
-      '/products',
-      { ...params, per_page: perPage, page: 1, stock_status: 'instock' },
+      "/products",
+      { ...params, per_page: perPage, page: 1, stock_status: "instock" },
       {
         cache: {
           revalidate: 300,
-          tags: ['products', 'prefetch'],
+          tags: ["products", "prefetch"],
           ttl: 5 * 60 * 1000,
         },
       }
@@ -362,12 +358,12 @@ export async function prefetchProducts(
     if (pagesToFetch > 1) {
       const pagePromises = Array.from({ length: pagesToFetch - 1 }, (_, i) =>
         fetchWooData<WooCommerceProduct[]>(
-          '/products',
-          { ...params, per_page: perPage, page: i + 2, stock_status: 'instock' },
+          "/products",
+          { ...params, per_page: perPage, page: i + 2, stock_status: "instock" },
           {
             cache: {
               revalidate: 300,
-              tags: ['products', 'prefetch'],
+              tags: ["products", "prefetch"],
               ttl: 5 * 60 * 1000,
             },
           }
@@ -376,13 +372,13 @@ export async function prefetchProducts(
 
       const results = await Promise.allSettled(pagePromises);
       results.forEach((result) => {
-        if (result.status === 'fulfilled') {
+        if (result.status === "fulfilled") {
           allProducts.push(...result.value);
         }
       });
     }
   } catch (error) {
-    console.error('Error prefetching products:', error);
+    console.error("Error prefetching products:", error);
   }
 
   return allProducts;
@@ -391,12 +387,13 @@ export async function prefetchProducts(
 /**
  * Prefetch categories for ISR (build time)
  */
-export async function prefetchCategories(
-  options?: { hide_empty?: boolean; parent?: number }
-): Promise<WooCommerceCategory[]> {
+export async function prefetchCategories(options?: {
+  hide_empty?: boolean;
+  parent?: number;
+}): Promise<WooCommerceCategory[]> {
   try {
     return await fetchWooData<WooCommerceCategory[]>(
-      '/products/categories',
+      "/products/categories",
       {
         per_page: 100,
         hide_empty: options?.hide_empty ?? true,
@@ -405,13 +402,13 @@ export async function prefetchCategories(
       {
         cache: {
           revalidate: 600,
-          tags: ['categories', 'prefetch'],
+          tags: ["categories", "prefetch"],
           ttl: 10 * 60 * 1000,
         },
       }
     );
   } catch (error) {
-    console.error('Error prefetching categories:', error);
+    console.error("Error prefetching categories:", error);
     return [];
   }
 }
@@ -422,18 +419,18 @@ export async function prefetchCategories(
 export async function revalidateCache(tags: string[]): Promise<void> {
   // Next.js revalidation is handled automatically via cache tags
   // This function is for manual revalidation if needed
-  
-  if (typeof window === 'undefined') {
+
+  if (typeof window === "undefined") {
     // Server-side: clear in-memory cache entries with matching tags
     // Note: This is a simplified implementation
     // In production, you'd want to track which cache keys belong to which tags
-    
+
     if (redisClient) {
       try {
         // If using Redis, you can implement tag-based invalidation
         // This requires maintaining a tag-to-keys mapping
       } catch (error) {
-        console.warn('Redis revalidation error:', error);
+        console.warn("Redis revalidation error:", error);
       }
     }
   }
@@ -451,7 +448,7 @@ export function getRedisClient() {
  */
 export async function checkRedisHealth(): Promise<boolean> {
   if (!redisClient) return false;
-  
+
   try {
     await redisClient.ping();
     return true;
@@ -459,4 +456,3 @@ export async function checkRedisHealth(): Promise<boolean> {
     return false;
   }
 }
-

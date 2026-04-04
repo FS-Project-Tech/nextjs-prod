@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchCategoryBySlug } from "@/lib/woocommerce";
-import { getUnifiedCategories, findCategoryBySlug, getChildrenForParent } from "@/lib/categories-unified";
+import {
+  getUnifiedCategories,
+  findCategoryBySlug,
+  getChildrenForParent,
+} from "@/lib/categories-unified";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import CategorySubcategoryBook from "@/components/CategorySubcategoryBook";
 

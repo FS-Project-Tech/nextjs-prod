@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUnifiedCategories, findCategoryBySlug, getChildrenForParent, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
+import {
+  getUnifiedCategories,
+  findCategoryBySlug,
+  getChildrenForParent,
+  getRootCategoriesNonEmpty,
+} from "@/lib/categories-unified";
 import { cached, CACHE_TTL, CACHE_TAGS } from "@/lib/cache";
 
 /**
@@ -21,7 +26,9 @@ export async function GET(request: NextRequest) {
         if (categorySlug) {
           const parent = findCategoryBySlug(unified, categorySlug);
           if (!parent) {
-            return { categories: [] as { id: number; name: string; slug: string; count: number }[] };
+            return {
+              categories: [] as { id: number; name: string; slug: string; count: number }[],
+            };
           }
           const children = getChildrenForParent(unified, parent.id, { hideEmpty: true });
           return {

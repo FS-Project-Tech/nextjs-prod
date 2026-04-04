@@ -15,9 +15,9 @@ export async function addPaymentStatusNote(
   amount?: number | string
 ): Promise<void> {
   try {
-    const amountNum = typeof amount === 'string' ? parseFloat(amount) : amount;
+    const amountNum = typeof amount === "string" ? parseFloat(amount) : amount;
     const note = `Payment ${status}${transactionId ? ` - Transaction ID: ${transactionId}` : ""}${amountNum ? ` - Amount: $${amountNum.toFixed(2)}` : ""}`;
-    
+
     await wcAPI.post(`/orders/${orderId}/notes`, {
       note,
       customer_note: false,
@@ -39,7 +39,7 @@ export async function addStatusUpdateNote(
 ): Promise<void> {
   try {
     const note = `Order status changed from ${oldStatus} to ${newStatus}${reason ? ` - ${reason}` : ""}`;
-    
+
     await wcAPI.post(`/orders/${orderId}/notes`, {
       note,
       customer_note: false,
@@ -68,4 +68,3 @@ export async function addOrderNote(
     // Don't throw - note addition failure shouldn't break order processing
   }
 }
-

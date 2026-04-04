@@ -97,7 +97,7 @@
 //                 <div className="h-8 w-24 bg-gray-200 animate-pulse rounded mt-1"></div>
 //               ) : (
 //                 <p className="text-2xl font-bold text-gray-900 mt-1">
-//                   {customerData?.total_spent 
+//                   {customerData?.total_spent
 //                     ? `${customerData.currency || 'AUD'} ${parseFloat(customerData.total_spent).toFixed(2)}`
 //                     : 'AUD 0.00'}
 //                 </p>
@@ -151,7 +151,7 @@
 //           <div>
 //             <dt className="text-sm font-medium text-gray-500">Member Since</dt>
 //             <dd className="mt-1 text-sm text-gray-900" suppressHydrationWarning>
-//               {mounted && customerData?.date_created 
+//               {mounted && customerData?.date_created
 //                 ? new Date(customerData.date_created).toLocaleDateString()
 //                 : 'N/A'}
 //             </dd>
@@ -180,9 +180,5 @@ export default async function DashboardPage() {
   }
 
   // You can pass some initial data if you want
-  return (
-    <DashboardOverviewClient
-      initialUser={session.user}
-    />
-  );
+  return <DashboardOverviewClient initialUser={session.user} />;
 }

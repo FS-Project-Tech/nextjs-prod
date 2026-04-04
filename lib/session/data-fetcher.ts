@@ -3,29 +3,22 @@
  * Fetches accurate data with proper session context and caching
  */
 
+import "server-only";
+
+import { SessionData, SessionFetchResult, SessionErrorCode, DEFAULT_SESSION_CONFIG } from "./types";
+import { secureFetch, sessionGet, sessionPost } from "./secure-fetch";
+import { createSessionError } from "./manager";
+import { getWpBaseUrl } from "../wp-utils";
 import {
-  SessionData,
-  SessionFetchResult,
-  SessionErrorCode,
-  DEFAULT_SESSION_CONFIG,
-} from './types';
-import {
-  secureFetch,
-  sessionGet,
-  sessionPost,
-} from './secure-fetch';
-import { createSessionError } from './manager';
-import { getWpBaseUrl } from '../wp-utils';
-import { 
-  normalizeError,           // For converting errors to AppError
-  getErrorMessage,          // For safe error.message access
-  getErrorName,             // For safe error.name access
-  isAbortError,             // For checking AbortError
-  isTimeoutError,           // For checking timeout errors
-  hasAxiosResponse,         // For checking axios-style errors
-  getAxiosErrorDetails,     // For safe axios error property access
-  isRetryableError          // For checking if error is retryable
-} from '@/lib/utils/errors';
+  normalizeError, // For converting errors to AppError
+  getErrorMessage, // For safe error.message access
+  getErrorName, // For safe error.name access
+  isAbortError, // For checking AbortError
+  isTimeoutError, // For checking timeout errors
+  hasAxiosResponse, // For checking axios-style errors
+  getAxiosErrorDetails, // For safe axios error property access
+  isRetryableError, // For checking if error is retryable
+} from "@/lib/utils/errors";
 
 /**
  * Data cache with TTL support
@@ -43,12 +36,12 @@ const dataCache = new Map<string, CacheEntry<unknown>>();
  * Default cache TTL values (in milliseconds)
  */
 export const CACHE_TTL = {
-  PRODUCTS: 5 * 60 * 1000,      // 5 minutes for product lists
-  PRODUCT: 10 * 60 * 1000,       // 10 minutes for single product
-  CATEGORIES: 30 * 60 * 1000,   // 30 minutes for categories
-  CART: 0,                       // Never cache cart (always fresh)
-  USER: 5 * 60 * 1000,          // 5 minutes for user data
-  ORDERS: 2 * 60 * 1000,        // 2 minutes for orders
+  PRODUCTS: 5 * 60 * 1000, // 5 minutes for product lists
+  PRODUCT: 10 * 60 * 1000, // 10 minutes for single product
+  CATEGORIES: 30 * 60 * 1000, // 30 minutes for categories
+  CART: 0, // Never cache cart (always fresh)
+  USER: 5 * 60 * 1000, // 5 minutes for user data
+  ORDERS: 2 * 60 * 1000, // 2 minutes for orders
 };
 
 /**
@@ -58,10 +51,10 @@ function generateCacheKey(endpoint: string, params?: Record<string, unknown>): s
   const sortedParams = params
     ? Object.keys(params)
         .sort()
-        .map(k => `${k}=${String(params[k])}`)
-        .join('&')
-    : '';
-  return `${endpoint}${sortedParams ? `?${sortedParams}` : ''}`;
+        .map((k) => `${k}=${String(params[k])}`)
+        .join("&")
+    : "";
+  return `${endpoint}${sortedParams ? `?${sortedParams}` : ""}`;
 }
 
 /**
@@ -70,13 +63,13 @@ function generateCacheKey(endpoint: string, params?: Record<string, unknown>): s
 function getCached<T>(key: string): T | null {
   const entry = dataCache.get(key) as CacheEntry<T> | undefined;
   if (!entry) return null;
-  
+
   const age = Date.now() - entry.timestamp;
   if (age > entry.ttl) {
     dataCache.delete(key);
     return null;
   }
-  
+
   return entry.data;
 }
 
@@ -100,7 +93,7 @@ export function invalidateCache(pattern?: string): void {
     dataCache.clear();
     return;
   }
-  
+
   for (const key of dataCache.keys()) {
     if (key.includes(pattern)) {
       dataCache.delete(key);
@@ -115,14 +108,14 @@ function getWcApiConfig() {
   const apiUrl = process.env.WC_API_URL;
   const consumerKey = process.env.WC_CONSUMER_KEY;
   const consumerSecret = process.env.WC_CONSUMER_SECRET;
-  
+
   if (!apiUrl || !consumerKey || !consumerSecret) {
     return null;
   }
-  
+
   return {
     baseUrl: apiUrl,
-    auth: Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64'),
+    auth: Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64"),
   };
 }
 
@@ -132,23 +125,23 @@ function getWcApiConfig() {
 function buildWcUrl(endpoint: string, params?: Record<string, unknown>): string {
   const config = getWcApiConfig();
   if (!config) {
-    throw new Error('WooCommerce API not configured');
+    throw new Error("WooCommerce API not configured");
   }
-  
+
   const url = new URL(endpoint, config.baseUrl);
-  
+
   // Add consumer credentials as query params (required by some hosts)
-  url.searchParams.set('consumer_key', process.env.WC_CONSUMER_KEY || '');
-  url.searchParams.set('consumer_secret', process.env.WC_CONSUMER_SECRET || '');
-  
+  url.searchParams.set("consumer_key", process.env.WC_CONSUMER_KEY || "");
+  url.searchParams.set("consumer_secret", process.env.WC_CONSUMER_SECRET || "");
+
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== '') {
+      if (value !== undefined && value !== null && value !== "") {
         url.searchParams.set(key, String(value));
       }
     }
   }
-  
+
   return url.toString();
 }
 
@@ -166,17 +159,11 @@ async function wcFetch<T>(
     ttl?: number;
   } = {}
 ): Promise<SessionFetchResult<T>> {
-  const {
-    session = null,
-    method = 'GET',
-    body,
-    cache = true,
-    ttl = CACHE_TTL.PRODUCTS,
-  } = options;
-  
+  const { session = null, method = "GET", body, cache = true, ttl = CACHE_TTL.PRODUCTS } = options;
+
   // Check cache for GET requests
   const cacheKey = generateCacheKey(endpoint, params);
-  if (cache && method === 'GET') {
+  if (cache && method === "GET") {
     const cached = getCached<T>(cacheKey);
     if (cached) {
       return {
@@ -188,17 +175,17 @@ async function wcFetch<T>(
       };
     }
   }
-  
+
   try {
     const url = buildWcUrl(endpoint, params);
     const config = getWcApiConfig();
-    
+
     if (!config) {
       return {
         data: null,
         error: createSessionError(
           SessionErrorCode.VALIDATION_FAILED,
-          'WooCommerce API not configured',
+          "WooCommerce API not configured",
           false
         ),
         status: 500,
@@ -206,24 +193,24 @@ async function wcFetch<T>(
         sessionValid: true,
       };
     }
-    
+
     // Build headers
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Basic ${config.auth}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Basic ${config.auth}`,
     };
-    
+
     // Add session token if available
     if (session?.token) {
-      headers['X-WP-Token'] = session.token;
+      headers["X-WP-Token"] = session.token;
     }
-    
+
     // Add cart session if available
     if (session?.cart?.cartKey) {
-      headers['X-WC-Session'] = session.cart.cartKey;
+      headers["X-WC-Session"] = session.cart.cartKey;
     }
-    
+
     const result = await secureFetch<T>(url, session, {
       method,
       headers,
@@ -232,24 +219,20 @@ async function wcFetch<T>(
       retries: 2,
       skipCache: !cache,
     });
-    
+
     // Cache successful GET responses
-    if (cache && method === 'GET' && result.data && !result.error) {
+    if (cache && method === "GET" && result.data && !result.error) {
       setCache(cacheKey, result.data, ttl);
     }
-    
+
     return result;
   } catch (error: unknown) {
     return {
       data: null,
-      error: createSessionError(
-        SessionErrorCode.NETWORK_ERROR,
-        getErrorMessage(error),
-        true
-      ),
+      error: createSessionError(SessionErrorCode.NETWORK_ERROR, getErrorMessage(error), true),
       status: 0,
       cached: false,
-      sessionValid: session?.status === 'valid',
+      sessionValid: session?.status === "valid",
     };
   }
 }
@@ -320,7 +303,7 @@ export async function fetchProductsWithSession(
     minPrice?: number;
     maxPrice?: number;
     orderBy?: string;
-    order?: 'asc' | 'desc';
+    order?: "asc" | "desc";
     include?: number[];
     exclude?: number[];
   } = {}
@@ -328,9 +311,9 @@ export async function fetchProductsWithSession(
   const wcParams: Record<string, unknown> = {
     per_page: params.perPage || 24,
     page: params.page || 1,
-    stock_status: 'instock',
+    stock_status: "instock",
   };
-  
+
   if (params.category) {
     wcParams.category = params.category;
   }
@@ -351,33 +334,34 @@ export async function fetchProductsWithSession(
   }
   if (params.orderBy) {
     wcParams.orderby = params.orderBy;
-    wcParams.order = params.order || 'desc';
+    wcParams.order = params.order || "desc";
   }
   if (params.include?.length) {
-    wcParams.include = params.include.join(',');
+    wcParams.include = params.include.join(",");
   }
   if (params.exclude?.length) {
-    wcParams.exclude = params.exclude.join(',');
+    wcParams.exclude = params.exclude.join(",");
   }
-  
-  const result = await wcFetch<WCProduct[]>('/products', wcParams, {
+
+  const result = await wcFetch<WCProduct[]>("/products", wcParams, {
     session,
     ttl: CACHE_TTL.PRODUCTS,
   });
-  
+
   if (result.error || !result.data) {
     return {
       ...result,
       data: null,
     };
   }
-  
+
   // WooCommerce returns total/totalPages in headers, but we can't access them here
   // So we estimate based on response
-  const total = result.data.length < (params.perPage || 24) 
-    ? (params.page || 1) * result.data.length
-    : result.data.length * 10; // Estimate
-  
+  const total =
+    result.data.length < (params.perPage || 24)
+      ? (params.page || 1) * result.data.length
+      : result.data.length * 10; // Estimate
+
   return {
     ...result,
     data: {
@@ -397,35 +381,41 @@ export async function fetchProductWithSession(
   session: SessionData | null,
   idOrSlug: number | string
 ): Promise<SessionFetchResult<WCProduct>> {
-  const isNumeric = typeof idOrSlug === 'number' || !isNaN(Number(idOrSlug));
-  
+  const isNumeric = typeof idOrSlug === "number" || !isNaN(Number(idOrSlug));
+
   if (isNumeric) {
     return wcFetch<WCProduct>(`/products/${idOrSlug}`, undefined, {
       session,
       ttl: CACHE_TTL.PRODUCT,
     });
   }
-  
+
   // Fetch by slug
-  const result = await wcFetch<WCProduct[]>('/products', { slug: idOrSlug }, {
-    session,
-    ttl: CACHE_TTL.PRODUCT,
-  });
-  
+  const result = await wcFetch<WCProduct[]>(
+    "/products",
+    { slug: idOrSlug },
+    {
+      session,
+      ttl: CACHE_TTL.PRODUCT,
+    }
+  );
+
   if (result.error || !result.data?.length) {
     return {
       data: null,
-      error: result.error || createSessionError(
-        SessionErrorCode.VALIDATION_FAILED,
-        `Product with slug "${idOrSlug}" not found`,
-        false
-      ),
+      error:
+        result.error ||
+        createSessionError(
+          SessionErrorCode.VALIDATION_FAILED,
+          `Product with slug "${idOrSlug}" not found`,
+          false
+        ),
       status: result.status || 404,
       cached: result.cached,
       sessionValid: result.sessionValid,
     };
   }
-  
+
   return {
     ...result,
     data: result.data[0],
@@ -443,9 +433,7 @@ export async function fetchCategoriesWithSession(
     perPage?: number;
   } = {}
 ): Promise<SessionFetchResult<WCCategory[]>> {
-  const { getUnifiedCategories, getChildrenForParent } = await import(
-    "@/lib/categories-unified"
-  );
+  const { getUnifiedCategories, getChildrenForParent } = await import("@/lib/categories-unified");
   const unified = await getUnifiedCategories();
   const hideEmpty = params.hideEmpty ?? true;
 
@@ -493,10 +481,14 @@ export async function fetchVariationsWithSession(
   session: SessionData | null,
   productId: number
 ): Promise<SessionFetchResult<WCProduct[]>> {
-  return wcFetch<WCProduct[]>(`/products/${productId}/variations`, { per_page: 100 }, {
-    session,
-    ttl: CACHE_TTL.PRODUCT,
-  });
+  return wcFetch<WCProduct[]>(
+    `/products/${productId}/variations`,
+    { per_page: 100 },
+    {
+      session,
+      ttl: CACHE_TTL.PRODUCT,
+    }
+  );
 }
 
 /**
@@ -509,23 +501,31 @@ export async function fetchReviewsWithSession(
     page?: number;
     perPage?: number;
   } = {}
-): Promise<SessionFetchResult<Array<{
-  id: number;
-  date_created: string;
-  reviewer: string;
-  reviewer_email: string;
-  review: string;
-  rating: number;
-  verified: boolean;
-}>>> {
-  return wcFetch(`/products/reviews`, {
-    product: productId,
-    page: params.page || 1,
-    per_page: params.perPage || 10,
-  }, {
-    session,
-    ttl: CACHE_TTL.PRODUCTS,
-  });
+): Promise<
+  SessionFetchResult<
+    Array<{
+      id: number;
+      date_created: string;
+      reviewer: string;
+      reviewer_email: string;
+      review: string;
+      rating: number;
+      verified: boolean;
+    }>
+  >
+> {
+  return wcFetch(
+    `/products/reviews`,
+    {
+      product: productId,
+      page: params.page || 1,
+      per_page: params.perPage || 10,
+    },
+    {
+      session,
+      ttl: CACHE_TTL.PRODUCTS,
+    }
+  );
 }
 
 /**
@@ -556,7 +556,7 @@ export async function fetchRelatedProductsWithSession(
 ): Promise<SessionFetchResult<WCProduct[]>> {
   // First get the product to find related IDs
   const productResult = await fetchProductWithSession(session, productId);
-  
+
   if (productResult.error || !productResult.data) {
     return {
       data: null,
@@ -566,10 +566,10 @@ export async function fetchRelatedProductsWithSession(
       sessionValid: productResult.sessionValid,
     };
   }
-  
+
   const product = productResult.data;
   const relatedIds = (product as unknown as { related_ids?: number[] }).related_ids || [];
-  
+
   if (!relatedIds.length) {
     return {
       data: [],
@@ -579,11 +579,11 @@ export async function fetchRelatedProductsWithSession(
       sessionValid: true,
     };
   }
-  
+
   return fetchProductsWithSession(session, {
     include: relatedIds.slice(0, limit),
     perPage: limit,
-  }).then(result => ({
+  }).then((result) => ({
     ...result,
     data: result.data?.data || null,
   }));
@@ -599,64 +599,63 @@ export async function fetchOrdersWithSession(
     perPage?: number;
     status?: string;
   } = {}
-): Promise<SessionFetchResult<Array<{
-  id: number;
-  number: string;
-  status: string;
-  date_created: string;
-  total: string;
-  line_items: Array<{
-    id: number;
-    name: string;
-    quantity: number;
-    total: string;
-    product_id: number;
-    image?: { src: string };
-  }>;
-}>>> {
+): Promise<
+  SessionFetchResult<
+    Array<{
+      id: number;
+      number: string;
+      status: string;
+      date_created: string;
+      total: string;
+      line_items: Array<{
+        id: number;
+        name: string;
+        quantity: number;
+        total: string;
+        product_id: number;
+        image?: { src: string };
+      }>;
+    }>
+  >
+> {
   if (!session?.user?.id) {
     return {
       data: null,
-      error: createSessionError(
-        SessionErrorCode.TOKEN_INVALID,
-        'User not authenticated',
-        false
-      ),
+      error: createSessionError(SessionErrorCode.TOKEN_INVALID, "User not authenticated", false),
       status: 401,
       cached: false,
       sessionValid: false,
     };
   }
-  
+
   // Ensure customer ID is an integer (WooCommerce API requirement)
-  const customerId = typeof session.user.id === 'string' 
-    ? parseInt(session.user.id, 10) 
-    : session.user.id;
-  
+  const customerId =
+    typeof session.user.id === "string" ? parseInt(session.user.id, 10) : session.user.id;
+
   if (isNaN(customerId) || customerId <= 0) {
     return {
       data: null,
-      error: createSessionError(
-        SessionErrorCode.VALIDATION_FAILED,
-        'Invalid customer ID',
-        false
-      ),
+      error: createSessionError(SessionErrorCode.VALIDATION_FAILED, "Invalid customer ID", false),
       status: 400,
       cached: false,
       sessionValid: true,
     };
   }
-  
-  return wcFetch('/orders', {
-    customer: customerId,
-    page: params.page || 1,
-    per_page: params.perPage || 10,
-    status: params.status || 'any',
-  }, {
-    session,
-    cache: false, // Orders should always be fresh
-    requireAuth: true,
-  } as any);
+
+  return wcFetch(
+    "/orders",
+    {
+      customer: customerId,
+      page: params.page || 1,
+      per_page: params.perPage || 10,
+      status: params.status || "any",
+    },
+    {
+      session,
+      cache: false, // Orders should always be fresh
+      requireAuth: true,
+    } as any
+  );
 }
 
 /**
@@ -685,18 +684,17 @@ export async function createOrderWithSession(
   // Add customer ID if authenticated (must be integer for WooCommerce API)
   const data: Record<string, unknown> = { ...orderData };
   if (session?.user?.id) {
-    const customerId = typeof session.user.id === 'string' 
-      ? parseInt(session.user.id, 10) 
-      : session.user.id;
-    
+    const customerId =
+      typeof session.user.id === "string" ? parseInt(session.user.id, 10) : session.user.id;
+
     if (!isNaN(customerId) && customerId > 0) {
       data.customer_id = customerId;
     }
   }
-  
-  return wcFetch('/orders', undefined, {
+
+  return wcFetch("/orders", undefined, {
     session,
-    method: 'POST',
+    method: "POST",
     body: data,
     cache: false,
   });
@@ -708,22 +706,24 @@ export async function createOrderWithSession(
 export async function fetchOrderWithSession(
   session: SessionData | null,
   orderId: number
-): Promise<SessionFetchResult<{
-  id: number;
-  number: string;
-  status: string;
-  date_created: string;
-  total: string;
-  line_items: Array<{
+): Promise<
+  SessionFetchResult<{
     id: number;
-    name: string;
-    quantity: number;
+    number: string;
+    status: string;
+    date_created: string;
     total: string;
-    product_id: number;
-  }>;
-  billing: Record<string, string>;
-  shipping: Record<string, string>;
-}>> {
+    line_items: Array<{
+      id: number;
+      name: string;
+      quantity: number;
+      total: string;
+      product_id: number;
+    }>;
+    billing: Record<string, string>;
+    shipping: Record<string, string>;
+  }>
+> {
   return wcFetch(`/orders/${orderId}`, undefined, {
     session,
     cache: false,
@@ -735,31 +735,30 @@ export async function fetchOrderWithSession(
  */
 export async function prefetchPageData(
   session: SessionData | null,
-  page: 'home' | 'shop' | 'product',
+  page: "home" | "shop" | "product",
   params?: Record<string, unknown>
 ): Promise<void> {
   switch (page) {
-    case 'home':
+    case "home":
       // Prefetch featured products and categories
       await Promise.all([
         fetchProductsWithSession(session, { featured: true, perPage: 8 }),
         fetchCategoriesWithSession(session, { parent: 0 }),
       ]);
       break;
-      
-    case 'shop':
+
+    case "shop":
       // Prefetch products and categories
       await Promise.all([
         fetchProductsWithSession(session, params as any),
         fetchCategoriesWithSession(session),
       ]);
       break;
-      
-    case 'product':
+
+    case "product":
       if (params?.id || params?.slug) {
         await fetchProductWithSession(session, (params.id || params.slug) as number | string);
       }
       break;
   }
 }
-

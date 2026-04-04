@@ -1,19 +1,13 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useMemo,
-  useReducer,
-  useCallback,
-  type ChangeEvent,
-} from "react";
+import { useEffect, useRef, useMemo, useReducer, useCallback, type ChangeEvent } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "@/components/ProductCard";
 import { ProductCardProduct } from "@/lib/types/product";
 import { getSalePercentageFromProduct } from "@/lib/utils/product";
 import { useProductListing } from "@/contexts/ProductListingContext";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { LISTING_SORT_OPTIONS } from "@/lib/listing-sort-options";
 
 interface ProductGridProps {
   categorySlug?: string;
@@ -68,9 +62,7 @@ function gridReducer(state: GridState, action: GridAction): GridState {
     case "FETCH_SUCCESS":
       return {
         ...state,
-        products: action.append
-          ? [...state.products, ...action.products]
-          : action.products,
+        products: action.append ? [...state.products, ...action.products] : action.products,
         total: action.total,
         hasMore: action.pageNum < action.totalPages,
         loading: false,
@@ -106,23 +98,23 @@ const SORT_OPTIONS = [
   { value: "rating", label: "Rating" },
 ] as const;
 
-function stripDeprecatedListingParams(params: URLSearchParams) {
-  params.delete("brand");
+function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
+  if (!pathname.startsWith("/search")) {
+    params.delete("brand");
+  }
   params.delete("minPrice");
   params.delete("maxPrice");
 }
 
-export default function ProductGrid({
-  categorySlug,
-  brandSlug,
-  onSaleOnly,
-}: ProductGridProps) {
+export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: ProductGridProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const listingCtx = useProductListing();
   const setListingBusyRef = useRef(listingCtx?.setListingBusy);
   setListingBusyRef.current = listingCtx?.setListingBusy;
+  const setListingTotalRef = useRef(listingCtx?.setListingTotal);
+  setListingTotalRef.current = listingCtx?.setListingTotal;
 
   const [state, dispatch] = useReducer(gridReducer, initialState);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -132,13 +124,9 @@ export default function ProductGrid({
 
   const searchParamsKey = searchParams.toString();
 
-  const categoryFromPath = useMemo(
-    () => categoryLeafFromPathname(pathname),
-    [pathname]
-  );
+  const categoryFromPath = useMemo(() => categoryLeafFromPathname(pathname), [pathname]);
 
-  const effectiveCategorySlug =
-    categorySlug || categoryFromPath || "";
+  const effectiveCategorySlug = categorySlug || categoryFromPath || "";
 
   const filters = useMemo<Record<string, string>>(() => {
     const params: Record<string, string> = {};
@@ -146,9 +134,7 @@ export default function ProductGrid({
     if (effectiveCategorySlug) {
       params.category_slug = effectiveCategorySlug;
     } else {
-      const catQ =
-        searchParams.get("categories")?.trim() ||
-        searchParams.get("category")?.trim();
+      const catQ = searchParams.get("categories")?.trim() || searchParams.get("category")?.trim();
       if (catQ) params.category_slug = catQ;
     }
 
@@ -164,10 +150,11 @@ export default function ProductGrid({
     if (maxP && /^\d+(\.\d+)?$/.test(maxP)) params.max_price = maxP;
 
     const searchQ =
-      searchParams.get("search") ||
-      searchParams.get("query") ||
-      searchParams.get("Search");
-    if (searchQ?.trim()) params.q = searchQ.trim().slice(0, 100);
+      searchParams.get("q")?.trim() ||
+      searchParams.get("search")?.trim() ||
+      searchParams.get("query")?.trim() ||
+      searchParams.get("Search")?.trim();
+    if (searchQ) params.q = searchQ.slice(0, 100);
 
     return params;
   }, [effectiveCategorySlug, brandSlug, searchParamsKey]);
@@ -176,9 +163,9 @@ export default function ProductGrid({
   const effectiveFilters = useMemo<Record<string, string>>(
     () => ({
       ...filters,
-      q: debouncedQuery,
+      q: pathname.startsWith("/search") ? filters.q || "" : debouncedQuery,
     }),
-    [filters, debouncedQuery]
+    [filters, debouncedQuery, pathname]
   );
 
   const fetchProducts = useCallback(
@@ -210,11 +197,21 @@ export default function ProductGrid({
         }
         if (effectiveFilters.brands) {
           usp.set("brands", effectiveFilters.brands);
+        } else {
+          const singleBrand = searchParams.get("brand")?.trim();
+          if (!brandSlug && singleBrand) {
+            usp.set("brand_slug", singleBrand);
+          }
         }
         if (effectiveFilters.sortBy) usp.set("sortBy", effectiveFilters.sortBy);
         if (effectiveFilters.min_price) usp.set("min_price", effectiveFilters.min_price);
         if (effectiveFilters.max_price) usp.set("max_price", effectiveFilters.max_price);
-        if (effectiveFilters.q) usp.set("q", effectiveFilters.q);
+        const qOut = effectiveFilters.q?.trim();
+        if (qOut) {
+          usp.set("q", qOut);
+        } else if (pathname.startsWith("/search")) {
+          usp.set("q", "*");
+        }
         if (onSaleOnly) usp.set("on_sale", "true");
 
         const res = await fetch(`/api/typesense/search?${usp.toString()}`, {
@@ -255,10 +252,14 @@ export default function ProductGrid({
             }) as ProductCardProduct
         );
 
+        const totalHits = json.total || 0;
+        if (pageNum === 1 && !append) {
+          setListingTotalRef.current?.(totalHits);
+        }
         dispatch({
           type: "FETCH_SUCCESS",
           products,
-          total: json.total || 0,
+          total: totalHits,
           totalPages: json.totalPages || 1,
           append,
           pageNum,
@@ -280,7 +281,7 @@ export default function ProductGrid({
         }
       }
     },
-    [effectiveFilters, brandSlug, searchParamsKey, onSaleOnly]
+    [effectiveFilters, brandSlug, searchParamsKey, onSaleOnly, pathname, searchParams]
   );
 
   useEffect(() => {
@@ -313,22 +314,20 @@ export default function ProductGrid({
       if (listingBusy) return;
       const v = e.target.value;
       const params = new URLSearchParams(searchParams.toString());
-      stripDeprecatedListingParams(params);
+      stripDeprecatedListingParams(params, pathname);
       if (v === "popularity") params.delete("sortBy");
       else params.set("sortBy", v);
       params.delete("page");
       const qs = params.toString();
       const next = qs ? `${pathname}?${qs}` : pathname;
-      const cur = searchParams.toString()
-        ? `${pathname}?${searchParams}`
-        : pathname;
+      const cur = searchParams.toString() ? `${pathname}?${searchParams}` : pathname;
       if (next !== cur) router.replace(next, { scroll: false });
     },
     [listingBusy, pathname, router, searchParams]
   );
 
   const sortToolbar = (
-    <div className="flex flex-col gap-2 border-b border-gray-100 pb-3 sm:flex-row sm:items-center sm:justify-end">
+    <div className="hidden lg:flex flex-col gap-2 border-b border-gray-100 pb-3 sm:flex-row sm:items-center sm:justify-end">
       <label className="flex w-full flex-col gap-1 sm:ms-auto sm:w-auto sm:max-w-[16rem] sm:flex-row sm:items-center sm:gap-2">
         <span className="text-sm font-medium text-gray-700 shrink-0">Sort by</span>
         <select
@@ -337,7 +336,7 @@ export default function ProductGrid({
           onChange={handleSortChange}
           className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:pointer-events-none disabled:opacity-50 sm:min-w-[12rem]"
         >
-          {SORT_OPTIONS.map((o) => (
+          {LISTING_SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -389,9 +388,7 @@ export default function ProductGrid({
                 regular_price={product.regular_price}
                 on_sale={product.on_sale}
                 sale_percentage={
-                  product.sale_percentage ??
-                  getSalePercentageFromProduct(product) ??
-                  undefined
+                  product.sale_percentage ?? getSalePercentageFromProduct(product) ?? undefined
                 }
                 tax_class={product.tax_class}
                 tax_status={product.tax_status}

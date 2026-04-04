@@ -12,10 +12,7 @@ interface StructuredDataProps {
  */
 export function StructuredData({ data }: StructuredDataProps) {
   return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />
   );
 }
 
@@ -47,9 +44,10 @@ export function ProductStructuredData({
   product,
   siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com",
 }: ProductStructuredDataProps) {
-  const price = product.on_sale && product.sale_price
-    ? product.sale_price
-    : product.price || product.regular_price;
+  const price =
+    product.on_sale && product.sale_price
+      ? product.sale_price
+      : product.price || product.regular_price;
 
   const structuredData = {
     "@context": "https://schema.org/",
@@ -70,9 +68,7 @@ export function ProductStructuredData({
       url: `${siteUrl}/product/${product.slug}`,
       priceCurrency: "AUD",
       price: price,
-      priceValidUntil: new Date(
-        Date.now() + 365 * 24 * 60 * 60 * 1000
-      ).toISOString().split("T")[0],
+      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       availability:
         product.stock_status === "instock"
           ? "https://schema.org/InStock"
@@ -87,9 +83,10 @@ export function ProductStructuredData({
           reviewCount: product.rating_count,
         },
       }),
-    ...(product.categories && product.categories.length > 0 && {
-      category: product.categories[0].name,
-    }),
+    ...(product.categories &&
+      product.categories.length > 0 && {
+        category: product.categories[0].name,
+      }),
   };
 
   return <StructuredData data={structuredData} />;
@@ -186,4 +183,3 @@ export function WebsiteStructuredData({
 
   return <StructuredData data={structuredData} />;
 }
-

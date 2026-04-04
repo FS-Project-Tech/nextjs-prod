@@ -5,7 +5,7 @@ import PrefetchLink from "@/components/PrefetchLink";
 import { fetchPageBySlug } from "@/lib/cms-pages";
 import { sanitizeHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
- 
+
 /** Map URL slugs to WordPress page slugs */
 const SLUG_TO_WP: Record<string, string> = {
   privacy: "privacy-policy",
@@ -14,7 +14,7 @@ const SLUG_TO_WP: Record<string, string> = {
   shipping: "shipping",
   "collection-statement": "collection-statement-general-enquiries",
 };
- 
+
 const SLUG_TITLES: Record<string, string> = {
   privacy: "Privacy Policy",
   terms: "Terms & Conditions",
@@ -22,9 +22,9 @@ const SLUG_TITLES: Record<string, string> = {
   shipping: "Shipping & Returns",
   "collection-statement": "Collection Statement",
 };
- 
+
 const VALID_SLUGS = Object.keys(SLUG_TO_WP);
- 
+
 /** Decode HTML entities (e.g. &#8211; → –, &amp; → &) */
 function decodeHTMLEntities(str: string): string {
   return str
@@ -37,13 +37,11 @@ function decodeHTMLEntities(str: string): string {
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&nbsp;/g, " ");
 }
- 
- 
+
 export async function generateStaticParams() {
   return VALID_SLUGS.map((slug) => ({ slug }));
 }
- 
- 
+
 export async function generateMetadata({
   params,
 }: {
@@ -52,17 +50,22 @@ export async function generateMetadata({
   const { slug } = await params;
   const wpSlug = SLUG_TO_WP[slug];
   if (!wpSlug) return { title: "Page" };
- 
+
   const page = await fetchPageBySlug(wpSlug);
   const rawTitle = page?.title?.rendered
-    ? String(page.title.rendered).replace(/<[^>]+>/g, "").trim()
+    ? String(page.title.rendered)
+        .replace(/<[^>]+>/g, "")
+        .trim()
     : "";
-  const title = rawTitle ? decodeHTMLEntities(rawTitle) : (SLUG_TITLES[slug] || slug);
+  const title = rawTitle ? decodeHTMLEntities(rawTitle) : SLUG_TITLES[slug] || slug;
   const rawExcerpt = page?.excerpt?.rendered
-    ? String(page.excerpt.rendered).replace(/<[^>]+>/g, "").trim().slice(0, 160)
+    ? String(page.excerpt.rendered)
+        .replace(/<[^>]+>/g, "")
+        .trim()
+        .slice(0, 160)
     : undefined;
   const excerpt = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
- 
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
   return {
     title,
@@ -76,51 +79,42 @@ export async function generateMetadata({
     },
   };
 }
- 
-export default async function InfoPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+
+export default async function InfoPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const wpSlug = SLUG_TO_WP[slug];
- 
+
   if (!wpSlug || !VALID_SLUGS.includes(slug)) {
     notFound();
   }
- 
+
   const page = await fetchPageBySlug(wpSlug);
   if (!page) {
     notFound();
   }
- 
+
   const rawTitle = page.title?.rendered
-    ? String(page.title.rendered).replace(/<[^>]+>/g, "").trim()
+    ? String(page.title.rendered)
+        .replace(/<[^>]+>/g, "")
+        .trim()
     : "";
-  const title = rawTitle ? decodeHTMLEntities(rawTitle) : (SLUG_TITLES[slug] || slug);
- 
-  const breadcrumbItems = [
-    { label: "Home", href: "/" },
-    { label: title },
-  ];
- 
+  const title = rawTitle ? decodeHTMLEntities(rawTitle) : SLUG_TITLES[slug] || slug;
+
+  const breadcrumbItems = [{ label: "Home", href: "/" }, { label: title }];
+
   return (
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
- 
+
       <div className="min-h-screen bg-gray-50">
         {/* HEADER */}
         <div className="border-b border-gray-200 bg-white">
           <div className="container mx-auto px-4 py-6 sm:px-6 md:px-8">
-           
             {/* Breadcrumb */}
             <nav className="mb-3 text-sm text-gray-500">
               <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <li>
-                  <PrefetchLink
-                    href="/"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/" className="hover:text-teal-600 transition-colors">
                     Home
                   </PrefetchLink>
                 </li>
@@ -128,18 +122,15 @@ export default async function InfoPage({
                 <li className="text-gray-900 font-medium">{title}</li>
               </ol>
             </nav>
- 
+
             {/* Page Title */}
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              {title}
-            </h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{title}</h1>
           </div>
         </div>
- 
+
         {/* CONTENT */}
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
           <div className="mx-auto max-w-8xl  rounded-2xl border border-gray-200 bg-white p-6 sm:p-10 shadow-sm">
- 
             {/* WordPress Content */}
             <div
               className="
@@ -159,24 +150,17 @@ export default async function InfoPage({
                 prose-td:border prose-td:p-2
               "
               dangerouslySetInnerHTML={{
-                __html: sanitizeHTML(
-                  decodeHTMLEntities(page.content?.rendered || "")
-                ),
+                __html: sanitizeHTML(decodeHTMLEntities(page.content?.rendered || "")),
               }}
             />
- 
+
             {/* Back Button */}
             <div className="mt-10 pt-6 border-t border-gray-200">
               <Link
                 href="/"
                 className="inline-flex items-center gap-2 text-teal-600 font-medium hover:text-teal-700 transition-colors"
               >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -187,10 +171,9 @@ export default async function InfoPage({
                 Back to Home
               </Link>
             </div>
- 
           </div>
         </div>
       </div>
     </>
-  );  
+  );
 }

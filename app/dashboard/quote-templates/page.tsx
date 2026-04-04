@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useToast } from '@/components/ToastProvider';
-import { useCart } from '@/components/CartProvider';
-import { formatPrice } from '@/lib/format-utils';
-import type { QuoteTemplate } from '@/lib/types/quote-template';
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
+import { useCart } from "@/components/CartProvider";
+import { formatPrice } from "@/lib/format-utils";
+import type { QuoteTemplate } from "@/lib/types/quote-template";
 
 export default function QuoteTemplatesPage() {
   const router = useRouter();
@@ -24,44 +24,44 @@ export default function QuoteTemplatesPage() {
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/dashboard/quote-templates', {
-        credentials: 'include',
-        cache: 'no-store',
+      const response = await fetch("/api/dashboard/quote-templates", {
+        credentials: "include",
+        cache: "no-store",
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch templates');
+        throw new Error("Failed to fetch templates");
       }
 
       const data = await response.json();
       setTemplates(data.templates || []);
     } catch (err: any) {
-      showError(err.message || 'Failed to load templates');
+      showError(err.message || "Failed to load templates");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (templateId: string) => {
-    if (!confirm('Are you sure you want to delete this template?')) {
+    if (!confirm("Are you sure you want to delete this template?")) {
       return;
     }
 
     setDeletingId(templateId);
     try {
       const response = await fetch(`/api/dashboard/quote-templates/${templateId}`, {
-        method: 'DELETE',
-        credentials: 'include',
+        method: "DELETE",
+        credentials: "include",
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete template');
+        throw new Error("Failed to delete template");
       }
 
-      success('Template deleted successfully');
+      success("Template deleted successfully");
       fetchTemplates();
     } catch (err: any) {
-      showError(err.message || 'Failed to delete template');
+      showError(err.message || "Failed to delete template");
     } finally {
       setDeletingId(null);
     }
@@ -79,13 +79,14 @@ export default function QuoteTemplatesPage() {
         if (!item.product_id) {
           continue;
         }
-        
+
         // Generate slug from name (simple slug conversion)
-        const slug = item.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '') || 'product';
-        
+        const slug =
+          item.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "product";
+
         await addItem({
           productId: item.product_id,
           slug: slug,
@@ -99,13 +100,13 @@ export default function QuoteTemplatesPage() {
       }
 
       success(`Template "${template.name}" loaded into cart`);
-      
+
       // Redirect to cart or shop
       setTimeout(() => {
-        router.push('/cart');
+        router.push("/cart");
       }, 500);
     } catch (err: any) {
-      showError(err.message || 'Failed to load template');
+      showError(err.message || "Failed to load template");
     } finally {
       setLoadingTemplateId(null);
     }
@@ -113,7 +114,7 @@ export default function QuoteTemplatesPage() {
 
   const calculateTemplateTotal = (template: QuoteTemplate): number => {
     return template.items.reduce((sum, item) => {
-      return sum + (Number(item.price) * item.qty);
+      return sum + Number(item.price) * item.qty;
     }, 0);
   };
 
@@ -201,7 +202,7 @@ export default function QuoteTemplatesPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Items:</span>
                   <span className="font-medium text-gray-900">
-                    {template.items.length} {template.items.length === 1 ? 'item' : 'items'}
+                    {template.items.length} {template.items.length === 1 ? "item" : "items"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -257,8 +258,18 @@ export default function QuoteTemplatesPage() {
                     </>
                   ) : (
                     <>
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
                       </svg>
                       Load to Cart
                     </>
@@ -274,7 +285,12 @@ export default function QuoteTemplatesPage() {
                     <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-gray-600 border-r-transparent"></div>
                   ) : (
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                   )}
                 </button>
@@ -286,4 +302,3 @@ export default function QuoteTemplatesPage() {
     </div>
   );
 }
-

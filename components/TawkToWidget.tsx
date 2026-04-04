@@ -13,10 +13,7 @@ export default function TawkToWidget() {
   if (!propertyId || !widgetId) return null;
 
   return (
-    <Script
-      id="tawk-to"
-      strategy="lazyOnload"
-    >
+    <Script id="tawk-to" strategy="lazyOnload">
       {`
         var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
         (function(){

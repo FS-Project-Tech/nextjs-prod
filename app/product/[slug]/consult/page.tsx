@@ -1,5 +1,9 @@
 import { notFound } from "next/navigation";
-import { fetchProductBySlug, fetchProductVariations, WooCommerceVariation } from "@/lib/woocommerce";
+import {
+  fetchProductBySlug,
+  fetchProductVariations,
+  WooCommerceVariation,
+} from "@/lib/woocommerce";
 import ProductConsultation from "@/components/ProductConsultation";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import type { Metadata } from "next";
@@ -74,4 +78,3 @@ export default async function ProductConsultationPage({
     </div>
   );
 }
-

@@ -3,8 +3,8 @@
  * JWT middleware, rate limiting, and response sanitization
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthToken, validateToken, getUserData } from './auth-server';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthToken, validateToken, getUserData } from "./auth-server";
 import { getToken } from "next-auth/jwt";
 
 /**
@@ -42,7 +42,9 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
     // Get identifier (IP address or custom)
     const id = identifier
       ? identifier(req)
-      : req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+      : req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("x-real-ip") ||
+        "unknown";
 
     const now = Date.now();
     const entry = rateLimitStore.get(id);
@@ -68,17 +70,17 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
       const retryAfter = Math.ceil((currentEntry.resetTime - now) / 1000);
       return NextResponse.json(
         {
-          error: 'Too many requests',
+          error: "Too many requests",
           message: `Rate limit exceeded. Please try again in ${retryAfter} seconds.`,
           retryAfter,
         },
         {
           status: 429,
           headers: {
-            'Retry-After': retryAfter.toString(),
-            'X-RateLimit-Limit': maxRequests.toString(),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': new Date(currentEntry.resetTime).toISOString(),
+            "Retry-After": retryAfter.toString(),
+            "X-RateLimit-Limit": maxRequests.toString(),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": new Date(currentEntry.resetTime).toISOString(),
           },
         }
       );
@@ -147,7 +149,7 @@ export async function requireAuth(
 
     if (!wpToken) {
       return NextResponse.json(
-        { error: 'Authentication required', message: 'Please login to access this resource' },
+        { error: "Authentication required", message: "Please login to access this resource" },
         { status: 401 }
       );
     }
@@ -158,7 +160,7 @@ export async function requireAuth(
     const isValid = await validateToken(token);
     if (!isValid) {
       return NextResponse.json(
-        { error: 'Invalid token', message: 'Your session has expired. Please login again.' },
+        { error: "Invalid token", message: "Your session has expired. Please login again." },
         { status: 401 }
       );
     }
@@ -167,16 +169,16 @@ export async function requireAuth(
     const user = await getUserData(token);
     if (!user) {
       return NextResponse.json(
-        { error: 'User not found', message: 'Unable to fetch user data. Please login again.' },
+        { error: "User not found", message: "Unable to fetch user data. Please login again." },
         { status: 401 }
       );
     }
 
     return { user, token };
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error("Auth middleware error:", error);
     return NextResponse.json(
-      { error: 'Authentication failed', message: 'An error occurred during authentication' },
+      { error: "Authentication failed", message: "An error occurred during authentication" },
       { status: 500 }
     );
   }
@@ -208,7 +210,7 @@ export function requireRole(allowedRoles: string[]) {
   return async (req: NextRequest, user: any): Promise<NextResponse | null> => {
     if (!user || !user.roles || !Array.isArray(user.roles)) {
       return NextResponse.json(
-        { error: 'Forbidden', message: 'Insufficient permissions' },
+        { error: "Forbidden", message: "Insufficient permissions" },
         { status: 403 }
       );
     }
@@ -216,7 +218,7 @@ export function requireRole(allowedRoles: string[]) {
     const hasRole = user.roles.some((role: string) => allowedRoles.includes(role));
     if (!hasRole) {
       return NextResponse.json(
-        { error: 'Forbidden', message: 'You do not have permission to access this resource' },
+        { error: "Forbidden", message: "You do not have permission to access this resource" },
         { status: 403 }
       );
     }
@@ -247,7 +249,7 @@ export function createTimeout(timeoutMs: number, operationName?: string): Promis
         : `Request timeout after ${timeoutMs}ms`;
       reject(new Error(errorMessage));
     }, timeoutMs);
-    
+
     // Store timeout ID for potential cleanup (though we can't access it after Promise.race)
     // This is mainly for future enhancement with AbortController
   });
@@ -264,15 +266,17 @@ export async function withTimeout<T>(
   operationName?: string
 ): Promise<T> {
   const timeoutPromise = createTimeout(timeoutMs, operationName);
-  
+
   try {
     return await Promise.race([promise, timeoutPromise]);
   } catch (error: unknown) {
     // If it's a timeout error, log additional context
-    if (error instanceof Error && (error instanceof Error ? error.message : 'An error occurred').includes('timeout')) {
-      console.warn(`[Timeout] Operation "${operationName || 'unknown'}" exceeded ${timeoutMs}ms`);
+    if (
+      error instanceof Error &&
+      (error instanceof Error ? error.message : "An error occurred").includes("timeout")
+    ) {
+      console.warn(`[Timeout] Operation "${operationName || "unknown"}" exceeded ${timeoutMs}ms`);
     }
     throw error;
   }
 }
-

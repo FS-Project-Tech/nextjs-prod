@@ -35,7 +35,11 @@ export async function generateMetadata({
   if (!post) return { title: "Post" };
   const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
   const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Post";
-  const rawExcerpt = post.excerpt?.rendered?.replace(/<[^>]+>/g, "").trim().slice(0, 160) || "";
+  const rawExcerpt =
+    post.excerpt?.rendered
+      ?.replace(/<[^>]+>/g, "")
+      .trim()
+      .slice(0, 160) || "";
   const description = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
   return {
     title,
@@ -44,11 +48,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function BlogPostPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const post = await fetchPostBySlug(slug);
   if (!post) notFound();
@@ -111,7 +111,12 @@ export default async function BlogPostPage({
                 className="inline-flex items-center gap-2 text-teal-600 font-medium hover:text-teal-700"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
                 Back to Blog
               </Link>

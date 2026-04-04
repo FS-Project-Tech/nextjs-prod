@@ -1,8 +1,8 @@
 "use client";
- 
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeString } from "@/lib/sanitize";
- 
+
 interface ShippingRate {
   id: string;
   label: string;
@@ -12,7 +12,7 @@ interface ShippingRate {
   maximum_amount?: number;
   requires?: string;
 }
- 
+
 interface ShippingOptionsProps {
   country?: string;
   zone?: string;
@@ -26,7 +26,7 @@ interface ShippingOptionsProps {
   subtotal?: number; // Cart subtotal for rule-based filtering
   items?: Array<{ id: string; productId: number; price: string; qty: number; [key: string]: any }>; // Cart items for filtering
 }
- 
+
 export default function ShippingOptions({
   country = "AU",
   zone,
@@ -46,13 +46,13 @@ export default function ShippingOptions({
   const serializedItems = useMemo(() => JSON.stringify(items ?? []), [items]);
   const onRateChangeRef = useRef(onRateChange);
   onRateChangeRef.current = onRateChange;
- 
+
   // Use controlled or internal state
   const currentSelectedId = selectedRateId !== undefined ? selectedRateId : internalSelectedId;
- 
+
   useEffect(() => {
     if (!country) return;
- 
+
     let cancelled = false;
     (async () => {
       try {
@@ -67,11 +67,11 @@ export default function ShippingOptions({
         if (items.length > 0) {
           params.set("items", serializedItems);
         }
- 
+
         const res = await fetch(`/api/shipping/rates?${params.toString()}`, { cache: "no-store" });
         const json = await res.json();
         const fetched: ShippingRate[] = Array.isArray(json.rates) ? json.rates : [];
- 
+
         if (!cancelled) {
           setRates(fetched);
           if (fetched.length > 0) {
@@ -95,12 +95,12 @@ export default function ShippingOptions({
         }
       }
     })();
- 
+
     return () => {
       cancelled = true;
     };
   }, [country, zone, postcode, state, city, subtotal, serializedItems]);
- 
+
   const handleRateChange = (rate: ShippingRate) => {
     if (selectedRateId === undefined) {
       setInternalSelectedId(rate.id);
@@ -109,14 +109,18 @@ export default function ShippingOptions({
       onRateChange(rate.id, rate);
     }
   };
- 
+
   return (
     <div className={className}>
       {showLabel && (
         <label className="block text-sm font-semibold text-gray-900 mb-2">Shipping Options</label>
       )}
       {loadingRates && (
-        <div className="flex items-center gap-2 py-2 text-sm text-gray-800" role="status" aria-live="polite">
+        <div
+          className="flex items-center gap-2 py-2 text-sm text-gray-800"
+          role="status"
+          aria-live="polite"
+        >
           <svg
             className="h-4 w-4 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
@@ -156,7 +160,9 @@ export default function ShippingOptions({
             <label
               key={r.id}
               className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-white/60 p-3 transition-all ${
-                isSelected ? "border-teal-500 shadow-sm bg-white" : "border-gray-200 hover:border-teal-200"
+                isSelected
+                  ? "border-teal-500 shadow-sm bg-white"
+                  : "border-gray-200 hover:border-teal-200"
               }`}
             >
               <input
@@ -170,10 +176,18 @@ export default function ShippingOptions({
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <div className="text-sm font-semibold text-gray-900">{safeLabel || "Shipping option"}</div>
-                  {isFree && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">Free</span>}
+                  <div className="text-sm font-semibold text-gray-900">
+                    {safeLabel || "Shipping option"}
+                  </div>
+                  {isFree && (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                      Free
+                    </span>
+                  )}
                 </div>
-                {safeDescription && <div className="text-xs text-gray-500 mt-0.5">{safeDescription}</div>}
+                {safeDescription && (
+                  <div className="text-xs text-gray-500 mt-0.5">{safeDescription}</div>
+                )}
                 {r.minimum_amount && (
                   <div className="text-xs text-gray-400 mt-0.5">
                     Min. order: ${r.minimum_amount.toFixed(2)}

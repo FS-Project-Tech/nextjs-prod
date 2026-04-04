@@ -3,16 +3,18 @@
  * Handles storing and retrieving quotes from the database
  */
 
-import { getWpBaseUrl } from '@/lib/auth';
-import { getAuthToken } from '@/lib/auth-server';
-import type { Quote, QuoteRequestPayload, QuoteStatusHistory } from '@/lib/types/quote';
+import { getWpBaseUrl } from "@/lib/auth";
+import { getAuthToken } from "@/lib/auth-server";
+import type { Quote, QuoteRequestPayload, QuoteStatusHistory } from "@/lib/types/quote";
 
 /**
  * Generate unique quote number
  */
 export function generateQuoteNumber(): string {
   const year = new Date().getFullYear();
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  const random = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0");
   return `QUOTE-${year}-${random}`;
 }
 
@@ -35,13 +37,13 @@ export async function storeQuote(
 ): Promise<Quote | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    console.error('WordPress URL not configured');
+    console.error("WordPress URL not configured");
     return null;
   }
 
   const token = await getAuthToken();
   if (!token) {
-    console.error('No auth token available for storing quote');
+    console.error("No auth token available for storing quote");
     return null;
   }
 
@@ -50,10 +52,10 @@ export async function storeQuote(
 
   // Initialize status history with pending status
   const initialStatusHistory: QuoteStatusHistory = {
-    status: 'pending',
+    status: "pending",
     changed_at: now,
-    changed_by: payload.userName || 'Customer',
-    notes: 'Quote request created',
+    changed_by: payload.userName || "Customer",
+    notes: "Quote request created",
   };
 
   const quote: Quote = {
@@ -67,7 +69,7 @@ export async function storeQuote(
     shipping_method: payload.shippingMethod,
     discount: payload.discount,
     total: payload.total,
-    status: 'pending',
+    status: "pending",
     notes: payload.notes,
     created_at: now,
     updated_at: now,
@@ -79,19 +81,19 @@ export async function storeQuote(
     // Try to store as WordPress custom post type first
     try {
       const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           title: quoteNumber,
-          status: 'publish',
+          status: "publish",
           meta: {
             quote_data: JSON.stringify(quote),
             quote_number: quoteNumber,
             user_email: payload.email,
-            quote_status: 'pending',
+            quote_status: "pending",
             quote_total: payload.total,
             quote_expires_at: expiresAt,
           },
@@ -107,17 +109,17 @@ export async function storeQuote(
       }
     } catch (postTypeError) {
       // Custom post type might not exist, try alternative storage
-      console.debug('Custom post type not available, trying alternative storage');
+      console.debug("Custom post type not available, trying alternative storage");
     }
 
     // Alternative: Store in WordPress options table via custom endpoint
     // Or use WooCommerce order notes as draft orders
     // For now, we'll return the quote object even if storage fails
     // The quote will still be sent via email
-    
+
     return quote;
   } catch (error) {
-    console.error('Error storing quote:', error);
+    console.error("Error storing quote:", error);
     // Return quote object anyway - email will still be sent
     return quote;
   }
@@ -140,69 +142,73 @@ export async function fetchUserQuotes(userEmail: string): Promise<Quote[]> {
         `${wpBase}/wp-json/wp/v2/quotes?meta_key=user_email&meta_value=${encodeURIComponent(userEmail)}&per_page=100&orderby=date&order=desc`,
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
-          cache: 'no-store',
+          cache: "no-store",
         }
       );
 
       if (response.ok) {
         const posts = await response.json();
         if (Array.isArray(posts)) {
-          return posts.map((post: any) => {
-            try {
-              const quoteData = post.meta?.quote_data 
-                ? JSON.parse(post.meta.quote_data) 
-                : {
-                    quote_number: post.meta?.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
-                    user_email: post.meta?.user_email || userEmail,
-                    user_name: post.meta?.user_name || 'Customer',
-                    items: [],
-                    subtotal: 0,
-                    shipping: 0,
-                    discount: 0,
-                    total: post.meta?.quote_total || 0,
-                    status: post.meta?.quote_status || 'pending',
-                    expires_at: post.meta?.quote_expires_at || calculateExpiryDate(30),
-                  };
-              
-              // Parse comments if available
-              let comments = quoteData.comments || [];
-              if (post.meta?.quote_comments) {
-                try {
-                  const parsed = JSON.parse(post.meta.quote_comments);
-                  if (Array.isArray(parsed)) {
-                    comments = parsed;
-                  }
-                } catch (e) {
-                  console.debug('Could not parse quote comments, using default');
-                }
-              }
+          return posts
+            .map((post: any) => {
+              try {
+                const quoteData = post.meta?.quote_data
+                  ? JSON.parse(post.meta.quote_data)
+                  : {
+                      quote_number:
+                        post.meta?.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
+                      user_email: post.meta?.user_email || userEmail,
+                      user_name: post.meta?.user_name || "Customer",
+                      items: [],
+                      subtotal: 0,
+                      shipping: 0,
+                      discount: 0,
+                      total: post.meta?.quote_total || 0,
+                      status: post.meta?.quote_status || "pending",
+                      expires_at: post.meta?.quote_expires_at || calculateExpiryDate(30),
+                    };
 
-              return {
-                ...quoteData,
-                id: post.id.toString(),
-                quote_number: quoteData.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
-                created_at: post.date || quoteData.created_at || new Date().toISOString(),
-                updated_at: post.modified || quoteData.updated_at || new Date().toISOString(),
-                comments: comments,
-              };
-            } catch (parseError) {
-              console.error('Error parsing quote data:', parseError);
-              return null;
-            }
-          }).filter((q: Quote | null) => q !== null) as Quote[];
+                // Parse comments if available
+                let comments = quoteData.comments || [];
+                if (post.meta?.quote_comments) {
+                  try {
+                    const parsed = JSON.parse(post.meta.quote_comments);
+                    if (Array.isArray(parsed)) {
+                      comments = parsed;
+                    }
+                  } catch (e) {
+                    console.debug("Could not parse quote comments, using default");
+                  }
+                }
+
+                return {
+                  ...quoteData,
+                  id: post.id.toString(),
+                  quote_number:
+                    quoteData.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
+                  created_at: post.date || quoteData.created_at || new Date().toISOString(),
+                  updated_at: post.modified || quoteData.updated_at || new Date().toISOString(),
+                  comments: comments,
+                };
+              } catch (parseError) {
+                console.error("Error parsing quote data:", parseError);
+                return null;
+              }
+            })
+            .filter((q: Quote | null) => q !== null) as Quote[];
         }
       }
     } catch (fetchError) {
-      console.debug('Custom post type fetch failed, quotes may not be stored yet');
+      console.debug("Custom post type fetch failed, quotes may not be stored yet");
     }
 
     // If no quotes found, return empty array
     return [];
   } catch (error) {
-    console.error('Error fetching quotes:', error);
+    console.error("Error fetching quotes:", error);
     return [];
   }
 }
@@ -212,7 +218,7 @@ export async function fetchUserQuotes(userEmail: string): Promise<Quote[]> {
  */
 export async function updateQuoteStatus(
   quoteId: string,
-  status: Quote['status'],
+  status: Quote["status"],
   changedBy?: string,
   reason?: string,
   notes?: string
@@ -227,26 +233,23 @@ export async function updateQuoteStatus(
     // First, get the current quote to preserve history
     const currentQuote = await getQuoteById(quoteId);
     if (!currentQuote) {
-      console.error('Quote not found:', quoteId);
+      console.error("Quote not found:", quoteId);
       return null;
     }
 
     const now = new Date().toISOString();
-    
+
     // Create new status history entry
     const newHistoryEntry: QuoteStatusHistory = {
       status,
       changed_at: now,
-      changed_by: changedBy || 'System',
+      changed_by: changedBy || "System",
       reason,
       notes,
     };
 
     // Append to existing history
-    const updatedHistory = [
-      ...(currentQuote.status_history || []),
-      newHistoryEntry,
-    ];
+    const updatedHistory = [...(currentQuote.status_history || []), newHistoryEntry];
 
     // Prepare update data
     const updateData: any = {
@@ -257,14 +260,14 @@ export async function updateQuoteStatus(
     };
 
     // Set status-specific timestamps
-    if (status === 'accepted') {
+    if (status === "accepted") {
       updateData.meta.quote_accepted_at = now;
-    } else if (status === 'rejected') {
+    } else if (status === "rejected") {
       updateData.meta.quote_rejected_at = now;
       if (reason) {
         updateData.meta.quote_rejected_reason = reason;
       }
-    } else if (status === 'sent') {
+    } else if (status === "sent") {
       updateData.meta.quote_sent_at = now;
     }
 
@@ -276,9 +279,9 @@ export async function updateQuoteStatus(
       status_history: updatedHistory,
     };
 
-    if (status === 'accepted') {
+    if (status === "accepted") {
       updatedQuote.accepted_at = now;
-    } else if (status === 'rejected') {
+    } else if (status === "rejected") {
       updatedQuote.rejected_at = now;
       if (reason) {
         updatedQuote.rejected_reason = reason;
@@ -289,10 +292,10 @@ export async function updateQuoteStatus(
     updateData.meta.quote_data = JSON.stringify(updatedQuote);
 
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(updateData),
     });
@@ -303,7 +306,7 @@ export async function updateQuoteStatus(
 
     return null;
   } catch (error) {
-    console.error('Error updating quote status:', error);
+    console.error("Error updating quote status:", error);
     return null;
   }
 }
@@ -321,84 +324,86 @@ export async function getQuoteById(quoteId: string, customerId?: number): Promis
   try {
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      cache: 'no-store',
+      cache: "no-store",
     });
 
     if (response.ok) {
       const post = await response.json();
       try {
-        const quoteData = post.meta?.quote_data 
-          ? JSON.parse(post.meta.quote_data) 
+        const quoteData = post.meta?.quote_data
+          ? JSON.parse(post.meta.quote_data)
           : {
               quote_number: post.meta?.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
-              user_email: post.meta?.user_email || '',
-              user_name: post.meta?.user_name || 'Customer',
+              user_email: post.meta?.user_email || "",
+              user_name: post.meta?.user_name || "Customer",
               items: [],
               subtotal: 0,
               shipping: 0,
               discount: 0,
               total: post.meta?.quote_total || 0,
-              status: post.meta?.quote_status || 'pending',
+              status: post.meta?.quote_status || "pending",
               expires_at: post.meta?.quote_expires_at || calculateExpiryDate(30),
             };
-        
-              // Parse status history if available
-              let statusHistory = quoteData.status_history || [];
-              if (post.meta?.quote_status_history) {
-                try {
-                  const parsed = JSON.parse(post.meta.quote_status_history);
-                  if (Array.isArray(parsed)) {
-                    statusHistory = parsed;
-                  }
-                } catch (e) {
-                  console.debug('Could not parse status history, using default');
-                }
-              }
 
-              // If no history exists but quote has status, create initial history entry
-              if (statusHistory.length === 0 && quoteData.status) {
-                statusHistory = [{
-                  status: quoteData.status,
-                  changed_at: post.date || quoteData.created_at || new Date().toISOString(),
-                  changed_by: quoteData.user_name || 'Customer',
-                  notes: 'Quote created',
-                }];
-              }
+        // Parse status history if available
+        let statusHistory = quoteData.status_history || [];
+        if (post.meta?.quote_status_history) {
+          try {
+            const parsed = JSON.parse(post.meta.quote_status_history);
+            if (Array.isArray(parsed)) {
+              statusHistory = parsed;
+            }
+          } catch (e) {
+            console.debug("Could not parse status history, using default");
+          }
+        }
 
-              // Parse comments if available
-              let comments = quoteData.comments || [];
-              if (post.meta?.quote_comments) {
-                try {
-                  const parsed = JSON.parse(post.meta.quote_comments);
-                  if (Array.isArray(parsed)) {
-                    comments = parsed;
-                  }
-                } catch (e) {
-                  console.debug('Could not parse quote comments, using default');
-                }
-              }
+        // If no history exists but quote has status, create initial history entry
+        if (statusHistory.length === 0 && quoteData.status) {
+          statusHistory = [
+            {
+              status: quoteData.status,
+              changed_at: post.date || quoteData.created_at || new Date().toISOString(),
+              changed_by: quoteData.user_name || "Customer",
+              notes: "Quote created",
+            },
+          ];
+        }
 
-              return {
-                ...quoteData,
-                id: post.id.toString(),
-                quote_number: quoteData.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
-                created_at: post.date || quoteData.created_at || new Date().toISOString(),
-                updated_at: post.modified || quoteData.updated_at || new Date().toISOString(),
-                status_history: statusHistory,
-                comments: comments,
-              };
+        // Parse comments if available
+        let comments = quoteData.comments || [];
+        if (post.meta?.quote_comments) {
+          try {
+            const parsed = JSON.parse(post.meta.quote_comments);
+            if (Array.isArray(parsed)) {
+              comments = parsed;
+            }
+          } catch (e) {
+            console.debug("Could not parse quote comments, using default");
+          }
+        }
+
+        return {
+          ...quoteData,
+          id: post.id.toString(),
+          quote_number: quoteData.quote_number || post.title?.rendered || `QUOTE-${post.id}`,
+          created_at: post.date || quoteData.created_at || new Date().toISOString(),
+          updated_at: post.modified || quoteData.updated_at || new Date().toISOString(),
+          status_history: statusHistory,
+          comments: comments,
+        };
       } catch (parseError) {
-        console.error('Error parsing quote data:', parseError);
+        console.error("Error parsing quote data:", parseError);
         return null;
       }
     }
 
     return null;
   } catch (error) {
-    console.error('Error fetching quote:', error);
+    console.error("Error fetching quote:", error);
     return null;
   }
 }
@@ -421,7 +426,7 @@ export async function markQuoteAsConverted(
     // Get current quote
     const currentQuote = await getQuoteById(quoteId);
     if (!currentQuote) {
-      console.error('Quote not found:', quoteId);
+      console.error("Quote not found:", quoteId);
       return null;
     }
 
@@ -429,28 +434,25 @@ export async function markQuoteAsConverted(
 
     // Create conversion history entry
     const conversionHistoryEntry: QuoteStatusHistory = {
-      status: 'accepted',
+      status: "accepted",
       changed_at: now,
-      changed_by: 'System',
+      changed_by: "System",
       notes: `Converted to order ${orderNumber || orderId}`,
     };
 
     // Update quote data
     const updatedQuote: Quote = {
       ...currentQuote,
-      status: 'accepted',
+      status: "accepted",
       updated_at: now,
-      status_history: [
-        ...(currentQuote.status_history || []),
-        conversionHistoryEntry,
-      ],
+      status_history: [...(currentQuote.status_history || []), conversionHistoryEntry],
     };
 
     // Update quote meta
     const updateData: any = {
       meta: {
         quote_data: JSON.stringify(updatedQuote),
-        quote_converted: 'yes',
+        quote_converted: "yes",
         quote_order_id: orderId.toString(),
         quote_order_number: orderNumber || orderId.toString(),
         quote_converted_at: now,
@@ -458,10 +460,10 @@ export async function markQuoteAsConverted(
     };
 
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(updateData),
     });
@@ -472,7 +474,7 @@ export async function markQuoteAsConverted(
 
     return null;
   } catch (error) {
-    console.error('Error marking quote as converted:', error);
+    console.error("Error marking quote as converted:", error);
     return null;
   }
 }
@@ -490,7 +492,7 @@ export async function deleteQuoteById(quoteId: string): Promise<boolean> {
   // Helper to delete by post ID
   const deleteByPostId = async (postId: string | number) => {
     const resp = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${postId}`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -516,7 +518,7 @@ export async function deleteQuoteById(quoteId: string): Promise<boolean> {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-        cache: 'no-store',
+        cache: "no-store",
       }
     );
 
@@ -532,8 +534,7 @@ export async function deleteQuoteById(quoteId: string): Promise<boolean> {
     const postId = posts[0].id;
     return await deleteByPostId(postId);
   } catch (error) {
-    console.error('Error deleting quote:', error);
+    console.error("Error deleting quote:", error);
     return false;
   }
 }
-

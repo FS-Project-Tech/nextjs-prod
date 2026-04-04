@@ -3,10 +3,16 @@
  * Combines JWT auth, rate limiting, and response sanitization
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, optionalAuth, rateLimit, withTimeout, API_TIMEOUT as API_TIMEOUT_CONFIG } from './api-security';
-import { sanitizeResponse, sanitizeError } from './sanitize';
-import { getErrorMessage, isTimeoutError } from '@/lib/utils/errors';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  requireAuth,
+  optionalAuth,
+  rateLimit,
+  withTimeout,
+  API_TIMEOUT as API_TIMEOUT_CONFIG,
+} from "./api-security";
+import { sanitizeResponse, sanitizeError } from "./sanitize";
+import { getErrorMessage, isTimeoutError } from "@/lib/utils/errors";
 
 // Export API_TIMEOUT for convenience (re-exported from api-security)
 export const API_TIMEOUT = API_TIMEOUT_CONFIG;
@@ -39,7 +45,10 @@ export function createApiHandler<T = any>(
       // Check allowed methods
       if (options.allowedMethods && !options.allowedMethods.includes(req.method)) {
         return NextResponse.json(
-          { error: 'Method not allowed', message: `${req.method} is not allowed for this endpoint` },
+          {
+            error: "Method not allowed",
+            message: `${req.method} is not allowed for this endpoint`,
+          },
           { status: 405 }
         );
       }
@@ -93,14 +102,14 @@ export function createApiHandler<T = any>(
 
       return response;
     } catch (error: unknown) {
-      console.error('API handler error:', error);
+      console.error("API handler error:", error);
 
       // Handle timeout errors
       if (isTimeoutError(error)) {
         return NextResponse.json(
           {
-            error: 'Request timeout',
-            message: 'The request took too long to complete. Please try again.',
+            error: "Request timeout",
+            message: "The request took too long to complete. Please try again.",
           },
           { status: 504 }
         );
@@ -120,7 +129,7 @@ export function createApiHandler<T = any>(
  */
 export function createPublicApiHandler<T = any>(
   handler: (req: NextRequest) => Promise<NextResponse>,
-  options: Omit<ApiHandlerOptions, 'requireAuth' | 'optionalAuth'> = {}
+  options: Omit<ApiHandlerOptions, "requireAuth" | "optionalAuth"> = {}
 ) {
   return createApiHandler(async (req) => handler(req), {
     ...options,
@@ -134,7 +143,7 @@ export function createPublicApiHandler<T = any>(
  */
 export function createProtectedApiHandler<T = any>(
   handler: (req: NextRequest, context: { user: any; token: string }) => Promise<NextResponse>,
-  options: Omit<ApiHandlerOptions, 'requireAuth'> = {}
+  options: Omit<ApiHandlerOptions, "requireAuth"> = {}
 ) {
   return createApiHandler(
     handler as (req: NextRequest, context: { user?: any; token?: string }) => Promise<NextResponse>,
@@ -144,4 +153,3 @@ export function createProtectedApiHandler<T = any>(
     }
   );
 }
-

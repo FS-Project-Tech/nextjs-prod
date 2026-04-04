@@ -40,11 +40,7 @@ const paginationStyles = (
   `}</style>
 );
 
-export default function CategoriesSectionDisplay({
-  items,
-}: {
-  items: CategorySectionItem[];
-}) {
+export default function CategoriesSectionDisplay({ items }: { items: CategorySectionItem[] }) {
   if (!items.length) return null;
 
   return (
@@ -57,7 +53,7 @@ export default function CategoriesSectionDisplay({
             pagination={{ clickable: true }}
             autoplay={{ delay: 3500, disableOnInteraction: false }}
             spaceBetween={12}
-            slidesPerView={2.15}
+            slidesPerView={3.50}
             breakpoints={{
               380: { slidesPerView: 2.35, spaceBetween: 14 },
               480: { slidesPerView: 2.6, spaceBetween: 14 },

@@ -10,7 +10,10 @@ export function addSearchTerm(term: string) {
     if (!t) return;
     const raw = window.localStorage.getItem(SEARCH_KEY);
     const list: string[] = raw ? (Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : []) : [];
-    const next = [t, ...list.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, MAX_TERMS);
+    const next = [t, ...list.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(
+      0,
+      MAX_TERMS
+    );
     window.localStorage.setItem(SEARCH_KEY, JSON.stringify(next));
   } catch {}
 }
@@ -25,5 +28,3 @@ export function getRecentSearchTerms(): string[] {
     return [];
   }
 }
-
-

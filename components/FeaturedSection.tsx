@@ -43,12 +43,8 @@ export default function FeatureStrip() {
               <div className="flex-shrink-0">{item.icon}</div>
 
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">
-                  {item.title}
-                </h3>
-                <p className="text-xs text-gray-600 mt-1">
-                  {item.description}
-                </p>
+                <h3 className="text-sm font-semibold text-gray-900">{item.title}</h3>
+                <p className="text-xs text-gray-600 mt-1">{item.description}</p>
               </div>
             </div>
           ))}

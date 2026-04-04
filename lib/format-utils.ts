@@ -7,7 +7,7 @@
  * Format price to 2 decimal places with $ prefix
  */
 export function formatPrice(price: string | number | null | undefined): string {
-  const num = typeof price === "string" ? parseFloat(price) : (price || 0);
+  const num = typeof price === "string" ? parseFloat(price) : price || 0;
   if (!isFinite(num) || num <= 0) return "$0.00";
   return `$${num.toFixed(2)}`;
 }
@@ -24,7 +24,7 @@ export function formatCurrency(amount: number): string {
  * Format price without currency symbol (for calculations)
  */
 export function formatPriceNumber(price: string | number | null | undefined): number {
-  const num = typeof price === "string" ? parseFloat(price) : (price || 0);
+  const num = typeof price === "string" ? parseFloat(price) : price || 0;
   return isFinite(num) && num > 0 ? Number(num.toFixed(2)) : 0;
 }
 
@@ -34,7 +34,10 @@ export function formatPriceNumber(price: string | number | null | undefined): nu
  */
 export type TaxDisplayType = "gst_10" | "gst_free";
 
-export function getTaxDisplayType(tax_class?: string | null, tax_status?: string | null): TaxDisplayType {
+export function getTaxDisplayType(
+  tax_class?: string | null,
+  tax_status?: string | null
+): TaxDisplayType {
   const slug = (tax_class || "").toLowerCase().replace(/\s+/g, "-");
   const status = (tax_status || "").toLowerCase();
 
@@ -61,8 +64,14 @@ export function formatPriceWithLabel(
   price: string | number | null | undefined,
   tax_class?: string | null,
   tax_status?: string | null
-): { price: string; label: string | null; exclPrice?: string; inclPrice?: string; taxType: TaxDisplayType | null } {
-  const raw = typeof price === "string" ? parseFloat(price) : (price || 0);
+): {
+  price: string;
+  label: string | null;
+  exclPrice?: string;
+  inclPrice?: string;
+  taxType: TaxDisplayType | null;
+} {
+  const raw = typeof price === "string" ? parseFloat(price) : price || 0;
   if (!isFinite(raw) || raw <= 0) {
     return { price: "$0.00", label: null, taxType: null };
   }
@@ -71,7 +80,7 @@ export function formatPriceWithLabel(
 
   if (taxType === "gst_10") {
     const excl = raw;
-    const incl = raw * 1.10;
+    const incl = raw * 1.1;
     return {
       price: `$${incl.toFixed(2)}`,
       label: "Incl. GST",
@@ -88,4 +97,3 @@ export function formatPriceWithLabel(
     taxType,
   };
 }
-

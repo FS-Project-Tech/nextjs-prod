@@ -1,9 +1,6 @@
 const WP_URL = process.env.NEXT_PUBLIC_WP_URL || "";
- 
-async function fetchMediaSourceUrl(
-  id: number,
-  wpBase: string
-): Promise<string | null> {
+
+async function fetchMediaSourceUrl(id: number, wpBase: string): Promise<string | null> {
   const base = (wpBase || "").trim().replace(/\/$/, "");
   if (!base || !Number.isFinite(id) || id <= 0) return null;
   try {
@@ -20,7 +17,7 @@ async function fetchMediaSourceUrl(
     return null;
   }
 }
- 
+
 /** When ACF returns attachment ID (number / numeric string / { ID: n }) instead of a URL */
 export function extractMediaIdFromAcfImage(bi: unknown): number | null {
   if (bi == null) return null;
@@ -51,19 +48,19 @@ export function extractMediaIdFromAcfImage(bi: unknown): number | null {
   }
   return null;
 }
- 
+
 export interface DetailBannerData {
   /** ACF returns either string URL or object with url */
   banner_image?: string | { url: string; alt?: string };
   banner_link?: string | { url: string; title?: string };
 }
- 
+
 /** One row from the category_banners repeater */
 export interface CategoryBannerRow {
   banner_image?: string | { url: string; alt?: string };
   banner_link?: string | { url: string; title?: string };
 }
- 
+
 /** ACF response from product_cat taxonomy */
 export interface CategoryBannerData {
   acf?: {
@@ -71,7 +68,7 @@ export interface CategoryBannerData {
   };
   parent?: number;
 }
- 
+
 export async function fetchDetailBanner(): Promise<DetailBannerData | null> {
   if (!WP_URL) return null;
   try {
@@ -85,11 +82,9 @@ export async function fetchDetailBanner(): Promise<DetailBannerData | null> {
     return null;
   }
 }
- 
+
 /** Fetch category ACF (repeater category_banners) from product_cat taxonomy */
-export async function fetchCategoryBanner(
-  categoryId: number
-): Promise<CategoryBannerData | null> {
+export async function fetchCategoryBanner(categoryId: number): Promise<CategoryBannerData | null> {
   if (!WP_URL || !categoryId) return null;
   try {
     const res = await fetch(
@@ -103,9 +98,11 @@ export async function fetchCategoryBanner(
     return null;
   }
 }
- 
+
 /** Get banner image URL from ACF when it is already a URL (not an attachment ID). */
-export function getBannerImageUrl(banner: DetailBannerData | CategoryBannerRow | null): string | null {
+export function getBannerImageUrl(
+  banner: DetailBannerData | CategoryBannerRow | null
+): string | null {
   if (!banner?.banner_image) return null;
   const bi = banner.banner_image;
   if (typeof bi === "string") {
@@ -126,7 +123,7 @@ export function getBannerImageUrl(banner: DetailBannerData | CategoryBannerRow |
   }
   return null;
 }
- 
+
 /** Row has a banner image we can show (direct URL or resolvable media ID). */
 export function bannerRowHasImage(
   row: CategoryBannerRow | DetailBannerData | null | undefined
@@ -135,7 +132,7 @@ export function bannerRowHasImage(
   if (getBannerImageUrl(row)) return true;
   return extractMediaIdFromAcfImage(row.banner_image) !== null;
 }
- 
+
 /** Resolve ACF banner_image to a full URL (handles attachment IDs via REST). */
 export async function resolveBannerRowImageUrl(
   row: CategoryBannerRow | DetailBannerData,
@@ -147,7 +144,7 @@ export async function resolveBannerRowImageUrl(
   if (id != null) return fetchMediaSourceUrl(id, wpBase);
   return null;
 }
- 
+
 /** Promotional ACF block: image may be ID, string ID, or { url }. */
 export async function resolvePromoImageUrl(
   promo: { image?: unknown } | null | undefined,
@@ -177,7 +174,7 @@ export async function resolvePromoImageUrl(
   }
   return null;
 }
- 
+
 /** Get banner link URL from ACF response (string or object) */
 export function getBannerLinkUrl(banner: DetailBannerData | CategoryBannerRow | null): string {
   if (!banner?.banner_link) return "#";
@@ -185,7 +182,7 @@ export function getBannerLinkUrl(banner: DetailBannerData | CategoryBannerRow | 
     ? banner.banner_link
     : banner.banner_link?.url || "#";
 }
- 
+
 /**
  * Fetch category banners with parent inheritance.
  * If the category has no banners, walks up to parent and uses its banners.

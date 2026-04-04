@@ -17,11 +17,12 @@ export function logRequestedItems(
   console.info("[woo] requested_line_items", { items });
 }
 
-export function logValidatedItems(items: Array<{ product_id: number; variation_id?: number; quantity: number }>): void {
+export function logValidatedItems(
+  items: Array<{ product_id: number; variation_id?: number; quantity: number }>
+): void {
   console.info("[woo] validated_line_items", { items });
 }
 
 export function logWooOrderLineItems(lineItems: LineItemLog[]): void {
   console.info("[woo] order.line_items", { lineItems });
 }
-

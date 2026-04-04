@@ -19,21 +19,11 @@ export default function PriceBlock({ product, variation }: any) {
 
   return (
     <div>
-      {data.isOnSale && (
-        <div className="text-sm line-through text-gray-500">
-          ${data.regular}
-        </div>
-      )}
+      {data.isOnSale && <div className="text-sm line-through text-gray-500">${data.regular}</div>}
 
-      <div className="text-2xl font-semibold text-green-700">
-        ${data.price}
-      </div>
+      <div className="text-2xl font-semibold text-green-700">${data.price}</div>
 
-      {data.savings && (
-        <div className="text-sm text-green-600">
-          Save ${data.savings}
-        </div>
-      )}
+      {data.savings && <div className="text-sm text-green-600">Save ${data.savings}</div>}
     </div>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
- 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
- 
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+
 interface OrderItem {
   id: number;
   name: string;
@@ -13,7 +13,7 @@ interface OrderItem {
   sku?: string;
   image?: { src: string; alt: string };
 }
- 
+
 interface Order {
   id: number;
   order_number?: string;
@@ -50,7 +50,7 @@ interface Order {
     total: string;
   }>;
 }
- 
+
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -58,37 +58,37 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
- 
+
   useEffect(() => {
     if (!orderId) {
-      setError('Order ID is required');
+      setError("Order ID is required");
       setLoading(false);
       return;
     }
- 
+
     const fetchOrder = async () => {
       try {
         const response = await fetch(`/api/orders/${orderId}`, {
-          credentials: 'include',
-          cache: 'no-store',
+          credentials: "include",
+          cache: "no-store",
         });
- 
+
         if (!response.ok) {
-          throw new Error('Failed to fetch order');
+          throw new Error("Failed to fetch order");
         }
- 
+
         const data = await response.json();
         setOrder(data.order);
       } catch (err: any) {
-        setError(err.message || 'Failed to load order');
+        setError(err.message || "Failed to load order");
       } finally {
         setLoading(false);
       }
     };
- 
+
     fetchOrder();
   }, [orderId]);
- 
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -99,11 +99,11 @@ export default function OrderDetailPage() {
       </div>
     );
   }
- 
+
   if (error || !order) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error: {error || 'Order not found'}</p>
+        <p className="text-red-800">Error: {error || "Order not found"}</p>
         <Link
           href="/dashboard/orders"
           className="mt-4 inline-block text-sm text-red-600 hover:text-red-700"
@@ -113,7 +113,7 @@ export default function OrderDetailPage() {
       </div>
     );
   }
- 
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -125,27 +125,25 @@ export default function OrderDetailPage() {
             ← Back to Orders
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Order Details</h1>
-          <p className="text-gray-600 mt-1">
-            Order #{order.order_number || order.id}
-          </p>
+          <p className="text-gray-600 mt-1">Order #{order.order_number || order.id}</p>
         </div>
         <span
           className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
-            order.status === 'completed'
-              ? 'bg-green-100 text-green-800'
-              : order.status === 'processing'
-              ? 'bg-blue-100 text-blue-800'
-              : order.status === 'pending'
-              ? 'bg-yellow-100 text-yellow-800'
-              : order.status === 'cancelled'
-              ? 'bg-red-100 text-red-800'
-              : 'bg-gray-100 text-gray-800'
+            order.status === "completed"
+              ? "bg-green-100 text-green-800"
+              : order.status === "processing"
+                ? "bg-blue-100 text-blue-800"
+                : order.status === "pending"
+                  ? "bg-yellow-100 text-yellow-800"
+                  : order.status === "cancelled"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-100 text-gray-800"
           }`}
         >
           {order.status}
         </span>
       </div>
- 
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Order Items */}
         <div className="lg:col-span-2 space-y-6">
@@ -174,9 +172,7 @@ export default function OrderDetailPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-gray-900">{item.name}</h3>
-                    {item.sku && (
-                      <p className="text-xs text-gray-500 mt-1">SKU: {item.sku}</p>
-                    )}
+                    {item.sku && <p className="text-xs text-gray-500 mt-1">SKU: {item.sku}</p>}
                     <div className="mt-2 flex items-center justify-between">
                       <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
                       <p className="font-semibold text-gray-900">
@@ -189,7 +185,7 @@ export default function OrderDetailPage() {
             </div>
           </div>
         </div>
- 
+
         {/* Order Summary */}
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
@@ -198,10 +194,10 @@ export default function OrderDetailPage() {
               <div>
                 <dt className="text-sm text-gray-500">Order Date</dt>
                 <dd className="text-sm font-medium text-gray-900">
-                  {new Date(order.date_created).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
+                  {new Date(order.date_created).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
                   })}
                 </dd>
               </div>
@@ -229,7 +225,7 @@ export default function OrderDetailPage() {
               </div>
             </dl>
           </div>
- 
+
           {/* Billing Address */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Billing Address</h2>
@@ -247,7 +243,7 @@ export default function OrderDetailPage() {
               {order.billing.email && <p>Email: {order.billing.email}</p>}
             </div>
           </div>
- 
+
           {/* Shipping Address */}
           {order.shipping && (
             <div className="bg-white rounded-lg shadow p-6">

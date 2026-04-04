@@ -1,11 +1,11 @@
 /**
  * WooGraphQL Cart Operations
- * 
+ *
  * GraphQL-based cart management with session support
  * Requires: WPGraphQL + WooGraphQL plugins
  */
 
-import { graphqlQuery, graphqlMutation, isGraphQLAvailable } from './client';
+import { graphqlQuery, graphqlMutation, isGraphQLAvailable } from "./client";
 
 // ============================================================================
 // Types
@@ -306,16 +306,14 @@ const REMOVE_COUPON_MUTATION = `
 /**
  * Get cart via GraphQL
  */
-export async function graphqlGetCart(
-  sessionToken?: string
-): Promise<Cart | null> {
+export async function graphqlGetCart(sessionToken?: string): Promise<Cart | null> {
   if (!isGraphQLAvailable()) {
     return null;
   }
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
@@ -326,7 +324,7 @@ export async function graphqlGetCart(
 
     return data?.cart || null;
   } catch (error) {
-    console.error('Failed to get cart:', error);
+    console.error("Failed to get cart:", error);
     return null;
   }
 }
@@ -346,22 +344,19 @@ export async function graphqlAddToCart(
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
-    const data = await graphqlMutation<{ addToCart: AddToCartResult }>(
-      ADD_TO_CART_MUTATION,
-      {
-        variables: { productId, quantity, variationId },
-        headers,
-        timeout: 15000,
-      }
-    );
+    const data = await graphqlMutation<{ addToCart: AddToCartResult }>(ADD_TO_CART_MUTATION, {
+      variables: { productId, quantity, variationId },
+      headers,
+      timeout: 15000,
+    });
 
     return data?.addToCart || null;
   } catch (error) {
-    console.error('Failed to add to cart:', error);
+    console.error("Failed to add to cart:", error);
     return null;
   }
 }
@@ -380,7 +375,7 @@ export async function graphqlUpdateCartItem(
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
@@ -395,7 +390,7 @@ export async function graphqlUpdateCartItem(
 
     return data?.updateItemQuantities?.cart || null;
   } catch (error) {
-    console.error('Failed to update cart item:', error);
+    console.error("Failed to update cart item:", error);
     return null;
   }
 }
@@ -413,7 +408,7 @@ export async function graphqlRemoveCartItem(
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
@@ -428,7 +423,7 @@ export async function graphqlRemoveCartItem(
 
     return data?.removeItemsFromCart?.cart || null;
   } catch (error) {
-    console.error('Failed to remove cart item:', error);
+    console.error("Failed to remove cart item:", error);
     return null;
   }
 }
@@ -436,16 +431,14 @@ export async function graphqlRemoveCartItem(
 /**
  * Clear cart via GraphQL
  */
-export async function graphqlClearCart(
-  sessionToken?: string
-): Promise<Cart | null> {
+export async function graphqlClearCart(sessionToken?: string): Promise<Cart | null> {
   if (!isGraphQLAvailable()) {
     return null;
   }
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
@@ -459,7 +452,7 @@ export async function graphqlClearCart(
 
     return data?.removeItemsFromCart?.cart || null;
   } catch (error) {
-    console.error('Failed to clear cart:', error);
+    console.error("Failed to clear cart:", error);
     return null;
   }
 }
@@ -477,22 +470,19 @@ export async function graphqlApplyCoupon(
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
-    const data = await graphqlMutation<{ applyCoupon: { cart: Cart } }>(
-      APPLY_COUPON_MUTATION,
-      {
-        variables: { code },
-        headers,
-        timeout: 15000,
-      }
-    );
+    const data = await graphqlMutation<{ applyCoupon: { cart: Cart } }>(APPLY_COUPON_MUTATION, {
+      variables: { code },
+      headers,
+      timeout: 15000,
+    });
 
     return data?.applyCoupon?.cart || null;
   } catch (error) {
-    console.error('Failed to apply coupon:', error);
+    console.error("Failed to apply coupon:", error);
     return null;
   }
 }
@@ -510,22 +500,19 @@ export async function graphqlRemoveCoupon(
 
   const headers: Record<string, string> = {};
   if (sessionToken) {
-    headers['woocommerce-session'] = `Session ${sessionToken}`;
+    headers["woocommerce-session"] = `Session ${sessionToken}`;
   }
 
   try {
-    const data = await graphqlMutation<{ removeCoupons: { cart: Cart } }>(
-      REMOVE_COUPON_MUTATION,
-      {
-        variables: { code },
-        headers,
-        timeout: 15000,
-      }
-    );
+    const data = await graphqlMutation<{ removeCoupons: { cart: Cart } }>(REMOVE_COUPON_MUTATION, {
+      variables: { code },
+      headers,
+      timeout: 15000,
+    });
 
     return data?.removeCoupons?.cart || null;
   } catch (error) {
-    console.error('Failed to remove coupon:', error);
+    console.error("Failed to remove coupon:", error);
     return null;
   }
 }
@@ -536,4 +523,3 @@ export async function graphqlRemoveCoupon(
 export function isGraphQLCartAvailable(): boolean {
   return isGraphQLAvailable();
 }
-

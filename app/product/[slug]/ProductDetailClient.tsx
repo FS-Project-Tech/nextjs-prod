@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import PriceBlock from "@/components/product/PriceBlock";        
+import PriceBlock from "@/components/product/PriceBlock";
 import VariationSelector from "@/components/product/VariationSelector";
 
 export default function ProductDetailClient({ product }: any) {
@@ -38,9 +38,7 @@ export default function ProductDetailClient({ product }: any) {
       />
 
       {/* ADD TO CART */}
-      <button className="bg-teal-600 text-white px-6 py-3 rounded">
-        Add to Cart
-      </button>
+      <button className="bg-teal-600 text-white px-6 py-3 rounded">Add to Cart</button>
     </div>
   );
 }

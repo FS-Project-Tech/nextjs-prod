@@ -1,8 +1,8 @@
 "use client";
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertCircle, RefreshCw, Home } from 'lucide-react';
-import Link from 'next/link';
+import React, { Component, ErrorInfo, ReactNode } from "react";
+import { AlertCircle, RefreshCw, Home } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   children: ReactNode;
@@ -39,13 +39,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    if (process.env.NODE_ENV === "development") {
+      console.error("ErrorBoundary caught an error:", error, errorInfo);
     }
 
     // In production, you might want to log to an error reporting service
     // e.g., Sentry, LogRocket, etc.
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === "production") {
       // Example: logErrorToService(error, errorInfo);
     }
 
@@ -77,23 +77,19 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="mb-4 flex justify-center">
               <AlertCircle className="h-16 w-16 text-red-500" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Something went wrong
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h1>
             <p className="text-gray-600 mb-6">
               We're sorry, but something unexpected happened. Please try again.
             </p>
-            
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+
+            {process.env.NODE_ENV === "development" && this.state.error && (
               <div className="mb-6 p-4 bg-red-50 rounded-md text-left">
                 <p className="text-sm font-mono text-red-800 break-all">
                   {this.state.error.toString()}
                 </p>
                 {this.state.errorInfo && (
                   <details className="mt-2">
-                    <summary className="text-sm text-red-700 cursor-pointer">
-                      Stack trace
-                    </summary>
+                    <summary className="text-sm text-red-700 cursor-pointer">Stack trace</summary>
                     <pre className="mt-2 text-xs text-red-600 overflow-auto max-h-40">
                       {this.state.errorInfo.componentStack}
                     </pre>
@@ -134,10 +130,9 @@ export class ErrorBoundary extends Component<Props, State> {
  */
 export function useErrorHandler() {
   return (error: Error, errorInfo?: ErrorInfo) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error caught by useErrorHandler:', error, errorInfo);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error caught by useErrorHandler:", error, errorInfo);
     }
     // In production, log to error service
   };
 }
-

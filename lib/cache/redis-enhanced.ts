@@ -1,6 +1,6 @@
 /**
  * Enhanced Redis Caching Layer
- * 
+ *
  * Features:
  * - Multi-layer caching (memory → Redis → API)
  * - Smart TTL based on data type
@@ -9,7 +9,7 @@
  * - Automatic fallback to in-memory cache
  */
 
-import { unstable_cache } from 'next/cache';
+import { unstable_cache } from "next/cache";
 
 // In-memory cache as fallback
 const memoryCache = new Map<string, { data: any; expires: number }>();
@@ -20,9 +20,9 @@ let redisClient: any = null;
 let redisConnected = false;
 
 // Initialize Redis if available
-if (process.env.REDIS_URL && typeof window === 'undefined') {
+if (process.env.REDIS_URL && typeof window === "undefined") {
   try {
-    const Redis = require('ioredis');
+    const Redis = require("ioredis");
     redisClient = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
@@ -34,28 +34,28 @@ if (process.env.REDIS_URL && typeof window === 'undefined') {
         return Math.min(times * 200, 2000);
       },
     });
-    
-    redisClient.on('connect', () => {
+
+    redisClient.on("connect", () => {
       redisConnected = true;
-      console.log('[Cache] Redis connected');
+      console.log("[Cache] Redis connected");
     });
-    
-    redisClient.on('error', (err: Error) => {
-      console.warn('[Cache] Redis error:', err.message);
+
+    redisClient.on("error", (err: Error) => {
+      console.warn("[Cache] Redis error:", err.message);
       redisConnected = false;
     });
-    
-    redisClient.on('close', () => {
+
+    redisClient.on("close", () => {
       redisConnected = false;
-      console.warn('[Cache] Redis connection closed');
+      console.warn("[Cache] Redis connection closed");
     });
-    
+
     // Connect lazily
     redisClient.connect().catch(() => {
       // Silent fail - will use memory cache
     });
   } catch (error) {
-    console.warn('[Cache] Redis not available, using in-memory cache');
+    console.warn("[Cache] Redis not available, using in-memory cache");
   }
 }
 
@@ -67,17 +67,17 @@ const CACHE_TTL = {
   categories: 60 * 60 * 1000, // 1 hour
   attributes: 60 * 60 * 1000, // 1 hour
   tags: 60 * 60 * 1000, // 1 hour
-  
+
   // Semi-static data - medium cache
   products: 15 * 60 * 1000, // 15 minutes
   product: 10 * 60 * 1000, // 10 minutes
   searchIndex: 30 * 60 * 1000, // 30 minutes
-  
+
   // Dynamic data - short cache
   cart: 2 * 60 * 1000, // 2 minutes
   inventory: 1 * 60 * 1000, // 1 minute
   prices: 5 * 60 * 1000, // 5 minutes
-  
+
   // User-specific - short cache
   user: 5 * 60 * 1000, // 5 minutes
   orders: 2 * 60 * 1000, // 2 minutes
@@ -90,7 +90,7 @@ type CacheType = keyof typeof CACHE_TTL;
  */
 function generateCacheKey(type: CacheType, key: string, params?: Record<string, any>): string {
   const namespace = `wc:${type}:`;
-  const paramString = params ? `:${JSON.stringify(params)}` : '';
+  const paramString = params ? `:${JSON.stringify(params)}` : "";
   return `${namespace}${key}${paramString}`;
 }
 
@@ -100,12 +100,12 @@ function generateCacheKey(type: CacheType, key: string, params?: Record<string, 
 function getFromMemory(key: string): any | null {
   const cached = memoryCache.get(key);
   if (!cached) return null;
-  
+
   if (Date.now() > cached.expires) {
     memoryCache.delete(key);
     return null;
   }
-  
+
   return cached.data;
 }
 
@@ -117,7 +117,7 @@ function setInMemory(key: string, data: any, ttl: number): void {
     data,
     expires: Date.now() + ttl,
   });
-  
+
   // Cleanup expired entries periodically
   if (memoryCache.size > 1000) {
     const now = Date.now();
@@ -134,14 +134,14 @@ function setInMemory(key: string, data: any, ttl: number): void {
  */
 async function getFromRedis(key: string): Promise<any | null> {
   if (!redisClient || !redisConnected) return null;
-  
+
   try {
     const cached = await redisClient.get(key);
     if (!cached) return null;
-    
+
     return JSON.parse(cached);
   } catch (error) {
-    console.warn('[Cache] Redis get error:', error);
+    console.warn("[Cache] Redis get error:", error);
     return null;
   }
 }
@@ -151,12 +151,12 @@ async function getFromRedis(key: string): Promise<any | null> {
  */
 async function setInRedis(key: string, data: any, ttl: number): Promise<void> {
   if (!redisClient || !redisConnected) return;
-  
+
   try {
     const serialized = JSON.stringify(data);
     await redisClient.setex(key, Math.floor(ttl / 1000), serialized);
   } catch (error) {
-    console.warn('[Cache] Redis set error:', error);
+    console.warn("[Cache] Redis set error:", error);
   }
 }
 
@@ -165,11 +165,11 @@ async function setInRedis(key: string, data: any, ttl: number): Promise<void> {
  */
 async function deleteFromRedis(key: string): Promise<void> {
   if (!redisClient || !redisConnected) return;
-  
+
   try {
     await redisClient.del(key);
   } catch (error) {
-    console.warn('[Cache] Redis delete error:', error);
+    console.warn("[Cache] Redis delete error:", error);
   }
 }
 
@@ -178,7 +178,7 @@ async function deleteFromRedis(key: string): Promise<void> {
  */
 async function invalidateByTag(tag: string): Promise<void> {
   if (!redisClient || !redisConnected) return;
-  
+
   try {
     // Get all keys with this tag
     const keys = await redisClient.keys(`wc:tag:${tag}:*`);
@@ -186,9 +186,9 @@ async function invalidateByTag(tag: string): Promise<void> {
       await redisClient.del(...keys);
     }
   } catch (error) {
-    console.warn('[Cache] Redis tag invalidation error:', error);
+    console.warn("[Cache] Redis tag invalidation error:", error);
   }
-  
+
   // Also clear memory cache entries with this tag
   for (const [key] of memoryCache.entries()) {
     if (key.includes(`:tag:${tag}:`)) {
@@ -206,13 +206,13 @@ export async function cacheGet<T>(
   params?: Record<string, any>
 ): Promise<T | null> {
   const cacheKey = generateCacheKey(type, key, params);
-  
+
   // 1. Try memory cache first (fastest)
   const memoryData = getFromMemory(cacheKey);
   if (memoryData !== null) {
     return memoryData as T;
   }
-  
+
   // 2. Try Redis cache
   const redisData = await getFromRedis(cacheKey);
   if (redisData !== null) {
@@ -221,7 +221,7 @@ export async function cacheGet<T>(
     setInMemory(cacheKey, redisData, Math.min(ttl, MEMORY_CACHE_TTL));
     return redisData as T;
   }
-  
+
   return null;
 }
 
@@ -237,11 +237,11 @@ export async function cacheSet<T>(
 ): Promise<void> {
   const cacheKey = generateCacheKey(type, key, params);
   const ttl = CACHE_TTL[type] || 5 * 60 * 1000;
-  
+
   // Store in both memory and Redis
   setInMemory(cacheKey, data, Math.min(ttl, MEMORY_CACHE_TTL));
   await setInRedis(cacheKey, data, ttl);
-  
+
   // Store tag associations if provided
   if (tags && tags.length > 0 && redisClient && redisConnected) {
     for (const tag of tags) {
@@ -260,7 +260,7 @@ export async function cacheInvalidate(
   params?: Record<string, any>
 ): Promise<void> {
   const cacheKey = generateCacheKey(type, key, params);
-  
+
   // Delete from both caches
   memoryCache.delete(cacheKey);
   await deleteFromRedis(cacheKey);
@@ -277,10 +277,10 @@ export async function cacheInvalidateByType(type: CacheType): Promise<void> {
         await redisClient.del(...keys);
       }
     } catch (error) {
-      console.warn('[Cache] Redis bulk delete error:', error);
+      console.warn("[Cache] Redis bulk delete error:", error);
     }
   }
-  
+
   // Clear memory cache
   for (const [key] of memoryCache.entries()) {
     if (key.startsWith(`wc:${type}:`)) {
@@ -317,7 +317,7 @@ export async function getCacheStats(): Promise<{
       connected: redisConnected,
     },
   };
-  
+
   if (redisClient && redisConnected) {
     try {
       const keys = await redisClient.dbsize();
@@ -326,7 +326,7 @@ export async function getCacheStats(): Promise<{
       // Ignore errors
     }
   }
-  
+
   return stats;
 }
 
@@ -335,13 +335,12 @@ export async function getCacheStats(): Promise<{
  */
 export async function clearAllCaches(): Promise<void> {
   memoryCache.clear();
-  
+
   if (redisClient && redisConnected) {
     try {
       await redisClient.flushdb();
     } catch (error) {
-      console.warn('[Cache] Redis flush error:', error);
+      console.warn("[Cache] Redis flush error:", error);
     }
   }
 }
-

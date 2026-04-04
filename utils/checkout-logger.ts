@@ -22,4 +22,3 @@ export function logWarn(message: string, meta?: LogMeta): void {
 export function logError(message: string, meta?: LogMeta): void {
   console.error(`[checkout] ${message}`, safe(meta) ?? "");
 }
-

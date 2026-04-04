@@ -4,7 +4,7 @@
  */
 
 // Types
-export * from './types';
+export * from "./types";
 
 // Core session management
 export {
@@ -28,7 +28,7 @@ export {
   extendSession,
   markSessionRefreshing,
   expireSession,
-} from './manager';
+} from "./manager";
 
 // Secure fetch
 export {
@@ -38,7 +38,7 @@ export {
   sessionPut,
   sessionDelete,
   sessionPatch,
-} from './secure-fetch';
+} from "./secure-fetch";
 
 // Auth session
 export {
@@ -49,7 +49,7 @@ export {
   validateAndRefreshSession,
   logoutSession,
   createSessionFromToken,
-} from './auth-session';
+} from "./auth-session";
 
 // WooCommerce session
 export {
@@ -64,7 +64,7 @@ export {
   getWcCustomer,
   mergeWcCart,
   initializeWcSession,
-} from './wc-session';
+} from "./wc-session";
 
 // Data fetching with session
 export {
@@ -81,13 +81,9 @@ export {
   createOrderWithSession,
   fetchOrderWithSession,
   prefetchPageData,
-} from './data-fetcher';
+} from "./data-fetcher";
 
-export type {
-  WCProduct,
-  WCCategory,
-  PaginatedResponse,
-} from './data-fetcher';
+export type { WCProduct, WCCategory, PaginatedResponse } from "./data-fetcher";
 
 // React hooks (client-side only)
 export {
@@ -96,9 +92,9 @@ export {
   useAuthenticatedSession,
   useSessionData,
   useSessionCart,
-} from './useSession';
+} from "./useSession";
 
-export type { SessionContextType } from './useSession';
+export type { SessionContextType } from "./useSession";
 
 // Server-side utilities (use in Server Components and API routes)
 // Note: These use Next.js cookies() and should only be imported server-side
@@ -111,8 +107,7 @@ export {
   isAdmin,
   requireAuth,
   requireRole,
-} from './server';
+} from "./server";
 
 // Role helpers (non-duplicated)
-export { hasAnyRole } from './manager';
-
+export { hasAnyRole } from "./manager";

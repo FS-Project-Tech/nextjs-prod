@@ -5,16 +5,11 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import QueryProvider from "@/components/QueryProvider";
 import dynamic from "next/dynamic";
 
-const AnalyticsInitializer = dynamic(
-  () => import("@/components/AnalyticsInitializer"),
-  { ssr: false }
-);
+const AnalyticsInitializer = dynamic(() => import("@/components/AnalyticsInitializer"), {
+  ssr: false,
+});
 
-export default function CoreProviders({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function CoreProviders({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
       <AuthProvider>

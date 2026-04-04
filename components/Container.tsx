@@ -10,13 +10,13 @@ interface ContainerProps {
  * Reusable container component with consistent spacing
  * Uses the standard site width: w-[85vw] with responsive padding
  */
-export default function Container({ 
-  children, 
-  className = "", 
-  suppressHydrationWarning = false 
+export default function Container({
+  children,
+  className = "",
+  suppressHydrationWarning = false,
 }: ContainerProps) {
   return (
-    <div 
+    <div
       className={`mx-auto container px-3 sm:px-4 lg:px-6 ${className}`}
       suppressHydrationWarning={suppressHydrationWarning}
     >
@@ -24,4 +24,3 @@ export default function Container({
     </div>
   );
 }
-

@@ -1,26 +1,23 @@
 "use client";
- 
+
 import { useState } from "react";
 import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
 import { sanitizeHTML } from "@/lib/xss-sanitizer";
- 
+
 interface ProductInfoAccordionProps {
   product: WooCommerceProduct;
   variations: WooCommerceVariation[];
 }
- 
+
 interface AccordionItem {
   id: string;
   title: string;
   content: React.ReactNode;
 }
- 
-export default function ProductInfoAccordion({
-  product,
-  variations,
-}: ProductInfoAccordionProps) {
+
+export default function ProductInfoAccordion({ product, variations }: ProductInfoAccordionProps) {
   const [openItems, setOpenItems] = useState<Set<string>>(new Set(["description"]));
- 
+
   const toggleItem = (id: string) => {
     setOpenItems((prev) => {
       const newSet = new Set(prev);
@@ -32,23 +29,25 @@ export default function ProductInfoAccordion({
       return newSet;
     });
   };
- 
+
   const specRow = (label: string, value: React.ReactNode) => (
     <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 py-3.5 border-b border-gray-100 last:border-0 last:pb-0 first:pt-0">
-      <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide shrink-0">{label}</span>
+      <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide shrink-0">
+        {label}
+      </span>
       <span className="text-[15px] text-gray-900 text-right font-medium">{value}</span>
     </div>
   );
- 
+
   const hasDimensions =
-  product.dimensions &&
-  (product.dimensions.length !== "" ||
-   product.dimensions.width !== "" ||
-   product.dimensions.height !== "");
+    product.dimensions &&
+    (product.dimensions.length !== "" ||
+      product.dimensions.width !== "" ||
+      product.dimensions.height !== "");
   const dimensionsDisplay = hasDimensions
     ? `${product.dimensions?.length || "—"} × ${product.dimensions?.width || "—"} × ${product.dimensions?.height || "—"}`
     : null;
- 
+
   const accordionItems: AccordionItem[] = [
     {
       id: "description",
@@ -66,7 +65,9 @@ export default function ProductInfoAccordion({
             [&_h2]:font-semibold [&_h2]:text-gray-900 [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:first:mt-0
             [&_h3]:font-semibold [&_h3]:text-gray-900 [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-sm"
           dangerouslySetInnerHTML={{
-            __html: sanitizeHTML(product.description || product.short_description || "No description available."),
+            __html: sanitizeHTML(
+              product.description || product.short_description || "No description available."
+            ),
           }}
         />
       ),
@@ -79,16 +80,22 @@ export default function ProductInfoAccordion({
           {product.sku && specRow("SKU", product.sku)}
           {product.weight && specRow("Weight", product.weight)}
           {dimensionsDisplay && specRow("Dimensions", dimensionsDisplay)}
-          {product.stock_status && specRow("Stock Status", <span className="capitalize">{product.stock_status}</span>)}
+          {product.stock_status &&
+            specRow("Stock Status", <span className="capitalize">{product.stock_status}</span>)}
           {variations.length > 0 && (
             <div className="pt-4 mt-4 border-t border-gray-200">
-              <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Available Variations</p>
+              <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">
+                Available Variations
+              </p>
               <ul className="list-disc list-inside space-y-2.5 pl-1 text-[15px] text-gray-700 marker:text-teal-500">
                 {variations.slice(0, 5).map((variation) => (
                   <li key={variation.id} className="pl-0.5">
-                    {variation.attributes?.map((attr) => `${attr.name}: ${attr.option}`)
+                    {variation.attributes
+                      ?.map((attr) => `${attr.name}: ${attr.option}`)
                       .join(" · ")}
-                    {variation.sku && <span className="text-gray-500"> (SKU: {variation.sku})</span>}
+                    {variation.sku && (
+                      <span className="text-gray-500"> (SKU: {variation.sku})</span>
+                    )}
                   </li>
                 ))}
                 {variations.length > 5 && (
@@ -101,13 +108,14 @@ export default function ProductInfoAccordion({
       ),
     },
   ];
- 
+
   return (
     <div className="space-y-3" suppressHydrationWarning>
       {accordionItems.map((item) => (
         <div
           key={item.id}
-          className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm" id={`accordion-${item.id}`}
+          className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+          id={`accordion-${item.id}`}
         >
           <button
             onClick={() => toggleItem(item.id)}

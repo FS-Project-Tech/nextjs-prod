@@ -11,4 +11,3 @@ test("brands page renders", async ({ page }) => {
   expect(res?.ok()).toBeTruthy();
   await expect(page.locator("body")).toContainText(/shop by brand/i);
 });
-

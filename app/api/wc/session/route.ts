@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getWpBaseUrl } from '@/lib/auth';
-import { getAuthToken } from '@/lib/auth-server';
-import { createWCSession, getWCSessionCookie, setWCSessionCookie } from '@/lib/woocommerce-session';
-import { secureResponse } from '@/lib/security-headers';
-import { applyCorsHeaders } from '@/lib/cors';
+import { NextRequest, NextResponse } from "next/server";
+import { getWpBaseUrl } from "@/lib/auth";
+import { getAuthToken } from "@/lib/auth-server";
+import { createWCSession, getWCSessionCookie, setWCSessionCookie } from "@/lib/woocommerce-session";
+import { secureResponse } from "@/lib/security-headers";
+import { applyCorsHeaders } from "@/lib/cors";
 
 /**
  * GET /api/wc/session
@@ -12,39 +12,33 @@ import { applyCorsHeaders } from '@/lib/cors';
 export async function GET(req: NextRequest) {
   try {
     // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
       const response = new NextResponse(null, { status: 204 });
       return applyCorsHeaders(req, response);
     }
 
     const sessionToken = await getWCSessionCookie();
     const authToken = await getAuthToken();
-    
+
     if (!authToken) {
-      return secureResponse(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return secureResponse({ error: "Not authenticated" }, { status: 401 });
     }
 
     // Get session info from WordPress
     const wpBase = getWpBaseUrl();
     if (!wpBase) {
-      return secureResponse(
-        { error: 'WordPress URL not configured' },
-        { status: 500 }
-      );
+      return secureResponse({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
     try {
       const response = await fetch(`${wpBase}/wp-json/custom-auth/v1/session-info`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
-        cache: 'no-store',
+        cache: "no-store",
       });
 
       if (!response.ok) {
@@ -56,7 +50,7 @@ export async function GET(req: NextRequest) {
       }
 
       const data = await response.json();
-      
+
       return secureResponse({
         session_id: sessionToken || data.wc_session_id || null,
         has_session: !!sessionToken || !!data.wc_session_id,
@@ -71,12 +65,12 @@ export async function GET(req: NextRequest) {
       });
     }
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('WC session GET error:', error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("WC session GET error:", error);
     }
-    
+
     const errorResponse = secureResponse(
-      { error: 'Failed to get session information' },
+      { error: "Failed to get session information" },
       { status: 500 }
     );
     return applyCorsHeaders(req, errorResponse);
@@ -90,47 +84,44 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
       const response = new NextResponse(null, { status: 204 });
       return applyCorsHeaders(req, response);
     }
 
     const body = await req.json().catch(() => ({}));
     const { customer_id } = body;
-    
+
     const authToken = await getAuthToken();
-    
+
     if (!authToken) {
-      return secureResponse(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return secureResponse({ error: "Not authenticated" }, { status: 401 });
     }
 
     // Create WooCommerce session
     const sessionToken = await createWCSession(customer_id);
-    
+
     if (!sessionToken) {
       // Try to get session info from WordPress
       const wpBase = getWpBaseUrl();
       if (wpBase) {
         try {
           const response = await fetch(`${wpBase}/wp-json/custom-auth/v1/wc-session`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
             },
             body: JSON.stringify({ customer_id }),
-            cache: 'no-store',
+            cache: "no-store",
           });
 
           if (response.ok) {
             const data = await response.json();
             if (data.session_token || data.session_id) {
               await setWCSessionCookie(data.session_token || data.session_id);
-              
+
               return secureResponse({
                 success: true,
                 session_id: data.session_token || data.session_id,
@@ -141,13 +132,13 @@ export async function POST(req: NextRequest) {
           // Fallback to local session creation
         }
       }
-      
+
       // Return success even if session creation failed
       // WooCommerce will create session on first cart operation
       return secureResponse({
         success: true,
         session_id: null,
-        message: 'Session will be created on first cart operation',
+        message: "Session will be created on first cart operation",
       });
     }
 
@@ -157,16 +148,11 @@ export async function POST(req: NextRequest) {
     });
     return applyCorsHeaders(req, successResponse);
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('WC session POST error:', error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("WC session POST error:", error);
     }
-    
-    const errorResponse = secureResponse(
-      { error: 'Failed to create session' },
-      { status: 500 }
-    );
+
+    const errorResponse = secureResponse({ error: "Failed to create session" }, { status: 500 });
     return applyCorsHeaders(req, errorResponse);
   }
 }
-
-

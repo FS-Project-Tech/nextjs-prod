@@ -1,28 +1,36 @@
 /**
  * GET /api/performance/metrics
- * 
+ *
  * Get raw performance metrics
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchMonitor } from '@/lib/monitoring/fetch-instrumentation';
-import { routeMonitor } from '@/lib/monitoring/route-performance';
+import { NextRequest, NextResponse } from "next/server";
+import { fetchMonitor } from "@/lib/monitoring/fetch-instrumentation";
+import { routeMonitor } from "@/lib/monitoring/route-performance";
+import { requirePerformanceApiKey } from "@/lib/internal-performance-auth";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Disabled" }, { status: 403 });
+  }
+
+  const denied = requirePerformanceApiKey(req);
+  if (denied) return denied;
+
   try {
     const searchParams = req.nextUrl.searchParams;
-    const timeWindowMs = searchParams.get('window') 
-      ? parseInt(searchParams.get('window')!) 
+    const timeWindowMs = searchParams.get("window")
+      ? parseInt(searchParams.get("window")!)
       : undefined;
 
-    const type = searchParams.get('type') || 'all';
+    const type = searchParams.get("type") || "all";
 
-    if (type === 'fetch' || type === 'all') {
+    if (type === "fetch" || type === "all") {
       const summary = fetchMonitor.getSummary(timeWindowMs);
       const duplicates = fetchMonitor.getDuplicates(2, timeWindowMs || 5000);
       const routeToWP = fetchMonitor.getRouteToWPEndpointMapping(timeWindowMs);
 
-      if (type === 'fetch') {
+      if (type === "fetch") {
         return NextResponse.json({
           summary,
           duplicates,
@@ -36,11 +44,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (type === 'routes' || type === 'all') {
+    if (type === "routes" || type === "all") {
       const routeMetrics = routeMonitor.getAverageTimesByRoute(timeWindowMs);
       const slowestRoutes = routeMonitor.getSlowestRoutes(20, timeWindowMs);
 
-      if (type === 'routes') {
+      if (type === "routes") {
         return NextResponse.json({
           routes: Object.fromEntries(
             Array.from(routeMetrics.entries()).map(([route, data]) => [route, data])
@@ -76,12 +84,13 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error getting metrics:', error);
+    console.error("Error getting metrics:", error);
     return NextResponse.json(
-      { error: 'Failed to get metrics', message: (error instanceof Error ? error.message : 'An error occurred') },
+      {
+        error: "Failed to get metrics",
+        message: error instanceof Error ? error.message : "An error occurred",
+      },
       { status: 500 }
     );
   }
 }
-
-

@@ -3,7 +3,7 @@
  * Provides statistics and insights for quote data
  */
 
-import type { Quote } from './types/quote';
+import type { Quote } from "./types/quote";
 
 export interface QuoteStatistics {
   total: number;
@@ -50,14 +50,14 @@ export function calculateQuoteStatistics(quotes: Quote[]): QuoteStatistics {
   }
 
   // Calculate by status
-  quotes.forEach(quote => {
+  quotes.forEach((quote) => {
     stats.byStatus[quote.status] = (stats.byStatus[quote.status] || 0) + 1;
   });
 
   // Calculate by month
-  quotes.forEach(quote => {
+  quotes.forEach((quote) => {
     const date = new Date(quote.created_at);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     stats.byMonth[monthKey] = (stats.byMonth[monthKey] || 0) + 1;
   });
 
@@ -67,15 +67,15 @@ export function calculateQuoteStatistics(quotes: Quote[]): QuoteStatistics {
   stats.averageValue = totalValue / quotes.length;
 
   // Calculate conversion rate (accepted quotes / total quotes)
-  const acceptedCount = stats.byStatus['accepted'] || 0;
+  const acceptedCount = stats.byStatus["accepted"] || 0;
   stats.conversionRate = (acceptedCount / quotes.length) * 100;
 
   // Calculate average response time (time from created to sent)
   const responseTimes: number[] = [];
-  quotes.forEach(quote => {
+  quotes.forEach((quote) => {
     if (quote.status_history && quote.status_history.length > 1) {
       const createdTime = new Date(quote.created_at).getTime();
-      const sentEntry = quote.status_history.find(h => h.status === 'sent');
+      const sentEntry = quote.status_history.find((h) => h.status === "sent");
       if (sentEntry) {
         const sentTime = new Date(sentEntry.changed_at).getTime();
         const days = (sentTime - createdTime) / (1000 * 60 * 60 * 24);
@@ -90,10 +90,13 @@ export function calculateQuoteStatistics(quotes: Quote[]): QuoteStatistics {
   }
 
   // Calculate top items
-  const itemCounts = new Map<string, { name: string; sku?: string; count: number; totalQuantity: number }>();
-  
-  quotes.forEach(quote => {
-    quote.items.forEach(item => {
+  const itemCounts = new Map<
+    string,
+    { name: string; sku?: string; count: number; totalQuantity: number }
+  >();
+
+  quotes.forEach((quote) => {
+    quote.items.forEach((item) => {
       const key = item.sku || item.name;
       const existing = itemCounts.get(key) || {
         name: item.name,
@@ -124,16 +127,16 @@ export function generateQuoteTrends(
 ): QuoteTrend[] {
   const trends: Map<string, QuoteTrend> = new Map();
 
-  const filteredQuotes = quotes.filter(quote => {
+  const filteredQuotes = quotes.filter((quote) => {
     const quoteDate = new Date(quote.created_at);
     if (startDate && quoteDate < startDate) return false;
     if (endDate && quoteDate > endDate) return false;
     return true;
   });
 
-  filteredQuotes.forEach(quote => {
+  filteredQuotes.forEach((quote) => {
     const date = new Date(quote.created_at);
-    const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateKey = date.toISOString().split("T")[0]; // YYYY-MM-DD
 
     if (!trends.has(dateKey)) {
       trends.set(dateKey, {
@@ -150,17 +153,17 @@ export function generateQuoteTrends(
     trend.count += 1;
     trend.totalValue += quote.total;
 
-    if (quote.status === 'accepted') {
+    if (quote.status === "accepted") {
       trend.accepted += 1;
-    } else if (quote.status === 'rejected') {
+    } else if (quote.status === "rejected") {
       trend.rejected += 1;
     }
 
     // Check if quote was converted to order
-    if (quote.status === 'accepted' && quote.status_history) {
-      const converted = quote.status_history.some(h => 
-        h.notes?.toLowerCase().includes('converted') || 
-        h.notes?.toLowerCase().includes('order')
+    if (quote.status === "accepted" && quote.status_history) {
+      const converted = quote.status_history.some(
+        (h) =>
+          h.notes?.toLowerCase().includes("converted") || h.notes?.toLowerCase().includes("order")
       );
       if (converted) {
         trend.converted += 1;
@@ -168,8 +171,7 @@ export function generateQuoteTrends(
     }
   });
 
-  return Array.from(trends.values())
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return Array.from(trends.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**
@@ -180,7 +182,7 @@ export function getQuoteStatsByDateRange(
   startDate: Date,
   endDate: Date
 ): QuoteStatistics {
-  const filteredQuotes = quotes.filter(quote => {
+  const filteredQuotes = quotes.filter((quote) => {
     const quoteDate = new Date(quote.created_at);
     return quoteDate >= startDate && quoteDate <= endDate;
   });
@@ -201,11 +203,11 @@ export function getStatusDistribution(quotes: Quote[]): Array<{
   const total = stats.total;
 
   const statusColors: Record<string, string> = {
-    pending: '#fbbf24', // yellow
-    sent: '#3b82f6', // blue
-    accepted: '#10b981', // green
-    rejected: '#ef4444', // red
-    expired: '#6b7280', // gray
+    pending: "#fbbf24", // yellow
+    sent: "#3b82f6", // blue
+    accepted: "#10b981", // green
+    rejected: "#ef4444", // red
+    expired: "#6b7280", // gray
   };
 
   return Object.entries(stats.byStatus)
@@ -213,7 +215,7 @@ export function getStatusDistribution(quotes: Quote[]): Array<{
       status,
       count,
       percentage: total > 0 ? (count / total) * 100 : 0,
-      color: statusColors[status] || '#6b7280',
+      color: statusColors[status] || "#6b7280",
     }))
     .sort((a, b) => b.count - a.count);
 }
@@ -228,10 +230,10 @@ export function getMonthlyRevenue(quotes: Quote[]): Array<{
 }> {
   const monthlyData: Map<string, { revenue: number; count: number }> = new Map();
 
-  quotes.forEach(quote => {
+  quotes.forEach((quote) => {
     const date = new Date(quote.created_at);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
     if (!monthlyData.has(monthKey)) {
       monthlyData.set(monthKey, { revenue: 0, count: 0 });
     }
@@ -249,4 +251,3 @@ export function getMonthlyRevenue(quotes: Quote[]): Array<{
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 }
-

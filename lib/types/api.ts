@@ -46,9 +46,9 @@ export interface PaginatedResponse<T> {
  * Rate limit response headers
  */
 export interface RateLimitHeaders {
-  'X-RateLimit-Limit': string;
-  'X-RateLimit-Remaining': string;
-  'X-RateLimit-Reset': string;
+  "X-RateLimit-Limit": string;
+  "X-RateLimit-Remaining": string;
+  "X-RateLimit-Reset": string;
 }
 
 /**
@@ -65,13 +65,12 @@ export interface ApiRequestOptions {
  * API error codes
  */
 export enum ApiErrorCode {
-  UNAUTHORIZED = 'UNAUTHORIZED',
-  FORBIDDEN = 'FORBIDDEN',
-  NOT_FOUND = 'NOT_FOUND',
-  VALIDATION_ERROR = 'VALIDATION_ERROR',
-  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
-  INTERNAL_ERROR = 'INTERNAL_ERROR',
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  TIMEOUT = 'TIMEOUT',
+  UNAUTHORIZED = "UNAUTHORIZED",
+  FORBIDDEN = "FORBIDDEN",
+  NOT_FOUND = "NOT_FOUND",
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+  RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED",
+  INTERNAL_ERROR = "INTERNAL_ERROR",
+  NETWORK_ERROR = "NETWORK_ERROR",
+  TIMEOUT = "TIMEOUT",
 }
-

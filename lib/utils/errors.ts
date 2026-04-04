@@ -8,14 +8,14 @@
 // =============================================================================
 
 export type ErrorCode =
-  | 'NETWORK_ERROR'
-  | 'TIMEOUT'
-  | 'VALIDATION_ERROR'
-  | 'AUTH_ERROR'
-  | 'NOT_FOUND'
-  | 'RATE_LIMITED'
-  | 'SERVER_ERROR'
-  | 'UNKNOWN';
+  | "NETWORK_ERROR"
+  | "TIMEOUT"
+  | "VALIDATION_ERROR"
+  | "AUTH_ERROR"
+  | "NOT_FOUND"
+  | "RATE_LIMITED"
+  | "SERVER_ERROR"
+  | "UNKNOWN";
 
 export interface AppError {
   code: ErrorCode;
@@ -37,13 +37,13 @@ export class BaseError extends Error {
 
   constructor(
     message: string,
-    code: ErrorCode = 'UNKNOWN',
+    code: ErrorCode = "UNKNOWN",
     status: number = 500,
     userMessage?: string,
     details?: Record<string, unknown>
   ) {
     super(message);
-    this.name = 'AppError';
+    this.name = "AppError";
     this.code = code;
     this.status = status;
     this.userMessage = userMessage || getDefaultUserMessage(code);
@@ -63,54 +63,59 @@ export class BaseError extends Error {
 
 export class ValidationError extends BaseError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'VALIDATION_ERROR', 400, 'Please check your input and try again.', details);
-    this.name = 'ValidationError';
+    super(message, "VALIDATION_ERROR", 400, "Please check your input and try again.", details);
+    this.name = "ValidationError";
   }
 }
 
 export class AuthError extends BaseError {
-  constructor(message: string = 'Authentication required') {
-    super(message, 'AUTH_ERROR', 401, 'Please sign in to continue.');
-    this.name = 'AuthError';
+  constructor(message: string = "Authentication required") {
+    super(message, "AUTH_ERROR", 401, "Please sign in to continue.");
+    this.name = "AuthError";
   }
 }
 
 export class NotFoundError extends BaseError {
-  constructor(resource: string = 'Resource') {
-    super(`${resource} not found`, 'NOT_FOUND', 404, `The requested ${resource.toLowerCase()} could not be found.`);
-    this.name = 'NotFoundError';
+  constructor(resource: string = "Resource") {
+    super(
+      `${resource} not found`,
+      "NOT_FOUND",
+      404,
+      `The requested ${resource.toLowerCase()} could not be found.`
+    );
+    this.name = "NotFoundError";
   }
 }
 
 export class RateLimitError extends BaseError {
   constructor(retryAfter?: number) {
     super(
-      'Rate limit exceeded',
-      'RATE_LIMITED',
+      "Rate limit exceeded",
+      "RATE_LIMITED",
       429,
-      `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : 'later'}.`,
+      `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : "later"}.`,
       retryAfter ? { retryAfter } : undefined
     );
-    this.name = 'RateLimitError';
+    this.name = "RateLimitError";
   }
 }
 
 export class NetworkError extends BaseError {
-  constructor(message: string = 'Network request failed') {
-    super(message, 'NETWORK_ERROR', 0, 'Unable to connect. Please check your internet connection.');
-    this.name = 'NetworkError';
+  constructor(message: string = "Network request failed") {
+    super(message, "NETWORK_ERROR", 0, "Unable to connect. Please check your internet connection.");
+    this.name = "NetworkError";
   }
 }
 
 export class TimeoutError extends BaseError {
   constructor(timeoutMs?: number) {
     super(
-      `Request timed out${timeoutMs ? ` after ${timeoutMs}ms` : ''}`,
-      'TIMEOUT',
+      `Request timed out${timeoutMs ? ` after ${timeoutMs}ms` : ""}`,
+      "TIMEOUT",
       0,
-      'The request took too long. Please try again.'
+      "The request took too long. Please try again."
     );
-    this.name = 'TimeoutError';
+    this.name = "TimeoutError";
   }
 }
 
@@ -120,22 +125,22 @@ export class TimeoutError extends BaseError {
 
 function getDefaultUserMessage(code: ErrorCode): string {
   switch (code) {
-    case 'NETWORK_ERROR':
-      return 'Unable to connect. Please check your internet connection.';
-    case 'TIMEOUT':
-      return 'The request took too long. Please try again.';
-    case 'VALIDATION_ERROR':
-      return 'Please check your input and try again.';
-    case 'AUTH_ERROR':
-      return 'Please sign in to continue.';
-    case 'NOT_FOUND':
-      return 'The requested resource could not be found.';
-    case 'RATE_LIMITED':
-      return 'Too many requests. Please try again later.';
-    case 'SERVER_ERROR':
-      return 'Something went wrong. Please try again later.';
+    case "NETWORK_ERROR":
+      return "Unable to connect. Please check your internet connection.";
+    case "TIMEOUT":
+      return "The request took too long. Please try again.";
+    case "VALIDATION_ERROR":
+      return "Please check your input and try again.";
+    case "AUTH_ERROR":
+      return "Please sign in to continue.";
+    case "NOT_FOUND":
+      return "The requested resource could not be found.";
+    case "RATE_LIMITED":
+      return "Too many requests. Please try again later.";
+    case "SERVER_ERROR":
+      return "Something went wrong. Please try again later.";
     default:
-      return 'An unexpected error occurred.';
+      return "An unexpected error occurred.";
   }
 }
 
@@ -143,13 +148,13 @@ function getDefaultUserMessage(code: ErrorCode): string {
  * Check if error is an AbortError (timeout/cancellation)
  */
 export function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (error instanceof DOMException && error.name === "AbortError") {
     return true;
   }
-  if (error instanceof Error && error.name === 'AbortError') {
+  if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+  if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
     return true;
   }
   return false;
@@ -163,11 +168,13 @@ export function isTimeoutError(error: unknown): boolean {
     return true;
   }
   const message = getErrorMessage(error).toLowerCase();
-  return message.includes('timeout') || 
-         message.includes('exceeded') || 
-         message.includes('aborted') ||
-         message.includes('econnaborted') ||
-         message.includes('etimedout');
+  return (
+    message.includes("timeout") ||
+    message.includes("exceeded") ||
+    message.includes("aborted") ||
+    message.includes("econnaborted") ||
+    message.includes("etimedout")
+  );
 }
 
 /**
@@ -177,28 +184,26 @@ export function getErrorName(error: unknown): string {
   if (error instanceof Error) {
     return error.name;
   }
-  if (error && typeof error === 'object' && 'name' in error) {
+  if (error && typeof error === "object" && "name" in error) {
     return String(error.name);
   }
-  return 'Unknown';
+  return "Unknown";
 }
 
 /**
  * Check if error has axios-style response property
  */
-export function hasAxiosResponse(error: unknown): error is { 
-  response?: { 
-    status?: number; 
-    statusText?: string; 
+export function hasAxiosResponse(error: unknown): error is {
+  response?: {
+    status?: number;
+    statusText?: string;
     data?: unknown;
   };
   config?: { url?: string; method?: string; params?: unknown };
   code?: string;
   message?: string;
 } {
-  return error !== null && 
-         typeof error === 'object' && 
-         'response' in error;
+  return error !== null && typeof error === "object" && "response" in error;
 }
 
 /**
@@ -219,7 +224,7 @@ export function getAxiosErrorDetails(error: unknown): {
 
   const response = error.response;
   const config = error.config;
-  
+
   return {
     status: response?.status,
     statusText: response?.statusText,
@@ -248,7 +253,7 @@ export function normalizeError(error: unknown): AppError {
   if (hasAxiosResponse(error)) {
     const details = getAxiosErrorDetails(error);
     const status = details.status || 500;
-    
+
     if (status === 401 || status === 403) {
       return new AuthError(details.message).toJSON();
     }
@@ -260,55 +265,57 @@ export function normalizeError(error: unknown): AppError {
     }
     if (status >= 500) {
       return {
-        code: 'SERVER_ERROR',
+        code: "SERVER_ERROR",
         message: details.message,
-        userMessage: 'A server error occurred. Please try again later.',
+        userMessage: "A server error occurred. Please try again later.",
         status,
         details: { url: details.url, data: details.data },
       };
     }
-    
+
     // Check for timeout codes
-    if (details.code === 'ECONNABORTED' || 
-        details.code === 'ETIMEDOUT' || 
-        details.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-        isTimeoutError(error)) {
+    if (
+      details.code === "ECONNABORTED" ||
+      details.code === "ETIMEDOUT" ||
+      details.code === "UND_ERR_CONNECT_TIMEOUT" ||
+      isTimeoutError(error)
+    ) {
       return new TimeoutError().toJSON();
     }
   }
 
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
-    
+
     // Detect error type from message
     if (isTimeoutError(error)) {
       return new TimeoutError().toJSON();
     }
-    if (message.includes('network') || message.includes('fetch failed')) {
+    if (message.includes("network") || message.includes("fetch failed")) {
       return new NetworkError(error.message).toJSON();
     }
-    if (message.includes('401') || message.includes('unauthorized')) {
+    if (message.includes("401") || message.includes("unauthorized")) {
       return new AuthError(error.message).toJSON();
     }
-    if (message.includes('404') || message.includes('not found')) {
+    if (message.includes("404") || message.includes("not found")) {
       return new NotFoundError().toJSON();
     }
-    if (message.includes('429') || message.includes('rate limit')) {
+    if (message.includes("429") || message.includes("rate limit")) {
       return new RateLimitError().toJSON();
     }
 
     return {
-      code: 'UNKNOWN',
+      code: "UNKNOWN",
       message: error.message,
-      userMessage: 'An unexpected error occurred.',
+      userMessage: "An unexpected error occurred.",
       status: 500,
     };
   }
 
   return {
-    code: 'UNKNOWN',
+    code: "UNKNOWN",
     message: String(error),
-    userMessage: 'An unexpected error occurred.',
+    userMessage: "An unexpected error occurred.",
     status: 500,
   };
 }
@@ -318,12 +325,12 @@ export function normalizeError(error: unknown): AppError {
  */
 export function handleError(error: unknown, context?: string): string {
   const normalized = normalizeError(error);
-  
+
   // Log in development
-  if (process.env.NODE_ENV === 'development') {
-    console.error(`[${context || 'Error'}]`, normalized);
+  if (process.env.NODE_ENV === "development") {
+    console.error(`[${context || "Error"}]`, normalized);
   }
-  
+
   return normalized.userMessage;
 }
 
@@ -342,16 +349,13 @@ export function isErrorCode(error: unknown, code: ErrorCode): boolean {
  */
 export function isRetryableError(error: unknown): boolean {
   const normalized = normalizeError(error);
-  return ['NETWORK_ERROR', 'TIMEOUT', 'SERVER_ERROR'].includes(normalized.code);
+  return ["NETWORK_ERROR", "TIMEOUT", "SERVER_ERROR"].includes(normalized.code);
 }
 
 /**
  * Safely execute async function with error handling
  */
-export async function trySafe<T>(
-  fn: () => Promise<T>,
-  fallback: T
-): Promise<T> {
+export async function trySafe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
   } catch {
@@ -362,9 +366,7 @@ export async function trySafe<T>(
 /**
  * Safely execute async function, return tuple [data, error]
  */
-export async function tryAsync<T>(
-  fn: () => Promise<T>
-): Promise<[T | null, AppError | null]> {
+export async function tryAsync<T>(fn: () => Promise<T>): Promise<[T | null, AppError | null]> {
   try {
     const data = await fn();
     return [data, null];
@@ -381,22 +383,28 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return error;
   }
-  if (error && typeof error === 'object' && 'message' in error) {
+  if (error && typeof error === "object" && "message" in error) {
     return String((error as { message: unknown }).message);
   }
-  return 'An unexpected error occurred';
+  return "An unexpected error occurred";
 }
 
 /**
  * Get error details from unknown error (includes response data for API errors)
  */
-export function getErrorDetails(error: unknown): { message: string; status?: number; code?: string } {
+export function getErrorDetails(error: unknown): {
+  message: string;
+  status?: number;
+  code?: string;
+} {
   if (error instanceof Error) {
     // Check for axios/fetch response errors
-    const axiosError = error as { response?: { data?: { message?: string; code?: string }; status?: number } };
+    const axiosError = error as {
+      response?: { data?: { message?: string; code?: string }; status?: number };
+    };
     if (axiosError.response) {
       return {
         message: axiosError.response.data?.message || error.message,
@@ -408,4 +416,3 @@ export function getErrorDetails(error: unknown): { message: string; status?: num
   }
   return { message: getErrorMessage(error) };
 }
-

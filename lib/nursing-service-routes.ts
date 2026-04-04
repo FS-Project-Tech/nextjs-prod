@@ -9,9 +9,7 @@ import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
 /** Comma- or space-separated slugs (e.g. top-level WP pages linked from hub HTML). */
 export function parseNursingDetailExtraSlugsFromEnv(): string[] {
   const raw =
-    process.env.NEXT_PUBLIC_NURSING_DETAIL_SLUGS ||
-    process.env.NURSING_DETAIL_SLUGS ||
-    "";
+    process.env.NEXT_PUBLIC_NURSING_DETAIL_SLUGS || process.env.NURSING_DETAIL_SLUGS || "";
   return raw
     .split(/[\s,]+/)
     .map((s) => s.trim().toLowerCase())
@@ -34,9 +32,7 @@ export function rewriteNursingHubLinksToNext(
   const base = wpBaseUrl.replace(/\/$/, "");
   if (!base || !html) return html;
 
-  const slugSet = new Set(
-    [...allowedSlugs].map((s) => s.trim().toLowerCase()).filter(Boolean)
-  );
+  const slugSet = new Set([...allowedSlugs].map((s) => s.trim().toLowerCase()).filter(Boolean));
   if (slugSet.size === 0) return html;
 
   const eb = escapeRegExp(base);

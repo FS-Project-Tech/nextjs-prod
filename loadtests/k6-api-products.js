@@ -32,7 +32,7 @@ export default function () {
 
   check(res, {
     "status is 200": (r) => r.status === 200,
-    "json": (r) => {
+    json: (r) => {
       try {
         JSON.parse(r.body);
         return true;
@@ -44,4 +44,3 @@ export default function () {
 
   sleep(1);
 }
-

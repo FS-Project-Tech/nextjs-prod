@@ -84,4 +84,3 @@ export function useFocusTrap({ enabled, onEscape, initialFocusSelector }: Option
 
   return { containerRef };
 }
-

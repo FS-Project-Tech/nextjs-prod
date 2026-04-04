@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthToken, getUserData, validateToken, clearAuthToken } from '@/lib/auth-server';
-import { secureResponse } from '@/lib/security-headers';
-import { sanitizeUser } from '@/lib/sanitize';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthToken, getUserData, validateToken, clearAuthToken } from "@/lib/auth-server";
+import { secureResponse } from "@/lib/security-headers";
+import { sanitizeUser } from "@/lib/sanitize";
 
 /**
  * GET /api/auth/me
@@ -13,10 +13,7 @@ export async function GET(req: NextRequest) {
     const token = await getAuthToken();
 
     if (!token) {
-      return secureResponse(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return secureResponse({ error: "Not authenticated" }, { status: 401 });
     }
 
     // Validate token (with timeout handling)
@@ -26,14 +23,14 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       // Timeout or connection errors - treat as invalid
       const err = error as Error & { code?: string };
-      const isTimeoutError = 
-        err?.name === 'AbortError' ||
-        err?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-        err?.message?.includes('timeout') ||
-        err?.message?.includes('aborted');
-      
+      const isTimeoutError =
+        err?.name === "AbortError" ||
+        err?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+        err?.message?.includes("timeout") ||
+        err?.message?.includes("aborted");
+
       if (!isTimeoutError) {
-        console.error('Token validation error:', error);
+        console.error("Token validation error:", error);
       }
       isValid = false;
     }
@@ -41,10 +38,7 @@ export async function GET(req: NextRequest) {
     if (!isValid) {
       // Clear invalid session
       await clearAuthToken();
-      return secureResponse(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
+      return secureResponse({ error: "Invalid token" }, { status: 401 });
     }
 
     // Get user data (with timeout handling)
@@ -54,14 +48,14 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       // Timeout or connection errors - treat as unable to fetch
       const err = error as Error & { code?: string };
-      const isTimeoutError = 
-        err?.name === 'AbortError' ||
-        err?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-        err?.message?.includes('timeout') ||
-        err?.message?.includes('aborted');
-      
+      const isTimeoutError =
+        err?.name === "AbortError" ||
+        err?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+        err?.message?.includes("timeout") ||
+        err?.message?.includes("aborted");
+
       if (!isTimeoutError) {
-        console.error('Get user data error:', error);
+        console.error("Get user data error:", error);
       }
       user = null;
     }
@@ -70,7 +64,7 @@ export async function GET(req: NextRequest) {
       // If user data can't be fetched, clear invalid session
       await clearAuthToken();
       return secureResponse(
-        { error: 'Unable to fetch user data. Please login again.' },
+        { error: "Unable to fetch user data. Please login again." },
         { status: 401 }
       );
     }
@@ -82,7 +76,7 @@ export async function GET(req: NextRequest) {
       { user: sanitizedUser },
       {
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
       }
     );
@@ -95,22 +89,17 @@ export async function GET(req: NextRequest) {
       // Ignore clear errors
     }
     const err = error as Error & { code?: string };
-    const isTimeoutError = 
-      err?.name === 'AbortError' ||
-      err?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-      err?.message?.includes('timeout') ||
-      err?.message?.includes('aborted');
-    
+    const isTimeoutError =
+      err?.name === "AbortError" ||
+      err?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+      err?.message?.includes("timeout") ||
+      err?.message?.includes("aborted");
+
     if (!isTimeoutError) {
-      console.error('Get user error:', error);
+      console.error("Get user error:", error);
     }
-    
+
     // Always return 401 instead of 500 for authentication errors
-    return secureResponse(
-      { error: 'Authentication failed. Please login again.' },
-      { status: 401 }
-    );
+    return secureResponse({ error: "Authentication failed. Please login again." }, { status: 401 });
   }
 }
-
-

@@ -3,8 +3,8 @@
  * Handles comparing multiple quotes side by side
  */
 
-import type { Quote, QuoteItem } from './types/quote';
-import { formatPrice } from './format-utils';
+import type { Quote, QuoteItem } from "./types/quote";
+import { formatPrice } from "./format-utils";
 
 export interface ComparisonItem {
   name: string;
@@ -31,7 +31,7 @@ export interface QuoteComparison {
   }[];
   statuses: {
     quoteId: string;
-    status: Quote['status'];
+    status: Quote["status"];
   }[];
 }
 
@@ -52,11 +52,11 @@ export function compareQuotes(quotes: Quote[]): QuoteComparison {
   // Collect all unique items across all quotes
   const itemMap = new Map<string, ComparisonItem>();
 
-  quotes.forEach(quote => {
-    quote.items.forEach(item => {
+  quotes.forEach((quote) => {
+    quote.items.forEach((item) => {
       const qty = item.qty || 1;
       const price = Number(item.price) || 0;
-      const key = `${item.name}-${item.sku || ''}`;
+      const key = `${item.name}-${item.sku || ""}`;
 
       if (!itemMap.has(key)) {
         itemMap.set(key, {
@@ -78,7 +78,7 @@ export function compareQuotes(quotes: Quote[]): QuoteComparison {
   const items: ComparisonItem[] = Array.from(itemMap.values());
 
   // Extract totals for each quote
-  const totals = quotes.map(quote => ({
+  const totals = quotes.map((quote) => ({
     quoteId: quote.id,
     subtotal: quote.subtotal,
     shipping: quote.shipping,
@@ -87,14 +87,14 @@ export function compareQuotes(quotes: Quote[]): QuoteComparison {
   }));
 
   // Extract dates for each quote
-  const dates = quotes.map(quote => ({
+  const dates = quotes.map((quote) => ({
     quoteId: quote.id,
     created: quote.created_at,
     expires: quote.expires_at || null,
   }));
 
   // Extract statuses for each quote
-  const statuses = quotes.map(quote => ({
+  const statuses = quotes.map((quote) => ({
     quoteId: quote.id,
     status: quote.status,
   }));
@@ -187,4 +187,3 @@ export function findWorstQuote(quotes: Quote[]): Quote | null {
     return current.total > worst.total ? current : worst;
   });
 }
-

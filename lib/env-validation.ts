@@ -18,33 +18,33 @@ export function validateEnvironmentVariables(): EnvValidationResult {
 
   // Required variables
   const required = {
-    'WC_API_URL': {
+    WC_API_URL: {
       validate: (value: string) => {
-        if (!value) return 'Missing';
+        if (!value) return "Missing";
         try {
           const url = new URL(value);
-          if (!url.protocol.startsWith('http')) {
-            return 'Must be HTTP or HTTPS URL';
+          if (!url.protocol.startsWith("http")) {
+            return "Must be HTTP or HTTPS URL";
           }
           return null;
         } catch {
-          return 'Invalid URL format';
+          return "Invalid URL format";
         }
       },
     },
-    'WC_CONSUMER_KEY': {
+    WC_CONSUMER_KEY: {
       validate: (value: string) => {
-        if (!value) return 'Missing';
-        if (!value.startsWith('ck_')) {
+        if (!value) return "Missing";
+        if (!value.startsWith("ck_")) {
           return 'Consumer key should start with "ck_"';
         }
         return null;
       },
     },
-    'WC_CONSUMER_SECRET': {
+    WC_CONSUMER_SECRET: {
       validate: (value: string) => {
-        if (!value) return 'Missing';
-        if (!value.startsWith('cs_')) {
+        if (!value) return "Missing";
+        if (!value.startsWith("cs_")) {
           return 'Consumer secret should start with "cs_"';
         }
         return null;
@@ -83,19 +83,15 @@ export function requireEnvironmentVariables(): void {
     const errors: string[] = [];
 
     if (result.missing.length > 0) {
-      errors.push(`Missing variables: ${result.missing.join(', ')}`);
+      errors.push(`Missing variables: ${result.missing.join(", ")}`);
     }
 
     if (result.invalid.length > 0) {
-      const invalidMessages = result.invalid.map(
-        (item) => `${item.name}: ${item.reason}`
-      );
-      errors.push(`Invalid variables: ${invalidMessages.join('; ')}`);
+      const invalidMessages = result.invalid.map((item) => `${item.name}: ${item.reason}`);
+      errors.push(`Invalid variables: ${invalidMessages.join("; ")}`);
     }
 
-    throw new Error(
-      `Environment variable validation failed:\n${errors.join('\n')}`
-    );
+    throw new Error(`Environment variable validation failed:\n${errors.join("\n")}`);
   }
 }
 
@@ -109,4 +105,3 @@ export function getRequiredEnv(name: string): string {
   }
   return value;
 }
-

@@ -17,8 +17,8 @@ import {
   SessionUser,
   SessionCustomer,
   CartSession,
-} from './types';
-import crypto from 'crypto';
+} from "./types";
+import crypto from "crypto";
 
 /**
  * In-memory session cache for server-side
@@ -27,7 +27,7 @@ const sessionCache = new Map<string, { data: SessionData; timestamp: number }>()
 const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 // Clean up expired cache entries periodically
-if (typeof setInterval !== 'undefined') {
+if (typeof setInterval !== "undefined") {
   setInterval(() => {
     const now = Date.now();
     for (const [key, value] of sessionCache.entries()) {
@@ -42,22 +42,22 @@ if (typeof setInterval !== 'undefined') {
  * Generate a secure session ID
  */
 export function generateSessionId(): string {
-  return crypto.randomBytes(32).toString('base64url');
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 /**
  * Generate CSRF token
  */
 export function generateCsrfToken(): string {
-  return crypto.randomBytes(32).toString('base64url');
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 /**
  * Generate session fingerprint from request
  */
 export function generateFingerprint(userAgent?: string, ip?: string): string {
-  const data = `${userAgent || ''}:${ip || ''}`;
-  return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16);
+  const data = `${userAgent || ""}:${ip || ""}`;
+  return crypto.createHash("sha256").update(data).digest("hex").substring(0, 16);
 }
 
 /**
@@ -67,10 +67,7 @@ export function validateCsrfToken(token: string, expected: string): boolean {
   if (!token || !expected) return false;
   // Timing-safe comparison to prevent timing attacks
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(token),
-      Buffer.from(expected)
-    );
+    return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
   } catch {
     return false;
   }
@@ -81,10 +78,10 @@ export function validateCsrfToken(token: string, expected: string): boolean {
  */
 export function parseJwtPayload(token: string): Record<string, unknown> | null {
   try {
-    const parts = token.split('.');
+    const parts = token.split(".");
     if (parts.length !== 3) return null;
-    
-    const payload = Buffer.from(parts[1], 'base64url').toString('utf8');
+
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
     return JSON.parse(payload);
   } catch {
     return null;
@@ -127,7 +124,7 @@ export function createSession(
 ): SessionData {
   const config = { ...DEFAULT_SESSION_CONFIG, ...options.config };
   const now = Date.now();
-  
+
   // Calculate expiry from token if provided
   let expiresAt = now + config.sessionTimeout;
   if (options.token) {
@@ -136,7 +133,7 @@ export function createSession(
       expiresAt = tokenExpiry;
     }
   }
-  
+
   const session: SessionData = {
     id: generateSessionId(),
     type,
@@ -152,7 +149,7 @@ export function createSession(
     csrfToken: config.enableCsrf ? generateCsrfToken() : undefined,
     fingerprint: options.fingerprint,
   };
-  
+
   return session;
 }
 
@@ -169,7 +166,7 @@ export function validateSession(
 ): SessionValidationResult {
   const config = { ...DEFAULT_SESSION_CONFIG, ...options.config };
   const now = Date.now();
-  
+
   // No session
   if (!session) {
     return {
@@ -179,12 +176,12 @@ export function validateSession(
       expiresIn: 0,
       error: {
         code: SessionErrorCode.TOKEN_INVALID,
-        message: 'No session found',
+        message: "No session found",
         retryable: false,
       },
     };
   }
-  
+
   // Check expiry
   if (now >= session.expiresAt) {
     return {
@@ -194,12 +191,12 @@ export function validateSession(
       expiresIn: 0,
       error: {
         code: SessionErrorCode.TOKEN_EXPIRED,
-        message: 'Session has expired',
+        message: "Session has expired",
         retryable: true,
       },
     };
   }
-  
+
   // Check fingerprint (optional)
   if (config.enableFingerprint && session.fingerprint && options.fingerprint) {
     if (session.fingerprint !== options.fingerprint) {
@@ -210,13 +207,13 @@ export function validateSession(
         expiresIn: 0,
         error: {
           code: SessionErrorCode.FINGERPRINT_MISMATCH,
-          message: 'Session fingerprint mismatch',
+          message: "Session fingerprint mismatch",
           retryable: false,
         },
       };
     }
   }
-  
+
   // Check CSRF token (if provided)
   if (config.enableCsrf && options.csrfToken && session.csrfToken) {
     if (!validateCsrfToken(options.csrfToken, session.csrfToken)) {
@@ -227,16 +224,16 @@ export function validateSession(
         expiresIn: 0,
         error: {
           code: SessionErrorCode.CSRF_MISMATCH,
-          message: 'CSRF token mismatch',
+          message: "CSRF token mismatch",
           retryable: false,
         },
       };
     }
   }
-  
+
   const expiresIn = session.expiresAt - now;
   const shouldRefresh = shouldRefreshToken(session.expiresAt, config.refreshThreshold);
-  
+
   return {
     isValid: true,
     status: session.status,
@@ -261,13 +258,13 @@ export function cacheSession(session: SessionData): void {
 export function getCachedSession(sessionId: string): SessionData | null {
   const cached = sessionCache.get(sessionId);
   if (!cached) return null;
-  
+
   const age = Date.now() - cached.timestamp;
   if (age > DEFAULT_SESSION_CONFIG.cacheMaxAge) {
     sessionCache.delete(sessionId);
     return null;
   }
-  
+
   return cached.data;
 }
 
@@ -353,25 +350,22 @@ export function hasRole(session: SessionData | null, role: string): boolean {
  */
 export function hasAnyRole(session: SessionData | null, roles: string[]): boolean {
   if (!isAuthenticated(session)) return false;
-  return roles.some(role => session?.user?.roles?.includes(role));
+  return roles.some((role) => session?.user?.roles?.includes(role));
 }
 
 /**
  * Update session with new data
  */
-export function updateSession(
-  session: SessionData,
-  updates: Partial<SessionData>
-): SessionData {
+export function updateSession(session: SessionData, updates: Partial<SessionData>): SessionData {
   const updated = {
     ...session,
     ...updates,
     lastValidated: Date.now(),
   };
-  
+
   // Update cache
   cacheSession(updated);
-  
+
   return updated;
 }
 
@@ -404,9 +398,8 @@ export function expireSession(session: SessionData): SessionData {
     status: SessionStatus.EXPIRED,
     expiresAt: Date.now() - 1,
   });
-  
+
   invalidateCachedSession(session.id);
-  
+
   return expired;
 }
-

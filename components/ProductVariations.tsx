@@ -11,7 +11,10 @@ interface VariationAttribute {
 interface ProductVariationsProps {
   attributes: VariationAttribute[];
   variations: WooCommerceVariation[];
-  onVariationChange?: (variation: WooCommerceVariation | null, selectedAttributes: { [name: string]: string }) => void;
+  onVariationChange?: (
+    variation: WooCommerceVariation | null,
+    selectedAttributes: { [name: string]: string }
+  ) => void;
   onSkuChange?: (sku: string | null) => void;
   defaultSelected?: { [name: string]: string };
   style?: "swatches" | "buttons" | "dropdowns";
@@ -151,23 +154,29 @@ export default function ProductVariations({
   const secondaryAttributeOptions = useMemo(() => {
     if (!mainAttribute || !selectedAttributes[mainAttribute.name]) {
       // If main attribute not selected, return empty for all secondary attributes
-      return secondaryAttributes.reduce((acc, attr) => {
-        acc[attr.name] = [];
-        return acc;
-      }, {} as { [name: string]: string[] });
+      return secondaryAttributes.reduce(
+        (acc, attr) => {
+          acc[attr.name] = [];
+          return acc;
+        },
+        {} as { [name: string]: string[] }
+      );
     }
 
     const mainValue = selectedAttributes[mainAttribute.name];
-    return secondaryAttributes.reduce((acc, attr) => {
-      const options = getAvailableSecondaryOptions(
-        attr.name,
-        mainAttribute.name,
-        mainValue,
-        variations
-      );
-      acc[attr.name] = Array.from(options);
-      return acc;
-    }, {} as { [name: string]: string[] });
+    return secondaryAttributes.reduce(
+      (acc, attr) => {
+        const options = getAvailableSecondaryOptions(
+          attr.name,
+          mainAttribute.name,
+          mainValue,
+          variations
+        );
+        acc[attr.name] = Array.from(options);
+        return acc;
+      },
+      {} as { [name: string]: string[] }
+    );
   }, [mainAttribute, secondaryAttributes, selectedAttributes, variations]);
 
   // Check if secondary section should be visible (has valid variations for selected main attribute)
@@ -253,8 +262,8 @@ export default function ProductVariations({
           isSelected
             ? "border-black bg-black text-white"
             : isEnabled
-            ? "border-black bg-transparent text-black hover:bg-gray-50"
-            : "border-black bg-transparent text-black disabled-option"
+              ? "border-black bg-transparent text-black hover:bg-gray-50"
+              : "border-black bg-transparent text-black disabled-option"
         }`}
       >
         {option}
@@ -279,8 +288,8 @@ export default function ProductVariations({
           isSelected
             ? "border-gray-900 bg-gray-900 text-white"
             : isEnabled
-            ? "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50"
-            : "border-gray-200 bg-gray-50 text-gray-400 disabled-option cursor-not-allowed"
+              ? "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50"
+              : "border-gray-200 bg-gray-50 text-gray-400 disabled-option cursor-not-allowed"
         }`}
       >
         {option}
@@ -390,18 +399,18 @@ export default function ProductVariations({
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {availableOptions.length > 0 ? (
-                      availableOptions.map((option) => {
-                        const isSelected = selectedValue === option;
-                        const isEnabled = isOptionEnabled(attribute.name, option);
+                    {availableOptions.length > 0
+                      ? availableOptions.map((option) => {
+                          const isSelected = selectedValue === option;
+                          const isEnabled = isOptionEnabled(attribute.name, option);
 
-                        if (style === "swatches") {
-                          return renderSwatch(attribute.name, option, isSelected, isEnabled);
-                        } else {
-                          return renderButton(attribute.name, option, isSelected, isEnabled);
-                        }
-                      })
-                    ) : null}
+                          if (style === "swatches") {
+                            return renderSwatch(attribute.name, option, isSelected, isEnabled);
+                          } else {
+                            return renderButton(attribute.name, option, isSelected, isEnabled);
+                          }
+                        })
+                      : null}
                   </div>
                 )}
               </div>
@@ -412,4 +421,3 @@ export default function ProductVariations({
     </div>
   );
 }
-

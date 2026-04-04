@@ -3,21 +3,39 @@
  * In-memory + file persistence so addresses survive navigation and server restarts.
  */
 
-import { loadFromFile, saveToFile } from './addresses-file-store';
+import { loadFromFile, saveToFile } from "./addresses-file-store";
 
 const KNOWN_KEYS = [
-  'type', 'label', 'first_name', 'last_name', 'company', 'address_1', 'address_2',
-  'city', 'state', 'postcode', 'country', 'email', 'phone',
-  'ndis_participant_name', 'ndis_number', 'ndis_dob', 'ndis_funding_type', 'ndis_approval',
-  'ndis_invoice_email',
-  'hcp_participant_name', 'hcp_number', 'hcp_provider_email', 'hcp_approval',
+  "type",
+  "label",
+  "first_name",
+  "last_name",
+  "company",
+  "address_1",
+  "address_2",
+  "city",
+  "state",
+  "postcode",
+  "country",
+  "email",
+  "phone",
+  "ndis_participant_name",
+  "ndis_number",
+  "ndis_dob",
+  "ndis_funding_type",
+  "ndis_approval",
+  "ndis_invoice_email",
+  "hcp_participant_name",
+  "hcp_number",
+  "hcp_provider_email",
+  "hcp_approval",
 ] as const;
 
 function normalizeAddress(input: Record<string, unknown>, id?: string): Record<string, unknown> {
   const out: Record<string, unknown> = { id: id ?? (input.id as string) };
   for (const key of KNOWN_KEYS) {
     const v = input[key];
-    out[key] = v === undefined || v === null ? '' : v;
+    out[key] = v === undefined || v === null ? "" : v;
   }
   return out;
 }
@@ -87,7 +105,10 @@ export function setAddresses(userId: string, list: Record<string, unknown>[]): v
   persist(userId);
 }
 
-export function addAddress(userId: string, address: Record<string, unknown>): Record<string, unknown> {
+export function addAddress(
+  userId: string,
+  address: Record<string, unknown>
+): Record<string, unknown> {
   const list = getAddresses(userId);
   const id = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const newAddress = normalizeAddress({ ...address, id }, id);
@@ -103,7 +124,11 @@ function findIndexById(list: Record<string, unknown>[], id: string): number {
   return list.findIndex((a) => String(a.id).toLowerCase() === idLower);
 }
 
-export function updateAddress(userId: string, id: string, updates: Record<string, unknown>): Record<string, unknown> | null {
+export function updateAddress(
+  userId: string,
+  id: string,
+  updates: Record<string, unknown>
+): Record<string, unknown> | null {
   const list = getAddresses(userId);
   const idx = findIndexById(list, id);
   if (idx === -1) return null;
@@ -111,7 +136,8 @@ export function updateAddress(userId: string, id: string, updates: Record<string
   const merged: Record<string, unknown> = { id: existing.id };
   for (const key of KNOWN_KEYS) {
     const fromUpdate = updates[key];
-    merged[key] = fromUpdate !== undefined && fromUpdate !== null ? fromUpdate : (existing[key] ?? '');
+    merged[key] =
+      fromUpdate !== undefined && fromUpdate !== null ? fromUpdate : (existing[key] ?? "");
   }
   list[idx] = merged;
   persist(userId);
@@ -119,7 +145,11 @@ export function updateAddress(userId: string, id: string, updates: Record<string
 }
 
 /** Upsert: update if id exists (case-insensitive), otherwise add with this id */
-export function upsertAddress(userId: string, id: string, address: Record<string, unknown>): Record<string, unknown> {
+export function upsertAddress(
+  userId: string,
+  id: string,
+  address: Record<string, unknown>
+): Record<string, unknown> {
   const list = getAddresses(userId);
   const normalized = normalizeAddress({ ...address, id }, id);
   const idx = findIndexById(list, id);

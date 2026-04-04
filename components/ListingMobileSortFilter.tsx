@@ -12,8 +12,10 @@ const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
   ssr: false,
 });
 
-function stripDeprecatedListingParams(params: URLSearchParams) {
-  params.delete("brand");
+function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
+  if (!pathname.startsWith("/search")) {
+    params.delete("brand");
+  }
   params.delete("minPrice");
   params.delete("maxPrice");
 }
@@ -25,6 +27,8 @@ function useActiveFilterCount() {
     let count = 0;
     const brands = searchParams.get("brands");
     if (brands) count += brands.split(",").filter(Boolean).length;
+    else if (searchParams.get("brand")?.trim()) count += 1;
+    if (searchParams.get("category")?.trim()) count += 1;
     if (
       searchParams.get("min_price") ||
       searchParams.get("max_price") ||
@@ -58,6 +62,7 @@ export default function ListingMobileSortFilter({
   const searchParams = useSearchParams();
   const listingCtx = useProductListing();
   const filtersLocked = Boolean(listingCtx?.listingBusy);
+  const listingTotal = listingCtx?.listingTotal ?? null;
   const filterBadge = useActiveFilterCount();
 
   const [sortOpen, setSortOpen] = useState(false);
@@ -80,15 +85,13 @@ export default function ListingMobileSortFilter({
     (value: string) => {
       if (filtersLocked || !searchParams) return;
       const params = new URLSearchParams(searchParams.toString());
-      stripDeprecatedListingParams(params);
+      stripDeprecatedListingParams(params, pathname);
       if (value === "popularity") params.delete("sortBy");
       else params.set("sortBy", value);
       params.delete("page");
       const qs = params.toString();
       const next = qs ? `${pathname}?${qs}` : pathname;
-      const cur = searchParams.toString()
-        ? `${pathname}?${searchParams}`
-        : pathname;
+      const cur = searchParams.toString() ? `${pathname}?${searchParams}` : pathname;
       if (next !== cur) router.replace(next, { scroll: false });
       setSortOpen(false);
     },
@@ -98,32 +101,53 @@ export default function ListingMobileSortFilter({
   return (
     <>
       <div className="lg:hidden sticky top-[72px] z-40 -mx-4 px-4 py-3 bg-white/95 backdrop-blur-sm border-b border-gray-200 mb-4 shadow-sm">
-        <div className="flex gap-2 rounded-xl border border-gray-200 bg-gray-50 p-1">
+        <div className="flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <button
             type="button"
             onClick={() => {
               setFilterOpen(false);
               setSortOpen(true);
             }}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200/80 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="flex flex-1 items-center justify-center gap-2 px-3 py-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500"
             aria-expanded={sortOpen}
           >
-            <svg className="h-5 w-5 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h6" />
+            <svg
+              className="h-5 w-5 shrink-0 text-gray-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h10M4 18h6"
+              />
             </svg>
             Sort
           </button>
+          <div className="w-px shrink-0 bg-gray-200" aria-hidden />
           <button
             type="button"
             onClick={() => {
               setSortOpen(false);
               setFilterOpen(true);
             }}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200/80 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="flex flex-1 items-center justify-center gap-2 px-3 py-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500"
             aria-expanded={filterOpen}
           >
-            <svg className="h-5 w-5 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            <svg
+              className="h-5 w-5 shrink-0 text-gray-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+              />
             </svg>
             Filter
             {filterBadge > 0 && (
@@ -137,18 +161,25 @@ export default function ListingMobileSortFilter({
 
       {/* Sort bottom sheet */}
       {sortOpen && (
-        <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Sort products">
+        <div
+          className="fixed inset-0 z-[60] lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sort products"
+        >
           <button
             type="button"
             className="absolute inset-0 bg-black/50"
             aria-label="Close sort"
             onClick={() => setSortOpen(false)}
           />
-          <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] animate-in slide-in-from-bottom duration-200 rounded-t-2xl bg-white shadow-2xl">
-            <div className="border-b border-gray-100 px-4 pb-3 pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sort by</p>
+          <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] animate-in slide-in-from-bottom duration-200 bg-white shadow-2xl">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">
+                Sort by
+              </p>
             </div>
-            <ul className="max-h-[65vh] overflow-y-auto px-2 py-2">
+            <ul className="max-h-[min(70vh,520px)] overflow-y-auto px-1 py-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
               {LISTING_SORT_OPTIONS.map((o) => {
                 const selected = currentSort === o.value;
                 return (
@@ -157,12 +188,12 @@ export default function ListingMobileSortFilter({
                       type="button"
                       disabled={filtersLocked}
                       onClick={() => applySort(o.value)}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-3.5 text-left text-base text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                      className="flex w-full items-center justify-between px-4 py-4 text-left text-[15px] text-gray-900 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
                     >
                       <span>{o.label}</span>
                       <span
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                          selected ? "border-teal-600 bg-teal-600" : "border-gray-300"
+                        className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 ${
+                          selected ? "border-teal-600 bg-teal-600" : "border-gray-300 bg-white"
                         }`}
                         aria-hidden
                       >
@@ -173,15 +204,6 @@ export default function ListingMobileSortFilter({
                 );
               })}
             </ul>
-            <div className="border-t border-gray-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <button
-                type="button"
-                onClick={() => setSortOpen(false)}
-                className="w-full rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -202,12 +224,17 @@ export default function ListingMobileSortFilter({
               aria-label="Back"
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-24">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             <FilterSidebar
               categorySlug={categorySlug}
               brandSlug={brandSlug}
@@ -217,14 +244,22 @@ export default function ListingMobileSortFilter({
               onClose={() => setFilterOpen(false)}
             />
           </div>
-          <div className="shrink-0 border-t border-gray-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <button
-              type="button"
-              onClick={() => setFilterOpen(false)}
-              className="w-full rounded-xl bg-teal-600 py-3.5 text-base font-semibold text-white shadow-md transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-            >
-              Apply filters
-            </button>
+          <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-bold leading-tight text-gray-900 tabular-nums">
+                  {listingTotal != null ? listingTotal.toLocaleString() : "—"}
+                </p>
+                <p className="text-xs text-gray-500">products found</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterOpen(false)}
+                className="shrink-0 rounded-lg bg-teal-600 px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+              >
+                Apply
+              </button>
+            </div>
           </div>
         </div>
       )}

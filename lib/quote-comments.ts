@@ -3,9 +3,9 @@
  * Handles adding, retrieving, and managing quote comments
  */
 
-import { getWpBaseUrl } from './auth';
-import { getAuthToken } from './auth-server';
-import type { Quote, QuoteComment } from './types/quote';
+import { getWpBaseUrl } from "./auth";
+import { getAuthToken } from "./auth-server";
+import type { Quote, QuoteComment } from "./types/quote";
 
 /**
  * Add a comment to a quote
@@ -15,17 +15,17 @@ export async function addQuoteComment(
   content: string,
   author: string,
   authorEmail: string,
-  authorType: 'customer' | 'admin',
+  authorType: "customer" | "admin",
   isInternal: boolean = false
 ): Promise<QuoteComment | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   const now = new Date().toISOString();
@@ -44,11 +44,11 @@ export async function addQuoteComment(
 
   try {
     // Get current quote to preserve existing comments
-    const { getQuoteById } = await import('./quote-storage');
+    const { getQuoteById } = await import("./quote-storage");
     const quote = await getQuoteById(quoteId);
-    
+
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error("Quote not found");
     }
 
     // Add new comment to existing comments
@@ -57,10 +57,10 @@ export async function addQuoteComment(
 
     // Update quote with new comment
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         meta: {
@@ -80,7 +80,7 @@ export async function addQuoteComment(
 
     return null;
   } catch (error) {
-    console.error('Error adding quote comment:', error);
+    console.error("Error adding quote comment:", error);
     throw error;
   }
 }
@@ -89,9 +89,9 @@ export async function addQuoteComment(
  * Get all comments for a quote
  */
 export async function getQuoteComments(quoteId: string): Promise<QuoteComment[]> {
-  const { getQuoteById } = await import('./quote-storage');
+  const { getQuoteById } = await import("./quote-storage");
   const quote = await getQuoteById(quoteId);
-  
+
   if (!quote) {
     return [];
   }
@@ -102,39 +102,36 @@ export async function getQuoteComments(quoteId: string): Promise<QuoteComment[]>
 /**
  * Delete a comment (admin only)
  */
-export async function deleteQuoteComment(
-  quoteId: string,
-  commentId: string
-): Promise<boolean> {
+export async function deleteQuoteComment(quoteId: string, commentId: string): Promise<boolean> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   try {
     // Get current quote
-    const { getQuoteById } = await import('./quote-storage');
+    const { getQuoteById } = await import("./quote-storage");
     const quote = await getQuoteById(quoteId);
-    
+
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error("Quote not found");
     }
 
     // Remove comment from array
     const existingComments = quote.comments || [];
-    const updatedComments = existingComments.filter(c => c.id !== commentId);
+    const updatedComments = existingComments.filter((c) => c.id !== commentId);
 
     // Update quote
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         meta: {
@@ -150,7 +147,7 @@ export async function deleteQuoteComment(
 
     return response.ok;
   } catch (error) {
-    console.error('Error deleting quote comment:', error);
+    console.error("Error deleting quote comment:", error);
     throw error;
   }
 }
@@ -165,26 +162,26 @@ export async function updateQuoteComment(
 ): Promise<QuoteComment | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   try {
     // Get current quote
-    const { getQuoteById } = await import('./quote-storage');
+    const { getQuoteById } = await import("./quote-storage");
     const quote = await getQuoteById(quoteId);
-    
+
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error("Quote not found");
     }
 
     // Update comment in array
     const existingComments = quote.comments || [];
-    const updatedComments = existingComments.map(c => {
+    const updatedComments = existingComments.map((c) => {
       if (c.id === commentId) {
         return {
           ...c,
@@ -195,17 +192,17 @@ export async function updateQuoteComment(
       return c;
     });
 
-    const updatedComment = updatedComments.find(c => c.id === commentId);
+    const updatedComment = updatedComments.find((c) => c.id === commentId);
     if (!updatedComment) {
-      throw new Error('Comment not found');
+      throw new Error("Comment not found");
     }
 
     // Update quote
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         meta: {
@@ -225,8 +222,7 @@ export async function updateQuoteComment(
 
     return null;
   } catch (error) {
-    console.error('Error updating quote comment:', error);
+    console.error("Error updating quote comment:", error);
     throw error;
   }
 }
-

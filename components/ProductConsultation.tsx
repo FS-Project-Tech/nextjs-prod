@@ -19,9 +19,7 @@ function extractText(html: string): string {
 /**
  * Identifies medical category from product data
  */
-function identifyMedicalCategory(
-  product: WooCommerceProduct
-): string {
+function identifyMedicalCategory(product: WooCommerceProduct): string {
   const allText = [
     product.name,
     product.short_description,
@@ -33,16 +31,40 @@ function identifyMedicalCategory(
     .toLowerCase();
 
   const categories = [
-    { keywords: ["diabetic", "diabetes", "glucose", "insulin", "blood sugar"], name: "Diabetic Supplies" },
+    {
+      keywords: ["diabetic", "diabetes", "glucose", "insulin", "blood sugar"],
+      name: "Diabetic Supplies",
+    },
     { keywords: ["wound", "dressing", "bandage", "gauze", "healing"], name: "Wound Care" },
-    { keywords: ["mobility", "walker", "cane", "crutch", "wheelchair", "assist"], name: "Mobility Aids" },
-    { keywords: ["respiratory", "oxygen", "nebulizer", "inhaler", "breathing"], name: "Respiratory Care" },
-    { keywords: ["ppe", "mask", "glove", "gown", "protective", "safety"], name: "PPE (Personal Protective Equipment)" },
-    { keywords: ["continence", "incontinence", "catheter", "urinary", "adult diaper"], name: "Continence Care" },
-    { keywords: ["surgical", "surgery", "scalpel", "suture", "sterile"], name: "Surgical Products" },
-    { keywords: ["monitor", "blood pressure", "thermometer", "pulse", "vital"], name: "Monitoring Equipment" },
+    {
+      keywords: ["mobility", "walker", "cane", "crutch", "wheelchair", "assist"],
+      name: "Mobility Aids",
+    },
+    {
+      keywords: ["respiratory", "oxygen", "nebulizer", "inhaler", "breathing"],
+      name: "Respiratory Care",
+    },
+    {
+      keywords: ["ppe", "mask", "glove", "gown", "protective", "safety"],
+      name: "PPE (Personal Protective Equipment)",
+    },
+    {
+      keywords: ["continence", "incontinence", "catheter", "urinary", "adult diaper"],
+      name: "Continence Care",
+    },
+    {
+      keywords: ["surgical", "surgery", "scalpel", "suture", "sterile"],
+      name: "Surgical Products",
+    },
+    {
+      keywords: ["monitor", "blood pressure", "thermometer", "pulse", "vital"],
+      name: "Monitoring Equipment",
+    },
     { keywords: ["first aid", "emergency", "cpr", "trauma", "rescue"], name: "First Aid" },
-    { keywords: ["diagnostic", "test", "stethoscope", "otoscope", "examination"], name: "Diagnostic Tools" },
+    {
+      keywords: ["diagnostic", "test", "stethoscope", "otoscope", "examination"],
+      name: "Diagnostic Tools",
+    },
   ];
 
   for (const category of categories) {
@@ -72,11 +94,7 @@ function generateProductOverview(product: WooCommerceProduct): string {
  * Identifies target users from product description
  */
 function identifyTargetUsers(product: WooCommerceProduct): string {
-  const allText = [
-    product.name,
-    product.short_description,
-    product.description,
-  ]
+  const allText = [product.name, product.short_description, product.description]
     .join(" ")
     .toLowerCase();
 
@@ -88,7 +106,11 @@ function identifyTargetUsers(product: WooCommerceProduct): string {
   if (allText.includes("adult") || allText.includes("senior") || allText.includes("elderly")) {
     userGroups.push("adults and seniors");
   }
-  if (allText.includes("hospital") || allText.includes("clinical") || allText.includes("medical facility")) {
+  if (
+    allText.includes("hospital") ||
+    allText.includes("clinical") ||
+    allText.includes("medical facility")
+  ) {
     userGroups.push("healthcare professionals and medical facilities");
   }
   if (allText.includes("home") || allText.includes("personal") || allText.includes("self")) {
@@ -132,9 +154,7 @@ function extractSizingInfo(
     sizeAttributes.forEach((attr: any) => {
       const options = Array.isArray(attr.options) ? attr.options : [];
       if (options.length > 0) {
-        info.push(
-          `${attr.name}: Available in ${options.join(", ")}.`
-        );
+        info.push(`${attr.name}: Available in ${options.join(", ")}.`);
       }
     });
     if (info.length > 0) {
@@ -221,20 +241,14 @@ function generateAlternatives(product: WooCommerceProduct): string[] {
  * Generates common mistakes based on product description
  */
 function generateCommonMistakes(product: WooCommerceProduct): string[] {
-  const allText = [
-    product.name,
-    product.short_description,
-    product.description,
-  ]
+  const allText = [product.name, product.short_description, product.description]
     .join(" ")
     .toLowerCase();
 
   const mistakes: string[] = [];
 
   // General mistakes
-  mistakes.push(
-    "Not reading the product description and specifications carefully before purchase"
-  );
+  mistakes.push("Not reading the product description and specifications carefully before purchase");
 
   if (allText.includes("size") || allText.includes("dimension")) {
     mistakes.push(
@@ -270,7 +284,9 @@ function generateCommonMistakes(product: WooCommerceProduct): string[] {
 /**
  * Generates initial FAQ questions based on product data
  */
-function generateInitialFAQs(product: WooCommerceProduct): Array<{ question: string; answer: string }> {
+function generateInitialFAQs(
+  product: WooCommerceProduct
+): Array<{ question: string; answer: string }> {
   const faqs: Array<{ question: string; answer: string }> = [];
 
   if (product.short_description) {
@@ -297,10 +313,7 @@ function generateInitialFAQs(product: WooCommerceProduct): Array<{ question: str
   return faqs;
 }
 
-export default function ProductConsultation({
-  product,
-  variations,
-}: ProductConsultationProps) {
+export default function ProductConsultation({ product, variations }: ProductConsultationProps) {
   // Memoize expensive computations
   const productOverview = useMemo(() => generateProductOverview(product), [product]);
   const medicalCategory = useMemo(() => identifyMedicalCategory(product), [product]);
@@ -331,7 +344,10 @@ export default function ProductConsultation({
       descriptionText,
       ...(product.categories || []).map((c) => c.name),
       ...(product.tags || []).map((t) => t.name),
-      ...(product.attributes || []).map((attr: any) => `${attr.name}: ${Array.isArray(attr.options) ? attr.options.join(", ") : attr.options}`),
+      ...(product.attributes || []).map(
+        (attr: any) =>
+          `${attr.name}: ${Array.isArray(attr.options) ? attr.options.join(", ") : attr.options}`
+      ),
     ].join(" ");
 
     return {
@@ -355,7 +371,11 @@ export default function ProductConsultation({
     const questionWords = questionLower.split(/\s+/).filter((w) => w.length > 2);
 
     // 1. Size/Dimension questions
-    if (questionLower.match(/\b(size|dimension|measure|measurement|width|length|height|how big|how large)\b/)) {
+    if (
+      questionLower.match(
+        /\b(size|dimension|measure|measurement|width|length|height|how big|how large)\b/
+      )
+    ) {
       return sizingInfo;
     }
 
@@ -403,7 +423,11 @@ export default function ProductConsultation({
     }
 
     // 7. Attribute/Variation questions
-    if (questionLower.match(/\b(variation|variant|option|attribute|available in|color|size|type|model)\b/)) {
+    if (
+      questionLower.match(
+        /\b(variation|variant|option|attribute|available in|color|size|type|model)\b/
+      )
+    ) {
       if (productDataForSearch.attributes.length > 0) {
         const attrInfo = productDataForSearch.attributes
           .map((attr: any) => {
@@ -481,40 +505,47 @@ export default function ProductConsultation({
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Product Consultation: {product.name}
         </h1>
-        <p className="text-gray-600">
-          Get expert guidance to make an informed purchasing decision
-        </p>
+        <p className="text-gray-600">Get expert guidance to make an informed purchasing decision</p>
       </div>
 
-      <section id="product-summary" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section
+        id="product-summary"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
         <h2 className="text-2xl font-semibold text-gray-900 mb-4">Product Overview</h2>
-        <p className="text-gray-700 leading-relaxed">
-          {productOverview}
-        </p>
+        <p className="text-gray-700 leading-relaxed">{productOverview}</p>
       </section>
 
-      <section id="product-category" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section
+        id="product-category"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
         <h2 className="text-2xl font-semibold text-gray-900 mb-4">Medical Category</h2>
-        <p className="text-gray-700 leading-relaxed">
-          {medicalCategory}
-        </p>
+        <p className="text-gray-700 leading-relaxed">{medicalCategory}</p>
       </section>
 
-      <section id="who-is-this-for" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section
+        id="who-is-this-for"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
         <h2 className="text-2xl font-semibold text-gray-900 mb-4">Who Is This Product For?</h2>
-        <p className="text-gray-700 leading-relaxed">
-          {targetUsers}
-        </p>
+        <p className="text-gray-700 leading-relaxed">{targetUsers}</p>
       </section>
 
-      <section id="how-to-choose" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">How to Choose the Right Size or Variant</h2>
-        <p className="text-gray-700 leading-relaxed">
-          {sizingInfo}
-        </p>
+      <section
+        id="how-to-choose"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          How to Choose the Right Size or Variant
+        </h2>
+        <p className="text-gray-700 leading-relaxed">{sizingInfo}</p>
       </section>
 
-      <section id="alternatives" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section
+        id="alternatives"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
         <h2 className="text-2xl font-semibold text-gray-900 mb-4">Suggested Alternatives</h2>
         <ul className="list-disc list-inside space-y-2 text-gray-700">
           {alternatives.map((alt, idx) => (
@@ -523,7 +554,10 @@ export default function ProductConsultation({
         </ul>
       </section>
 
-      <section id="common-mistakes" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section
+        id="common-mistakes"
+        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+      >
         <h2 className="text-2xl font-semibold text-gray-900 mb-4">Common Mistakes to Avoid</h2>
         <ul className="list-disc list-inside space-y-2 text-gray-700">
           {commonMistakes.map((mistake, idx) => (
@@ -533,8 +567,10 @@ export default function ProductConsultation({
       </section>
 
       <section id="faq" className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Ask Anything About This Product</h2>
-        
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Ask Anything About This Product
+        </h2>
+
         <div className="space-y-4 mb-6">
           {faqQuestions.map((faq) => (
             <div key={faq.id} className="border-b border-gray-200 pb-4 last:border-b-0">
@@ -567,4 +603,3 @@ export default function ProductConsultation({
     </div>
   );
 }
-

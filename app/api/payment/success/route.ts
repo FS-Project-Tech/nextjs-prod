@@ -9,16 +9,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const accessCode = (
-    sp.get("AccessCode") ||
-    sp.get("accessCode") ||
-    ""
-  ).trim();
-  const orderRef = (
-    sp.get("order_id") ||
-    sp.get("orderId") ||
-    ""
-  ).trim();
+  const accessCode = (sp.get("AccessCode") || sp.get("accessCode") || "").trim();
+  const orderRef = (sp.get("order_id") || sp.get("orderId") || "").trim();
 
   const base = req.nextUrl.clone();
 

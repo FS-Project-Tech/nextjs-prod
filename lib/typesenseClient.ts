@@ -1,4 +1,5 @@
 import Typesense from "typesense";
+import { timingSafeEqualUtf8 } from "@/lib/timing-safe";
 
 type TypesenseClientInstance = InstanceType<typeof Typesense.Client>;
 
@@ -20,22 +21,24 @@ function normalizeHost(raw: string): string {
  */
 export function createTypesenseClient(): TypesenseClientInstance {
   const host = normalizeHost(
-    process.env.TYPESENSE_HOST ||
-      process.env.NEXT_PUBLIC_TYPESENSE_HOST ||
-      ""
+    process.env.TYPESENSE_HOST || process.env.NEXT_PUBLIC_TYPESENSE_HOST || ""
   );
-  const apiKey =
-    process.env.TYPESENSE_API_KEY ||
-    process.env.NEXT_PUBLIC_TYPESENSE_API_KEY ||
-    "";
+  const apiKey = process.env.TYPESENSE_API_KEY || process.env.NEXT_PUBLIC_TYPESENSE_API_KEY || "";
+  const publicKey = (process.env.NEXT_PUBLIC_TYPESENSE_API_KEY || "").trim();
+  const adminKey = (process.env.TYPESENSE_ADMIN_API_KEY || "").trim();
+  if (
+    process.env.NODE_ENV === "production" &&
+    publicKey &&
+    adminKey &&
+    timingSafeEqualUtf8(publicKey, adminKey)
+  ) {
+    throw new Error(
+      "NEXT_PUBLIC_TYPESENSE_API_KEY must be a search-only key, not the admin API key."
+    );
+  }
   const protocol =
-    process.env.NEXT_PUBLIC_TYPESENSE_PROTOCOL ||
-    process.env.TYPESENSE_PROTOCOL ||
-    "https";
-  const portRaw =
-    process.env.NEXT_PUBLIC_TYPESENSE_PORT ||
-    process.env.TYPESENSE_PORT ||
-    "443";
+    process.env.NEXT_PUBLIC_TYPESENSE_PROTOCOL || process.env.TYPESENSE_PROTOCOL || "https";
+  const portRaw = process.env.NEXT_PUBLIC_TYPESENSE_PORT || process.env.TYPESENSE_PORT || "443";
   const portNum = parseInt(String(portRaw), 10);
   const port = Number.isFinite(portNum) ? portNum : 443;
 
@@ -70,13 +73,8 @@ export function getTypesenseCollectionName(): string {
 
 export function isTypesenseConfigured(): boolean {
   const host = normalizeHost(
-    process.env.TYPESENSE_HOST ||
-      process.env.NEXT_PUBLIC_TYPESENSE_HOST ||
-      ""
+    process.env.TYPESENSE_HOST || process.env.NEXT_PUBLIC_TYPESENSE_HOST || ""
   );
-  const key =
-    process.env.TYPESENSE_API_KEY ||
-    process.env.NEXT_PUBLIC_TYPESENSE_API_KEY ||
-    "";
+  const key = process.env.TYPESENSE_API_KEY || process.env.NEXT_PUBLIC_TYPESENSE_API_KEY || "";
   return Boolean(host && key);
 }

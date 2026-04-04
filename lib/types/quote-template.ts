@@ -3,7 +3,7 @@
  * Templates allow users to save quote configurations for quick reuse
  */
 
-import type { QuoteItem } from './quote';
+import type { QuoteItem } from "./quote";
 
 export interface QuoteTemplate {
   id: string;
@@ -28,4 +28,3 @@ export interface QuoteTemplatePayload {
   notes?: string;
   is_default?: boolean;
 }
-

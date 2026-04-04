@@ -27,21 +27,17 @@ function ThankYouContent() {
       <div className="mx-auto max-w-lg rounded-xl bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-gray-900">Thank you</h1>
         <p className="mt-3 text-gray-600">
-          {effectiveOrder
-            ? "Your order has been placed."
-            : "Your request has been received."}
+          {effectiveOrder ? "Your order has been placed." : "Your request has been received."}
         </p>
         {effectiveOrder ? (
           <p className="mt-4 text-sm text-gray-700">
             Order reference:{" "}
-            <span className="font-mono font-semibold text-gray-900">
-              {effectiveOrder}
-            </span>
+            <span className="font-mono font-semibold text-gray-900">{effectiveOrder}</span>
           </p>
         ) : null}
         <p className="mt-4 text-sm text-gray-500">
-          You will receive a confirmation email shortly. If you have questions,
-          contact our support team.
+          You will receive a confirmation email shortly. If you have questions, contact our support
+          team.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link

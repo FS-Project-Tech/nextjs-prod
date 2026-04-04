@@ -3,7 +3,6 @@
  * Uses jsPDF text API so the PDF has selectable, searchable text.
  */
 
-import jsPDF from "jspdf";
 import { formatPrice } from "./format-utils";
 
 type SubcategoryInfo = { slug: string; name: string };
@@ -18,14 +17,15 @@ const FONT_SIZE_HEADER = 10;
 const FONT_SIZE_TITLE = 16;
 const FONT_SIZE_COVER = 22;
 
-function formatAttributeColumn(
-  attrs: Array<{ name?: string; options?: string[] }>
-): string {
+function formatAttributeColumn(attrs: Array<{ name?: string; options?: string[] }>): string {
   if (!attrs.length) return "—";
   const parts: string[] = [];
   for (const a of attrs) {
     const options = Array.isArray(a.options) ? a.options : [];
-    const value = options.map((o) => String(o).trim()).filter(Boolean).join(", ");
+    const value = options
+      .map((o) => String(o).trim())
+      .filter(Boolean)
+      .join(", ");
     if (value) parts.push(value);
   }
   return parts.length ? parts.join(" / ") : "—";
@@ -40,9 +40,7 @@ type CatalogueRow = {
 };
 
 function typesenseListingToRow(p: Record<string, unknown>): CatalogueRow {
-  const attrs = (p.attributes as
-    | Array<{ name?: string; options?: string[] }>
-    | undefined) || [];
+  const attrs = (p.attributes as Array<{ name?: string; options?: string[] }> | undefined) || [];
   const rawPrice = p.price != null ? String(p.price) : "";
   return {
     sku: p.sku != null && String(p.sku) !== "" ? String(p.sku) : "—",
@@ -53,9 +51,7 @@ function typesenseListingToRow(p: Record<string, unknown>): CatalogueRow {
   };
 }
 
-function byBrand(
-  rows: CatalogueRow[]
-): [string, CatalogueRow[]][] {
+function byBrand(rows: CatalogueRow[]): [string, CatalogueRow[]][] {
   const map = new Map<string, CatalogueRow[]>();
   rows.forEach((r) => {
     const key = r.brand || "Other";
@@ -87,14 +83,13 @@ export async function generateCataloguePDF(
     const res = await fetch(`/api/typesense/search?${qs.toString()}`);
     const json = await res.json();
     const products = Array.isArray(json.products) ? json.products : [];
-    const rows = products.map((doc: Record<string, unknown>) =>
-      typesenseListingToRow(doc)
-    );
+    const rows = products.map((doc: Record<string, unknown>) => typesenseListingToRow(doc));
     if (rows.length) {
       subcategoryData.push({ name: sub.name, rows });
     }
   }
 
+  const { default: jsPDF } = await import("jspdf");
   const pdf = new jsPDF("p", "mm", "a4");
   const contentW = PAGE_W - 2 * MARGIN;
   const colWidths = [22, 75, 48, 25]; // SKU, Product Name, Attribute, Price
@@ -122,12 +117,9 @@ export async function generateCataloguePDF(
   pdf.text("Digital catalogue", PAGE_W / 2, 95, { align: "center" });
   pdf.setFontSize(10);
   pdf.setTextColor(100, 116, 139);
-  pdf.text(
-    `Generated on ${new Date().toLocaleString()}`,
-    PAGE_W / 2,
-    PAGE_H - 20,
-    { align: "center" }
-  );
+  pdf.text(`Generated on ${new Date().toLocaleString()}`, PAGE_W / 2, PAGE_H - 20, {
+    align: "center",
+  });
   pdf.setTextColor(0, 0, 0);
 
   addPage();
@@ -177,11 +169,7 @@ export async function generateCataloguePDF(
       for (const row of items) {
         checkPageBreak(ROW_HEIGHT);
         const lineY = y + 4;
-        pdf.text(
-          pdf.splitTextToSize(row.sku, colWidths[0] - 2)[0] || "—",
-          xStart + 2,
-          lineY
-        );
+        pdf.text(pdf.splitTextToSize(row.sku, colWidths[0] - 2)[0] || "—", xStart + 2, lineY);
         pdf.text(
           pdf.splitTextToSize(row.name, colWidths[1] - 2)[0] || "—",
           xStart + colWidths[0] + 2,

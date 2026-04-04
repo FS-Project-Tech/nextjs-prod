@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createWooUser } from '@/lib/auth-server';
-import { rateLimit } from '@/lib/api-security';
-import { sanitizeEmail } from '@/lib/sanitize';
-import { secureResponse } from '@/lib/security-headers';
+import { NextRequest, NextResponse } from "next/server";
+import { createWooUser } from "@/lib/auth-server";
+import { rateLimit } from "@/lib/api-security";
+import { sanitizeEmail } from "@/lib/sanitize";
+import { secureResponse } from "@/lib/security-headers";
 
 export async function POST(request: NextRequest) {
   // Apply rate limiting for registration
@@ -20,16 +20,16 @@ export async function POST(request: NextRequest) {
     let { email, password, firstName, lastName } = body;
 
     // Sanitize input
-    email = typeof email === 'string' ? sanitizeEmail(email) : null;
-    password = typeof password === 'string' ? password : ''; // Don't sanitize password
-    firstName = typeof firstName === 'string' ? firstName.trim() : '';
-    lastName = typeof lastName === 'string' ? lastName.trim() : '';
+    email = typeof email === "string" ? sanitizeEmail(email) : null;
+    password = typeof password === "string" ? password : ""; // Don't sanitize password
+    firstName = typeof firstName === "string" ? firstName.trim() : "";
+    lastName = typeof lastName === "string" ? lastName.trim() : "";
 
     if (!email || !password) {
       return secureResponse(
         {
           success: false,
-          error: { code: 'INVALID_BODY', message: 'Email and password are required.' },
+          error: { code: "INVALID_BODY", message: "Email and password are required." },
         },
         { status: 400 }
       );
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return secureResponse(
         {
           success: false,
-          error: { code: 'INVALID_EMAIL', message: 'Please enter a valid email address.' },
+          error: { code: "INVALID_EMAIL", message: "Please enter a valid email address." },
         },
         { status: 400 }
       );
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       return secureResponse(
         {
           success: false,
-          error: { code: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters.' },
+          error: { code: "WEAK_PASSWORD", message: "Password must be at least 8 characters." },
         },
         { status: 400 }
       );
@@ -61,7 +61,10 @@ export async function POST(request: NextRequest) {
       return secureResponse(
         {
           success: false,
-          error: { code: 'INVALID_PASSWORD', message: 'Password must be less than 128 characters.' },
+          error: {
+            code: "INVALID_PASSWORD",
+            message: "Password must be less than 128 characters.",
+          },
         },
         { status: 400 }
       );
@@ -76,24 +79,27 @@ export async function POST(request: NextRequest) {
 
     return secureResponse({
       success: true,
-      redirectTo: '/login',
+      redirectTo: "/login",
       customer,
-      message: 'Registration successful. Please sign in.',
+      message: "Registration successful. Please sign in.",
     });
   } catch (error) {
-    console.error('[auth/register] error', error);
-    const message = error instanceof Error ? (error instanceof Error ? error.message : 'An error occurred') : 'Unable to register right now.';
+    console.error("[auth/register] error", error);
+    const message =
+      error instanceof Error
+        ? error instanceof Error
+          ? error.message
+          : "An error occurred"
+        : "Unable to register right now.";
     const lower = message.toLowerCase();
-    const status = lower.includes('configure') || lower.includes('credential') ? 500 : 400;
+    const status = lower.includes("configure") || lower.includes("credential") ? 500 : 400;
 
     return secureResponse(
       {
         success: false,
-        error: { code: 'REGISTER_FAILED', message },
+        error: { code: "REGISTER_FAILED", message },
       },
       { status }
     );
   }
 }
-
-

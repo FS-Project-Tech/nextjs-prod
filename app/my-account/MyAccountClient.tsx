@@ -21,8 +21,7 @@ const accountSchema = yup.object({
     .optional()
     .when("new_password", {
       is: (val: string) => val && val.length > 0,
-      then: (schema) =>
-        schema.oneOf([yup.ref("new_password")], "Passwords must match"),
+      then: (schema) => schema.oneOf([yup.ref("new_password")], "Passwords must match"),
     }),
 });
 
@@ -42,10 +41,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Fetch profile from your existing API
-  const {
-    data: profileData,
-    isLoading: fetching,
-  } = useQuery({
+  const { data: profileData, isLoading: fetching } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
       const response = await axios.get("/api/dashboard/profile", {
@@ -87,13 +83,9 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
       last_name?: string;
     };
 
-    const firstName =
-      (user?.first_name ?? customer?.first_name ?? "")?.trim() || "";
-    const lastName =
-      (user?.last_name ?? customer?.last_name ?? "")?.trim() || "";
-    const fromUserName = user?.name?.trim()
-      ? (user.name as string).split(/\s+/)
-      : [];
+    const firstName = (user?.first_name ?? customer?.first_name ?? "")?.trim() || "";
+    const lastName = (user?.last_name ?? customer?.last_name ?? "")?.trim() || "";
+    const fromUserName = user?.name?.trim() ? (user.name as string).split(/\s+/) : [];
     const fallbackFirst = fromUserName[0] ?? "";
     const fallbackLast = fromUserName.slice(1).join(" ") ?? "";
     const displayName =
@@ -110,11 +102,8 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
       display_name:
         displayName ||
         initialUser?.name ||
-        (fallbackFirst || fallbackLast
-          ? `${fallbackFirst} ${fallbackLast}`.trim()
-          : ""),
-      email:
-        customer?.email || user?.email || initialUser?.email || "",
+        (fallbackFirst || fallbackLast ? `${fallbackFirst} ${fallbackLast}`.trim() : ""),
+      email: customer?.email || user?.email || initialUser?.email || "",
       current_password: "",
       new_password: "",
       confirm_new_password: "",
@@ -155,22 +144,18 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
             confirm_new_password: "",
           });
         } catch (err: any) {
-          const msg =
-            err.response?.data?.error || "Failed to update password";
+          const msg = err.response?.data?.error || "Failed to update password";
           showError(msg);
         }
       }
     } catch (err: any) {
-      const msg =
-        err.response?.data?.error || "Failed to update account";
+      const msg = err.response?.data?.error || "Failed to update account";
       showError(msg);
     }
   };
 
   const birthDate =
-    profileData?.customer?.meta?.birth_date ??
-    profileData?.user?.birth_date ??
-    null;
+    profileData?.customer?.meta?.birth_date ?? profileData?.user?.birth_date ?? null;
   const birthDateDisplay = birthDate
     ? new Date(birthDate)
         .toLocaleDateString("en-AU", {
@@ -197,9 +182,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="bg-white shadow rounded-lg">
           <div className="px-6 py-5 border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-900">
-              My Account
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">My Account</h1>
           </div>
 
           <div className="px-6 py-5">
@@ -216,9 +199,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   />
                   {errors.first_name && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.first_name.message}
-                    </p>
+                    <p className="mt-1 text-sm text-red-600">{errors.first_name.message}</p>
                   )}
                 </div>
                 <div>
@@ -231,9 +212,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   />
                   {errors.last_name && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.last_name.message}
-                    </p>
+                    <p className="mt-1 text-sm text-red-600">{errors.last_name.message}</p>
                   )}
                 </div>
               </div>
@@ -249,13 +228,11 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  This will be how your name will be displayed in the
-                  account section and in reviews.
+                  This will be how your name will be displayed in the account section and in
+                  reviews.
                 </p>
                 {errors.display_name && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.display_name.message}
-                  </p>
+                  <p className="mt-1 text-sm text-red-600">{errors.display_name.message}</p>
                 )}
               </div>
 
@@ -270,17 +247,13 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 />
                 {errors.email && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.email.message}
-                  </p>
+                  <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
                 )}
               </div>
 
               {/* Password change section */}
               <div className="border-t border-gray-200 pt-4 mt-4">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                  Password change
-                </h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Password change</h2>
 
                 <div className="space-y-4">
                   <div>
@@ -296,9 +269,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                       <button
                         type="button"
                         className="absolute inset-y-0 right-0 px-3 text-sm text-gray-500"
-                        onClick={() =>
-                          setShowCurrentPassword((s) => !s)
-                        }
+                        onClick={() => setShowCurrentPassword((s) => !s)}
                       >
                         {showCurrentPassword ? "Hide" : "Show"}
                       </button>
@@ -338,9 +309,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                       <button
                         type="button"
                         className="absolute inset-y-0 right-0 px-3 text-sm text-gray-500"
-                        onClick={() =>
-                          setShowConfirmPassword((s) => !s)
-                        }
+                        onClick={() => setShowConfirmPassword((s) => !s)}
                       >
                         {showConfirmPassword ? "Hide" : "Show"}
                       </button>
@@ -359,9 +328,7 @@ export default function MyAccountClient({ initialUser }: MyAccountClientProps) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Date of birth
                 </label>
-                <p className="text-sm text-gray-900">
-                  {birthDateDisplay}
-                </p>
+                <p className="text-sm text-gray-900">{birthDateDisplay}</p>
               </div>
 
               <div className="pt-4">

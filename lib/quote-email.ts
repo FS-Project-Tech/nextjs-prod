@@ -3,17 +3,17 @@
  * Handles sending emails for various quote events
  */
 
-import { getWpBaseUrl } from './auth';
-import type { Quote } from './types/quote';
-import { formatPrice } from './format-utils';
+import { getWpBaseUrl } from "./auth";
+import type { Quote } from "./types/quote";
+import { formatPrice } from "./format-utils";
 
-export type QuoteEmailEvent = 
-  | 'quote_created'
-  | 'quote_sent'
-  | 'quote_accepted'
-  | 'quote_rejected'
-  | 'quote_expired'
-  | 'quote_converted';
+export type QuoteEmailEvent =
+  | "quote_created"
+  | "quote_sent"
+  | "quote_accepted"
+  | "quote_rejected"
+  | "quote_expired"
+  | "quote_converted";
 
 interface EmailOptions {
   to: string;
@@ -29,31 +29,31 @@ interface EmailOptions {
  */
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   const wpBase = getWpBaseUrl();
-  
+
   // Try WordPress email endpoint first
   if (wpBase) {
     try {
       const wpResponse = await fetch(`${wpBase}/wp-json/wp/v2/send-email`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           to: options.to,
           subject: options.subject,
           message: options.html || options.body,
           headers: {
-            'Content-Type': options.html ? 'text/html; charset=UTF-8' : 'text/plain; charset=UTF-8',
+            "Content-Type": options.html ? "text/html; charset=UTF-8" : "text/plain; charset=UTF-8",
           },
         }),
-        cache: 'no-store',
+        cache: "no-store",
       });
 
       if (wpResponse.ok) {
         return true;
       }
     } catch (wpError) {
-      console.log('WordPress email endpoint not available, trying webhook');
+      console.log("WordPress email endpoint not available, trying webhook");
     }
   }
 
@@ -62,9 +62,9 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
   if (emailWebhook) {
     try {
       const webhookResponse = await fetch(emailWebhook, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           to: options.to,
@@ -79,13 +79,13 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
         return true;
       }
     } catch (webhookError) {
-      console.error('Email webhook error:', webhookError);
+      console.error("Email webhook error:", webhookError);
     }
   }
 
   // Log email in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Quote Email:', {
+  if (process.env.NODE_ENV === "development") {
+    console.log("Quote Email:", {
       to: options.to,
       subject: options.subject,
       type: options.type,
@@ -104,8 +104,8 @@ function generateHTMLEmail(
   content: string,
   actionButton?: { text: string; url: string }
 ): string {
-  const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Joya Medical Supplies';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
 
   return `
 <!DOCTYPE html>
@@ -129,14 +129,18 @@ function generateHTMLEmail(
       ${content}
     </div>
     
-    ${actionButton ? `
+    ${
+      actionButton
+        ? `
       <div style="text-align: center; margin: 30px 0;">
         <a href="${actionButton.url}" 
            style="display: inline-block; background-color: #14b8a6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
           ${actionButton.text}
         </a>
       </div>
-    ` : ''}
+    `
+        : ""
+    }
     
     <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
       If you have any questions, please don't hesitate to contact us.
@@ -160,21 +164,23 @@ function generateHTMLEmail(
  * Send quote created notification
  */
 export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
-  const itemsList = quote.items.map((item) => {
-    const qty = item.qty || 1;
-    const price = Number(item.price) || 0;
-    return `
+  const itemsList = quote.items
+    .map((item) => {
+      const qty = item.qty || 1;
+      const price = Number(item.price) || 0;
+      return `
       <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${item.name}${item.sku ? ` (SKU: ${item.sku})` : ''}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${item.name}${item.sku ? ` (SKU: ${item.sku})` : ""}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${qty}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price)}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price * qty)}</td>
       </tr>
     `;
-  }).join('');
+    })
+    .join("");
 
   const content = `
     <p>Your quote request <strong>${quote.quote_number}</strong> has been received.</p>
@@ -199,49 +205,61 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
         <span>Subtotal:</span>
         <strong>${formatPrice(quote.subtotal)}</strong>
       </div>
-      ${quote.shipping > 0 ? `
+      ${
+        quote.shipping > 0
+          ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
           <span>Shipping:</span>
           <strong>${formatPrice(quote.shipping)}</strong>
         </div>
-      ` : ''}
-      ${quote.discount > 0 ? `
+      `
+          : ""
+      }
+      ${
+        quote.discount > 0
+          ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: #10b981;">
           <span>Discount:</span>
           <strong>-${formatPrice(quote.discount)}</strong>
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       <div style="display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 18px; font-weight: 600;">
         <span>Total:</span>
         <span style="color: #14b8a6;">${formatPrice(quote.total)}</span>
       </div>
     </div>
     
-    ${quote.notes ? `
+    ${
+      quote.notes
+        ? `
       <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-radius: 6px;">
         <strong>Your Notes:</strong>
         <p style="margin: 8px 0 0 0; font-style: italic; color: #6b7280;">${quote.notes}</p>
       </div>
-    ` : ''}
+    `
+        : ""
+    }
     
     <p style="margin-top: 20px;">Our team will review your request and get back to you within 2-3 business days.</p>
   `;
 
   const html = generateHTMLEmail(
     `Quote Request ${quote.quote_number} Received`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'View Quote in Dashboard', url: quoteUrl }
+    { text: "View Quote in Dashboard", url: quoteUrl }
   );
 
-  const subject = `Quote Request ${quote.quote_number} - ${quote.items.length} ${quote.items.length === 1 ? 'Item' : 'Items'}`;
+  const subject = `Quote Request ${quote.quote_number} - ${quote.items.length} ${quote.items.length === 1 ? "Item" : "Items"}`;
 
   return sendEmail({
     to: quote.user_email,
     subject,
     body: `Your quote request ${quote.quote_number} has been received. View it at: ${quoteUrl}`,
     html,
-    type: 'quote_created',
+    type: "quote_created",
   });
 }
 
@@ -249,7 +267,7 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
  * Send quote sent notification (when admin sends quote to customer)
  */
 export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
   const content = `
@@ -257,20 +275,24 @@ export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
     
     <p style="margin-top: 15px;">Please review the quote details and let us know if you'd like to proceed.</p>
     
-    ${quote.expires_at ? `
+    ${
+      quote.expires_at
+        ? `
       <div style="margin-top: 15px; padding: 12px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
         <strong>⚠️ Important:</strong> This quote expires on ${new Date(quote.expires_at).toLocaleDateString()}
       </div>
-    ` : ''}
+    `
+        : ""
+    }
     
     <p style="margin-top: 20px;">You can accept or reject this quote from your dashboard.</p>
   `;
 
   const html = generateHTMLEmail(
     `Quote ${quote.quote_number} Ready for Review`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'Review Quote', url: quoteUrl }
+    { text: "Review Quote", url: quoteUrl }
   );
 
   const subject = `Quote ${quote.quote_number} Ready for Review`;
@@ -280,7 +302,7 @@ export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
     subject,
     body: `A quote has been prepared for you: ${quote.quote_number}. Review it at: ${quoteUrl}`,
     html,
-    type: 'quote_sent',
+    type: "quote_sent",
   });
 }
 
@@ -288,7 +310,7 @@ export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
  * Send quote accepted notification
  */
 export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
   const content = `
@@ -299,9 +321,9 @@ export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
 
   const html = generateHTMLEmail(
     `Quote ${quote.quote_number} Accepted`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'Convert to Order', url: quoteUrl }
+    { text: "Convert to Order", url: quoteUrl }
   );
 
   const subject = `Quote ${quote.quote_number} Accepted`;
@@ -311,7 +333,7 @@ export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
     subject,
     body: `You have accepted quote ${quote.quote_number}. Convert it to an order at: ${quoteUrl}`,
     html,
-    type: 'quote_accepted',
+    type: "quote_accepted",
   });
 }
 
@@ -319,26 +341,30 @@ export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
  * Send quote rejected notification
  */
 export async function sendQuoteRejectedEmail(quote: Quote, reason?: string): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
   const content = `
     <p>You have rejected quote <strong>${quote.quote_number}</strong>.</p>
     
-    ${reason ? `
+    ${
+      reason
+        ? `
       <div style="margin-top: 15px; padding: 12px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px;">
         <strong>Reason:</strong> ${reason}
       </div>
-    ` : ''}
+    `
+        : ""
+    }
     
     <p style="margin-top: 20px;">If you have any questions or would like to discuss alternatives, please don't hesitate to contact us.</p>
   `;
 
   const html = generateHTMLEmail(
     `Quote ${quote.quote_number} Rejected`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'View Quote', url: quoteUrl }
+    { text: "View Quote", url: quoteUrl }
   );
 
   const subject = `Quote ${quote.quote_number} Rejected`;
@@ -346,17 +372,21 @@ export async function sendQuoteRejectedEmail(quote: Quote, reason?: string): Pro
   return sendEmail({
     to: quote.user_email,
     subject,
-    body: `You have rejected quote ${quote.quote_number}.${reason ? ` Reason: ${reason}` : ''}`,
+    body: `You have rejected quote ${quote.quote_number}.${reason ? ` Reason: ${reason}` : ""}`,
     html,
-    type: 'quote_rejected',
+    type: "quote_rejected",
   });
 }
 
 /**
  * Send quote converted to order notification
  */
-export async function sendQuoteConvertedEmail(quote: Quote, orderId: number, orderNumber?: string): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+export async function sendQuoteConvertedEmail(
+  quote: Quote,
+  orderId: number,
+  orderNumber?: string
+): Promise<boolean> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;
 
   const content = `
@@ -373,9 +403,9 @@ export async function sendQuoteConvertedEmail(quote: Quote, orderId: number, ord
 
   const html = generateHTMLEmail(
     `Quote ${quote.quote_number} Converted to Order`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'View Order', url: orderUrl }
+    { text: "View Order", url: orderUrl }
   );
 
   const subject = `Quote ${quote.quote_number} Converted to Order #${orderNumber || orderId}`;
@@ -385,7 +415,7 @@ export async function sendQuoteConvertedEmail(quote: Quote, orderId: number, ord
     subject,
     body: `Your quote ${quote.quote_number} has been converted to order #${orderNumber || orderId}. View it at: ${orderUrl}`,
     html,
-    type: 'quote_converted',
+    type: "quote_converted",
   });
 }
 
@@ -393,7 +423,7 @@ export async function sendQuoteConvertedEmail(quote: Quote, orderId: number, ord
  * Send quote expired notification
  */
 export async function sendQuoteExpiredEmail(quote: Quote): Promise<boolean> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
   const content = `
@@ -404,9 +434,9 @@ export async function sendQuoteExpiredEmail(quote: Quote): Promise<boolean> {
 
   const html = generateHTMLEmail(
     `Quote ${quote.quote_number} Expired`,
-    `Hello ${quote.user_name || 'Customer'},`,
+    `Hello ${quote.user_name || "Customer"},`,
     content,
-    { text: 'Request New Quote', url: `${siteUrl}/shop` }
+    { text: "Request New Quote", url: `${siteUrl}/shop` }
   );
 
   const subject = `Quote ${quote.quote_number} Has Expired`;
@@ -416,7 +446,6 @@ export async function sendQuoteExpiredEmail(quote: Quote): Promise<boolean> {
     subject,
     body: `Quote ${quote.quote_number} has expired. Request a new quote at: ${siteUrl}/shop`,
     html,
-    type: 'quote_expired',
+    type: "quote_expired",
   });
 }
-

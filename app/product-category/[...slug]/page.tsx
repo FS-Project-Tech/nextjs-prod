@@ -27,9 +27,9 @@ export async function generateStaticParams() {
   }
 }
 
-export async function generateMetadata(
-  props: { params: Promise<{ slug: string[] }> }
-): Promise<Metadata> {
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string[] }>;
+}): Promise<Metadata> {
   try {
     const { slug } = await props.params;
     const decodedSlug = getLeafSlug(slug);
@@ -49,12 +49,14 @@ export async function generateMetadata(
           title: yoast.og_title,
           description: yoast.og_description,
           url: yoast.canonical,
-          images: yoast.og_image?.map((img: { url: string; width?: number; height?: number; alt?: string }) => ({
-            url: img.url,
-            width: img.width,
-            height: img.height,
-            alt: img.alt || yoast.title,
-          })),
+          images: yoast.og_image?.map(
+            (img: { url: string; width?: number; height?: number; alt?: string }) => ({
+              url: img.url,
+              width: img.width,
+              height: img.height,
+              alt: img.alt || yoast.title,
+            })
+          ),
         },
         twitter: {
           card: "summary_large_image",
@@ -84,9 +86,7 @@ export async function generateMetadata(
   }
 }
 
-export default async function CategoryPage(
-  props: { params: Promise<{ slug: string[] }> }
-) {
+export default async function CategoryPage(props: { params: Promise<{ slug: string[] }> }) {
   const { slug } = await props.params;
   const decodedSlug = getLeafSlug(slug);
 
@@ -100,4 +100,3 @@ export default async function CategoryPage(
     />
   );
 }
-

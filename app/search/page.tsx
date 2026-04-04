@@ -1,139 +1,77 @@
 "use client";
 
-import {
-  InstantSearch,
-  SearchBox,
-  Hits,
-  RefinementList,
-  Pagination,
-  SortBy,
-  useSearchBox
-} from "react-instantsearch";
-import { searchClient } from "@/lib/typesense";
+import { Suspense, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
-import ProductCard from "@/components/ProductCard";
+import Breadcrumbs from "@/components/Breadcrumbs";
+import Container from "@/components/Container";
+import ListingMobileSortFilter from "@/components/ListingMobileSortFilter";
+import ProductGrid from "@/components/ProductGrid";
+import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
+import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
+import ShopListingLayout from "@/components/ShopListingLayout";
 
-// ✅ Sync query with URL
-function SyncQuery({ query }) {
-  const { refine } = useSearchBox();
+const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
+  loading: () => <FilterSidebarSkeleton />,
+  ssr: false,
+});
 
-  useEffect(() => {
-    refine(query);
-  }, [query]);
+function SearchResultsContent() {
+  const searchParams = useSearchParams();
+  const q = useMemo(() => (searchParams.get("q") || "").trim(), [searchParams]);
 
-  return null;
-}
-
-// ✅ Map Typesense → Your ProductCard
-function HitProductCard({ hit }) {
-  
   return (
-    <ProductCard
-      id={Number(hit.id)}
-      slug={hit.slug}
-      name={hit.name}
-      sku={Array.isArray(hit.sku) ? hit.sku[0] : hit.sku}
-      price={String(hit.price)}
-      sale_price={hit.sale_price ? String(hit.sale_price) : undefined}
-      regular_price={hit.regular_price ? String(hit.regular_price) : undefined}
-      on_sale={hit.sale_price && hit.regular_price ? true : false}
-      imageUrl={hit.image}
-      imageAlt={hit.name}
-    />
+    <ShopListingLayout>
+      <div className="min-h-screen py-4">
+        <Container>
+          <Breadcrumbs
+            items={[
+              { label: "Home", href: "/" },
+              { label: "Shop", href: "/shop" },
+              { label: q ? `Search: ${q}` : "Search" },
+            ]}
+          />
+
+          <div className="mb-4 lg:mb-6">
+            <h1 className="text-xl font-semibold text-gray-900 lg:text-2xl">
+              {q ? `Search results for “${q}”` : "Search"}
+            </h1>
+            {!q && (
+              <p className="mt-1 text-sm text-gray-600">
+                Enter a term in the header search to find products.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <ListingMobileSortFilter />
+
+            <aside className="hidden shrink-0 lg:block lg:w-64">
+              <div className="sticky top-24">
+                <FilterSidebar />
+              </div>
+            </aside>
+
+            <div className="min-w-0 flex-1">
+              <Suspense fallback={<ProductGridSkeleton />}>
+                <ProductGrid />
+              </Suspense>
+            </div>
+          </div>
+        </Container>
+      </div>
+    </ShopListingLayout>
   );
 }
 
 export default function SearchPage() {
-  const searchParams = useSearchParams();
-  const query = searchParams.get("q") || "";
-
   return (
-    <InstantSearch searchClient={searchClient} indexName="products">
-      
-      <SyncQuery query={query} />
-
-      <div className="flex gap-6 p-6">
-
-        {/* 🔥 LEFT SIDEBAR (Filters like category page) */}
-        <div className="w-64 space-y-6">
-
-        {/* <SearchBox
-              defaultValue={query}
-              classNames={{
-                input: "border p-2 rounded w-80"
-              }}
-            /> */}
-
-           {/* Category */}
-          <div className="bg-white rounded-lg  p-4">
-            <h3 className="font-semibold text-gray-800 mb-3">Category</h3>
-
-            <RefinementList
-              attribute="category"
-              classNames={{
-                list: "space-y-2",
-                item: "flex items-center justify-between text-sm cursor-pointer",
-                label: "flex items-center gap-2 cursor-pointer",
-                checkbox: "accent-teal-600 w-4 h-4",
-                count: "text-gray-400 text-xs"
-              }}
-            />
-          </div>
-
-
-          {/* Brand */}
-          <div className="bg-white rounded-lg p-4">
-            <h3 className="font-semibold text-gray-800 mb-3">Brand</h3>
-
-            <RefinementList
-              attribute="brand"
-              classNames={{
-                list: "space-y-2",
-                item: "flex items-center justify-between text-sm",
-                label: "flex items-center gap-2",
-                checkbox: "accent-teal-600 w-4 h-4",
-                count: "text-gray-400 text-xs"
-              }}
-            />
-          </div>
-
-        </div>
-
-        {/* 🔥 MAIN CONTENT */}
-        <div className="flex-1">
-
-          {/* Top bar */}
-          <div className="flex justify-end items-center mb-4">
-
-            {/* 🔥 Sorting */}
-            <SortBy
-              items={[
-                { label: "Default", value: "products" },
-                { label: "Price Low → High", value: "products/sort/price:asc" },
-                { label: "Price High → Low", value: "products/sort/price:desc" }
-              ]}
-              classNames={{
-                select: "border p-2 rounded"
-              }}
-            />
-          </div>
-
-          {/* 🔥 Product Grid */}
-          <Hits
-            hitComponent={HitProductCard}
-            classNames={{
-              list: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
-            }}
-          />
-
-          {/* 🔥 Pagination */}
-          {/* <div className="mt-6 flex justify-center">
-            <Pagination />
-          </div> */}
-
-        </div>
-      </div>
-    </InstantSearch>
+    <Suspense
+      fallback={
+        <div className="min-h-screen py-8 text-center text-sm text-gray-500">Loading search…</div>
+      }
+    >
+      <SearchResultsContent />
+    </Suspense>
   );
 }

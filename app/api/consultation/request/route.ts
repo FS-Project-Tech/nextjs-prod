@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWpBaseUrl } from "@/lib/auth";
-import { rateLimit } from '@/lib/api-security';
-import { sanitizeString, sanitizeEmail } from '@/lib/sanitize';
-import { secureResponse } from '@/lib/security-headers';
+import { rateLimit } from "@/lib/api-security";
+import { sanitizeString, sanitizeEmail } from "@/lib/sanitize";
+import { secureResponse } from "@/lib/security-headers";
 
 /**
  * POST /api/consultation/request
@@ -27,9 +27,9 @@ export async function POST(req: NextRequest) {
 
     // Sanitize inputs
     email = sanitizeEmail(email);
-    name = typeof name === 'string' ? sanitizeString(name) : '';
-    productName = typeof productName === 'string' ? sanitizeString(productName) : '';
-    comment = typeof comment === 'string' ? sanitizeString(comment) : '';
+    name = typeof name === "string" ? sanitizeString(name) : "";
+    productName = typeof productName === "string" ? sanitizeString(productName) : "";
+    comment = typeof comment === "string" ? sanitizeString(comment) : "";
 
     // Validation
     if (!email || !comment || !productName) {
@@ -41,10 +41,7 @@ export async function POST(req: NextRequest) {
 
     const wpBase = getWpBaseUrl();
     if (!wpBase) {
-      return secureResponse(
-        { error: "WordPress URL not configured" },
-        { status: 500 }
-      );
+      return secureResponse({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
     // Email to info@joyamedicalsupplies.com.au
@@ -125,14 +122,14 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
         });
       }
     } catch (wpError) {
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.log("WordPress email endpoint not available, using alternative method");
       }
     }
 
     // Fallback: Log emails (for development/testing only)
     // In production, integrate with your email service (SendGrid, Mailgun, etc.)
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Consultation Request Email (Admin):", {
         to: "info@joyamedicalsupplies.com.au",
         subject: adminEmailSubject,
@@ -170,7 +167,7 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
           }),
         });
       } catch (webhookError) {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           console.error("Email webhook error:", webhookError);
         }
       }
@@ -181,7 +178,7 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
       message: "Consultation request submitted successfully",
     });
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.error("Consultation request error:", error);
     }
     return secureResponse(
@@ -190,5 +187,3 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
     );
   }
 }
-
-

@@ -1,6 +1,6 @@
 /**
  * Fetch Instrumentation for Performance Monitoring
- * 
+ *
  * Wraps fetch calls to track:
  * - Request timing
  * - Endpoint mapping (Next.js route → WP endpoint)
@@ -8,7 +8,7 @@
  * - Error tracking
  */
 
-import { getErrorMessage } from '@/lib/utils/errors';
+import { getErrorMessage } from "@/lib/utils/errors";
 
 interface FetchMetrics {
   url: string;
@@ -30,7 +30,15 @@ class FetchMonitor {
   /**
    * Track a fetch call
    */
-  track(url: string, method: string, duration: number, status?: number, route?: string, cached?: boolean, error?: string): void {
+  track(
+    url: string,
+    method: string,
+    duration: number,
+    status?: number,
+    route?: string,
+    cached?: boolean,
+    error?: string
+  ): void {
     const metric: FetchMetrics = {
       url,
       method,
@@ -62,9 +70,7 @@ class FetchMonitor {
    */
   getMetricsByRoute(route: string, timeWindowMs?: number): FetchMetrics[] {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
-    return this.metrics.filter(
-      m => m.route === route && m.timestamp > cutoff
-    );
+    return this.metrics.filter((m) => m.route === route && m.timestamp > cutoff);
   }
 
   /**
@@ -72,27 +78,28 @@ class FetchMonitor {
    */
   getMetricsByWPEndpoint(wpEndpoint: string, timeWindowMs?: number): FetchMetrics[] {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
-    return this.metrics.filter(
-      m => m.url.includes(wpEndpoint) && m.timestamp > cutoff
-    );
+    return this.metrics.filter((m) => m.url.includes(wpEndpoint) && m.timestamp > cutoff);
   }
 
   /**
    * Get duplicate requests
    */
-  getDuplicates(threshold: number = 2, timeWindowMs: number = 1000): Array<{ url: string; count: number; avgTime: number }> {
+  getDuplicates(
+    threshold: number = 2,
+    timeWindowMs: number = 1000
+  ): Array<{ url: string; count: number; avgTime: number }> {
     const cutoff = Date.now() - timeWindowMs;
     const duplicates: Map<string, { count: number; times: number[] }> = new Map();
 
     for (const [key, timestamps] of this.duplicateDetector.entries()) {
-      const recent = timestamps.filter(t => t > cutoff);
+      const recent = timestamps.filter((t) => t > cutoff);
       if (recent.length >= threshold) {
-        const [method, url] = key.split(':', 2);
+        const [method, url] = key.split(":", 2);
         const metrics = this.metrics.filter(
-          m => m.url === url && m.method === method && m.timestamp > cutoff
+          (m) => m.url === url && m.method === method && m.timestamp > cutoff
         );
-        const times = metrics.map(m => m.duration);
-        
+        const times = metrics.map((m) => m.duration);
+
         if (times.length > 0) {
           duplicates.set(url, {
             count: recent.length,
@@ -102,17 +109,21 @@ class FetchMonitor {
       }
     }
 
-    return Array.from(duplicates.entries()).map(([url, data]) => ({
-      url,
-      count: data.count,
-      avgTime: data.times.reduce((a, b) => a + b, 0) / data.times.length,
-    })).sort((a, b) => b.count - a.count);
+    return Array.from(duplicates.entries())
+      .map(([url, data]) => ({
+        url,
+        count: data.count,
+        avgTime: data.times.reduce((a, b) => a + b, 0) / data.times.length,
+      }))
+      .sort((a, b) => b.count - a.count);
   }
 
   /**
    * Get route → WP endpoint mapping
    */
-  getRouteToWPEndpointMapping(timeWindowMs?: number): Map<string, Map<string, { count: number; avgTime: number }>> {
+  getRouteToWPEndpointMapping(
+    timeWindowMs?: number
+  ): Map<string, Map<string, { count: number; avgTime: number }>> {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
     const mapping = new Map<string, Map<string, { count: number; totalTime: number }>>();
 
@@ -164,19 +175,19 @@ class FetchMonitor {
       // Match WooCommerce API
       const wcMatch = path.match(/\/wp-json\/wc\/v3\/(.+)/);
       if (wcMatch) {
-        return `/wc/v3/${wcMatch[1].split('?')[0]}`;
+        return `/wc/v3/${wcMatch[1].split("?")[0]}`;
       }
 
       // Match WordPress REST API
       const wpMatch = path.match(/\/wp-json\/wp\/v2\/(.+)/);
       if (wpMatch) {
-        return `/wp/v2/${wpMatch[1].split('?')[0]}`;
+        return `/wp/v2/${wpMatch[1].split("?")[0]}`;
       }
 
       // Match custom endpoints
       const customMatch = path.match(/\/wp-json\/custom\/v1\/(.+)/);
       if (customMatch) {
-        return `/custom/v1/${customMatch[1].split('?')[0]}`;
+        return `/custom/v1/${customMatch[1].split("?")[0]}`;
       }
 
       return null;
@@ -196,21 +207,20 @@ class FetchMonitor {
     routes: string[];
   } {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
-    const recent = this.metrics.filter(m => m.timestamp > cutoff);
+    const recent = this.metrics.filter((m) => m.timestamp > cutoff);
 
     const totalRequests = recent.length;
-    const avgLatency = recent.length > 0
-      ? recent.reduce((sum, m) => sum + m.duration, 0) / recent.length
-      : 0;
+    const avgLatency =
+      recent.length > 0 ? recent.reduce((sum, m) => sum + m.duration, 0) / recent.length : 0;
 
-    const slowestRequests = [...recent]
-      .sort((a, b) => b.duration - a.duration)
-      .slice(0, 10);
+    const slowestRequests = [...recent].sort((a, b) => b.duration - a.duration).slice(0, 10);
 
-    const errors = recent.filter(m => m.error || (m.status && m.status >= 400));
+    const errors = recent.filter((m) => m.error || (m.status && m.status >= 400));
     const errorRate = totalRequests > 0 ? errors.length / totalRequests : 0;
 
-    const routes = Array.from(new Set(recent.map(m => m.route).filter((r): r is string => Boolean(r))));
+    const routes = Array.from(
+      new Set(recent.map((m) => m.route).filter((r): r is string => Boolean(r)))
+    );
 
     return {
       totalRequests,
@@ -250,13 +260,13 @@ export async function instrumentedFetch(
   route?: string
 ): Promise<Response> {
   const startTime = Date.now();
-  const urlString = typeof url === 'string' ? url : url.toString();
-  const method = options?.method || 'GET';
+  const urlString = typeof url === "string" ? url : url.toString();
+  const method = options?.method || "GET";
   const requestKey = `${method}:${urlString}`;
 
   // Check for duplicate (same request within 100ms)
   const recentDuplicates = fetchMonitor.getDuplicates(2, 100);
-  const isDuplicate = recentDuplicates.some(d => d.url === urlString);
+  const isDuplicate = recentDuplicates.some((d) => d.url === urlString);
 
   try {
     const response = await fetch(url, options);
@@ -270,15 +280,15 @@ export async function instrumentedFetch(
       duration,
       status,
       route,
-      response.headers.get('x-cache') === 'HIT',
+      response.headers.get("x-cache") === "HIT",
       undefined
     );
 
     // Log in development
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       const wpEndpoint = extractWPEndpoint(urlString);
-      const logMessage = `[Fetch] ${method} ${wpEndpoint || urlString} - ${duration}ms (${status})${isDuplicate ? ' [DUPLICATE]' : ''}`;
-      
+      const logMessage = `[Fetch] ${method} ${wpEndpoint || urlString} - ${duration}ms (${status})${isDuplicate ? " [DUPLICATE]" : ""}`;
+
       if (duration > 1000) {
         console.warn(`⚠️ ${logMessage}`);
       } else if (duration > 500) {
@@ -292,7 +302,7 @@ export async function instrumentedFetch(
   } catch (error: unknown) {
     const duration = Date.now() - startTime;
     const errorMessage = getErrorMessage(error);
-    
+
     fetchMonitor.track(
       urlString,
       method,
@@ -300,10 +310,10 @@ export async function instrumentedFetch(
       undefined,
       route,
       false,
-      errorMessage || 'Unknown error'
+      errorMessage || "Unknown error"
     );
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.error(`[Fetch Error] ${method} ${urlString} - ${duration}ms - ${errorMessage}`);
     }
 
@@ -320,13 +330,13 @@ function extractWPEndpoint(url: string): string | null {
     const path = urlObj.pathname;
 
     const wcMatch = path.match(/\/wp-json\/wc\/v3\/(.+)/);
-    if (wcMatch) return `/wc/v3/${wcMatch[1].split('?')[0]}`;
+    if (wcMatch) return `/wc/v3/${wcMatch[1].split("?")[0]}`;
 
     const wpMatch = path.match(/\/wp-json\/wp\/v2\/(.+)/);
-    if (wpMatch) return `/wp/v2/${wpMatch[1].split('?')[0]}`;
+    if (wpMatch) return `/wp/v2/${wpMatch[1].split("?")[0]}`;
 
     const customMatch = path.match(/\/wp-json\/custom\/v1\/(.+)/);
-    if (customMatch) return `/custom/v1/${customMatch[1].split('?')[0]}`;
+    if (customMatch) return `/custom/v1/${customMatch[1].split("?")[0]}`;
 
     return null;
   } catch {
@@ -344,10 +354,9 @@ export function getCurrentRoute(routeHint?: string): string | undefined {
     return routeHint;
   }
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     return window.location.pathname;
   }
 
   return undefined;
 }
-

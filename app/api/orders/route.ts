@@ -13,12 +13,16 @@ export async function POST(req: NextRequest) {
     const paymentMethod = body.payment_method || "";
     const paymentIntentId = body.payment_intent_id || body.transaction_id || null;
     const setPaid = Boolean(body.set_paid) || false;
-    
+
     // Capture customer IP address
     const forwarded = req.headers.get("x-forwarded-for");
     const realIp = req.headers.get("x-real-ip");
-    const customerIp = forwarded?.split(",")[0]?.trim() || realIp || req.headers.get("cf-connecting-ip") || "Unknown";
-    
+    const customerIp =
+      forwarded?.split(",")[0]?.trim() ||
+      realIp ||
+      req.headers.get("cf-connecting-ip") ||
+      "Unknown";
+
     // Validate payment before creating order (for online payments)
     if (paymentMethod === "paypal" && setPaid) {
       // Verify payment was processed before creating order
@@ -28,7 +32,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      
+
       // Verify payment was actually processed before creating order.
       // TODO: When payment gateway SDKs are integrated, call verifyPayment() here.
       // For now, if payment intent ID exists, assume payment was processed
@@ -37,13 +41,13 @@ export async function POST(req: NextRequest) {
         console.log(`Payment processed: ${paymentIntentId} for method: ${paymentMethod}`);
       }
     }
-    
+
     // Determine order status based on payment method
     // For COD: Order status = "processing" (order being fulfilled), Payment status = "Pending Payment" (payment on delivery)
     // For Bank Transfer: Order status = "pending" (waiting for payment confirmation)
     // For PayPal (if paid): Order status = "processing" (order being fulfilled), Payment status = "Paid"
     let orderStatus = "pending"; // Default to pending payment
-    
+
     if (setPaid && paymentMethod === "paypal") {
       // For successful online payments, set status to "processing"
       orderStatus = "processing";
@@ -56,16 +60,19 @@ export async function POST(req: NextRequest) {
       // Bank Transfer - remains pending until payment confirmed
       orderStatus = "pending";
     }
-    
+
     // Extract delivery information
-    const deliveryInstructions = body.meta_data?.find((m: any) => m.key === "delivery_instructions")?.value || "";
-    const deliveryAuthority = body.meta_data?.find((m: any) => m.key === "delivery_authority")?.value || "";
-    const subscribeNewsletter = body.meta_data?.find((m: any) => m.key === "subscribe_newsletter")?.value || false;
+    const deliveryInstructions =
+      body.meta_data?.find((m: any) => m.key === "delivery_instructions")?.value || "";
+    const deliveryAuthority =
+      body.meta_data?.find((m: any) => m.key === "delivery_authority")?.value || "";
+    const subscribeNewsletter =
+      body.meta_data?.find((m: any) => m.key === "subscribe_newsletter")?.value || false;
     const paymentMethodTitle = body.payment_method_title || paymentMethod;
-    
+
     // Prepare meta_data - store all information in order data section
     const metaData = Array.isArray(body.meta_data) ? [...body.meta_data] : [];
-    
+
     // Add payment transaction ID if available
     if (paymentIntentId) {
       metaData.push({
@@ -73,14 +80,14 @@ export async function POST(req: NextRequest) {
         value: paymentIntentId,
       });
     }
-    
+
     // Add payment method information to meta_data (displays in order data section)
     // Note: No underscore prefix so it shows in WooCommerce admin UI
     metaData.push({
       key: "Payment Method Display",
       value: paymentMethodTitle,
     });
-    
+
     // Add delivery instructions to meta_data (displays in order data section)
     // Note: No underscore prefix so it shows in WooCommerce admin UI
     if (deliveryInstructions) {
@@ -89,17 +96,18 @@ export async function POST(req: NextRequest) {
         value: deliveryInstructions,
       });
     }
-    
+
     // Add delivery authority to meta_data (displays in order data section)
     // Note: No underscore prefix so it shows in WooCommerce admin UI
     if (deliveryAuthority) {
-      const authorityLabel = deliveryAuthority === "with_signature" ? "With Signature" : "Without Signature";
+      const authorityLabel =
+        deliveryAuthority === "with_signature" ? "With Signature" : "Without Signature";
       metaData.push({
         key: "Delivery Authority",
         value: authorityLabel,
       });
     }
-    
+
     // Add newsletter subscription to meta_data (displays in order data section)
     // Note: No underscore prefix so it shows in WooCommerce admin UI
     if (subscribeNewsletter) {
@@ -108,15 +116,15 @@ export async function POST(req: NextRequest) {
         value: "Yes",
       });
     }
-    
+
     // Get customer ID if user is logged in
     // Helper to ensure customer ID is an integer (WooCommerce API requirement)
     const toIntCustomerId = (id: unknown): number | null => {
       if (id === null || id === undefined) return null;
-      const num = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+      const num = typeof id === "string" ? parseInt(id, 10) : Number(id);
       return !isNaN(num) && num > 0 ? num : null;
     };
-    
+
     let customerId: number | null = null;
     try {
       const token = await getAuthToken();
@@ -126,34 +134,35 @@ export async function POST(req: NextRequest) {
           // Get user data
           const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
             },
-            cache: 'no-store',
+            cache: "no-store",
           });
 
           if (userResponse.ok) {
             const user = await userResponse.json();
             const userEmail = user.email || body.billing?.email;
-            
-              // Get WooCommerce customer ID using optimized hybrid approach
-              if (userEmail) {
-                const { getCustomerIdWithFallback, toIntCustomerId } = await import('@/lib/customer-utils');
-                customerId = await getCustomerIdWithFallback(userEmail, token);
-                
-                // Fallback to WordPress user ID if WooCommerce customer not found
-                if (!customerId && user.id) {
-                  customerId = toIntCustomerId(user.id);
-                }
+
+            // Get WooCommerce customer ID using optimized hybrid approach
+            if (userEmail) {
+              const { getCustomerIdWithFallback, toIntCustomerId } =
+                await import("@/lib/customer");
+              customerId = await getCustomerIdWithFallback(userEmail, token);
+
+              // Fallback to WordPress user ID if WooCommerce customer not found
+              if (!customerId && user.id) {
+                customerId = toIntCustomerId(user.id);
               }
+            }
           }
         }
       }
     } catch (authError) {
       // If authentication fails, continue as guest order
-      console.warn('Could not get customer ID, creating guest order:', authError);
+      console.warn("Could not get customer ID, creating guest order:", authError);
     }
-    
+
     // Create order in WooCommerce
     const orderData: any = {
       payment_method: paymentMethod,
@@ -169,12 +178,12 @@ export async function POST(req: NextRequest) {
       coupon_lines: body.coupon_lines || [],
       meta_data: metaData,
     };
-    
+
     const { data } = await wcAPI.post("/orders", orderData);
-    
+
     // Add only payment status to order notes (other info is in order data section)
     const orderId = data.id;
-    
+
     try {
       // Only add payment status note
       let paymentStatusNote = `Payment Status: ${setPaid ? "Paid" : "Processing"}`;
@@ -183,7 +192,7 @@ export async function POST(req: NextRequest) {
       }
       paymentStatusNote += `\nPayment Method: ${paymentMethodTitle}`;
       paymentStatusNote += `\nDate: ${new Date().toISOString()}`;
-      
+
       await wcAPI.post(`/orders/${orderId}/notes`, {
         note: paymentStatusNote,
         customer_note: false,
@@ -192,10 +201,12 @@ export async function POST(req: NextRequest) {
       console.error("Error adding payment status note:", noteError);
       // Continue even if note fails - don't fail the entire order
     }
-    
+
     // Log order creation for security/audit
-    console.log(`Order created: ${orderId}, Payment: ${paymentMethod}, Status: ${orderStatus}, IP: ${customerIp}`);
-    
+    console.log(
+      `Order created: ${orderId}, Payment: ${paymentMethod}, Status: ${orderStatus}, IP: ${customerIp}`
+    );
+
     return NextResponse.json(data);
   } catch (error) {
     console.error("Order creation error:", error);
@@ -205,6 +216,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(message, { status });
   }
 }
-
-
-

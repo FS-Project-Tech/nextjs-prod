@@ -16,8 +16,7 @@ export type NursingServiceCardProps = {
  * Client component so the CTA always hydrates as a real Next.js navigation target.
  * useRouter fallback avoids rare cases where the default link click doesn’t navigate.
  */
-const PLACEHOLDER_IMAGE =
-  "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&q=80";
+const PLACEHOLDER_IMAGE = "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&q=80";
 
 export default function NursingServiceCard({
   title,
@@ -28,9 +27,7 @@ export default function NursingServiceCard({
   const router = useRouter();
   const imgSrc = image?.trim() ? image.trim() : PLACEHOLDER_IMAGE;
   const safeHref =
-    href && href !== "#" && !href.startsWith("javascript:")
-      ? href
-      : "/our-nursing-services";
+    href && href !== "#" && !href.startsWith("javascript:") ? href : "/our-nursing-services";
 
   return (
     <article className="relative isolate flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white border-b-4 border-[#D15E91] shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)]">

@@ -9,7 +9,8 @@ export const revalidate = 600; // 10 minutes
 
 export const metadata: Metadata = {
   title: "Shop",
-  description: "Browse our complete product catalog. Find the perfect products for your needs with fast shipping and secure checkout.",
+  description:
+    "Browse our complete product catalog. Find the perfect products for your needs with fast shipping and secure checkout.",
   openGraph: {
     title: "Shop | WooCommerce Store",
     description: "Browse our complete product catalog. Find the perfect products for your needs.",
@@ -21,10 +22,7 @@ export const metadata: Metadata = {
 };
 
 export default function ShopPage() {
-  const breadcrumbItems = [
-    { label: 'Home', href: '/' },
-    { label: 'Shop' },
-  ];
+  const breadcrumbItems = [{ label: "Home", href: "/" }, { label: "Shop" }];
 
   return (
     <>
@@ -33,4 +31,3 @@ export default function ShopPage() {
     </>
   );
 }
-

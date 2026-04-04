@@ -1,6 +1,6 @@
 "use client";
 
-import Link from 'next/link';
+import Link from "next/link";
 
 interface BreadcrumbItem {
   label: string;
@@ -33,16 +33,11 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
               </svg>
             )}
             {item.href && index < items.length - 1 ? (
-              <Link
-                href={item.href}
-                className="hover:text-gray-900 transition-colors"
-              >
+              <Link href={item.href} className="hover:text-gray-900 transition-colors">
                 {item.label}
               </Link>
             ) : (
-              <span
-                className={index === items.length - 1 ? 'text-gray-900 font-medium' : ''}
-              >
+              <span className={index === items.length - 1 ? "text-gray-900 font-medium" : ""}>
                 {item.label}
               </span>
             )}
@@ -52,4 +47,3 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
     </nav>
   );
 }
-

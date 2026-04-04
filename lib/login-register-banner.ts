@@ -12,16 +12,16 @@
  *
  * Override slug: WP_LOGIN_REGISTER_BANNER_ACF_SLUG or NEXT_PUBLIC_WP_LOGIN_REGISTER_BANNER_ACF_SLUG
  */
- 
+
 import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
 import {
   getBannerLinkUrl,
   resolveBannerRowImageUrl,
   type DetailBannerData,
 } from "@/lib/detail-banner";
- 
+
 export const DEFAULT_LOGIN_REGISTER_BANNER_ACF_SLUG = "login-register-banner";
- 
+
 /** Menu/title slug from WP admin (see Options page slug). */
 const SLUG_FALLBACKS = [
   "login-register-banner",
@@ -29,13 +29,13 @@ const SLUG_FALLBACKS = [
   "login_register_banner",
   "Login_Register_Banner",
 ] as const;
- 
+
 export interface LoginRegisterBannerPayload {
   imageUrl: string | null;
   linkUrl: string | null;
   fromCms: boolean;
 }
- 
+
 function pickAcfRecord(acf: Record<string, unknown>): DetailBannerData {
   const banner_image = acf.banner_image ?? acf.image ?? acf.login_register_image;
   const banner_link = acf.banner_link ?? acf.url ?? acf.banner_url ?? acf.link;
@@ -44,40 +44,36 @@ function pickAcfRecord(acf: Record<string, unknown>): DetailBannerData {
     banner_link: banner_link as DetailBannerData["banner_link"],
   };
 }
- 
+
 function normalizeLink(raw: string): string | null {
   const t = (raw || "").trim();
   if (!t || t === "#") return null;
   return t;
 }
- 
+
 function extractAcfFromJson(json: unknown): Record<string, unknown> | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
   if (o.acf && typeof o.acf === "object" && !Array.isArray(o.acf)) {
     return o.acf as Record<string, unknown>;
   }
-  if (
-    o.banner_image !== undefined ||
-    o.banner_link !== undefined ||
-    o.image !== undefined
-  ) {
+  if (o.banner_image !== undefined || o.banner_link !== undefined || o.image !== undefined) {
     return o;
   }
   return null;
 }
- 
+
 function hasBannerFields(acf: Record<string, unknown>): boolean {
   return Boolean(
     acf.banner_image ??
-      acf.image ??
-      acf.login_register_image ??
-      acf.banner_link ??
-      acf.url ??
-      acf.link
+    acf.image ??
+    acf.login_register_image ??
+    acf.banner_link ??
+    acf.url ??
+    acf.link
   );
 }
- 
+
 async function buildPayload(
   acf: Record<string, unknown>,
   wpBase: string
@@ -91,12 +87,9 @@ async function buildPayload(
     fromCms: Boolean(imageUrl),
   };
 }
- 
+
 function uniqueNonEmptyBases(): string[] {
-  const raw = [
-    getWordPressRestBaseUrl(),
-    (process.env.NEXT_PUBLIC_WP_URL || "").trim(),
-  ];
+  const raw = [getWordPressRestBaseUrl(), (process.env.NEXT_PUBLIC_WP_URL || "").trim()];
   const out: string[] = [];
   for (const r of raw) {
     const b = r.replace(/\/$/, "");
@@ -104,7 +97,7 @@ function uniqueNonEmptyBases(): string[] {
   }
   return out;
 }
- 
+
 function slugCandidates(): string[] {
   const fromEnv = (
     process.env.WP_LOGIN_REGISTER_BANNER_ACF_SLUG ||
@@ -118,7 +111,7 @@ function slugCandidates(): string[] {
   for (const s of SLUG_FALLBACKS) set.add(s);
   return [...set];
 }
- 
+
 async function fetchJson(url: string): Promise<unknown | null> {
   try {
     const res = await fetch(url, { next: { revalidate: 300 } });
@@ -128,28 +121,26 @@ async function fetchJson(url: string): Promise<unknown | null> {
     return null;
   }
 }
- 
+
 export async function fetchLoginRegisterBanner(): Promise<LoginRegisterBannerPayload> {
   const bases = uniqueNonEmptyBases();
   if (bases.length === 0) {
     return { imageUrl: null, linkUrl: null, fromCms: false };
   }
- 
+
   const slugs = slugCandidates();
   const empty = { imageUrl: null, linkUrl: null, fromCms: false } as const;
- 
+
   for (const base of bases) {
     for (const slug of slugs) {
-      const json = await fetchJson(
-        `${base}/wp-json/acf/v3/options/${encodeURIComponent(slug)}`
-      );
+      const json = await fetchJson(`${base}/wp-json/acf/v3/options/${encodeURIComponent(slug)}`);
       const acf = extractAcfFromJson(json);
       if (acf && hasBannerFields(acf)) {
         const payload = await buildPayload(acf, base);
         if (payload.imageUrl) return payload;
       }
     }
- 
+
     const merged = await fetchJson(`${base}/wp-json/acf/v3/options/options`);
     const acf = extractAcfFromJson(merged);
     if (acf && hasBannerFields(acf)) {
@@ -157,7 +148,7 @@ export async function fetchLoginRegisterBanner(): Promise<LoginRegisterBannerPay
       if (payload.imageUrl) return payload;
     }
   }
- 
+
   if (process.env.NODE_ENV === "development") {
     console.warn(
       "[login-register-banner] No banner image from ACF. Check:",
@@ -169,6 +160,6 @@ export async function fetchLoginRegisterBanner(): Promise<LoginRegisterBannerPay
       "\n  • Or set WP_LOGIN_REGISTER_BANNER_ACF_SLUG to the segment that returns JSON with acf.banner_image."
     );
   }
- 
+
   return empty;
 }

@@ -13,10 +13,9 @@ export const dynamicParams = true;
 // ============================================================================
 export async function generateStaticParams() {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_WP_URL}/wp-json/custom/v1/brands`,
-      { next: { revalidate: 600 } }
-    );
+    const res = await fetch(`${process.env.NEXT_PUBLIC_WP_URL}/wp-json/custom/v1/brands`, {
+      next: { revalidate: 600 },
+    });
 
     const brands = await res.json();
 
@@ -32,9 +31,9 @@ export async function generateStaticParams() {
 // ============================================================================
 // Metadata (SEO)
 // ============================================================================
-export async function generateMetadata(
-  props: { params: Promise<{ slug: string }> }
-): Promise<Metadata> {
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   try {
     const { slug } = await props.params;
     const decodedSlug = decodeURIComponent(slug);
@@ -67,9 +66,7 @@ export async function generateMetadata(
 // ============================================================================
 // Page (SERVER)
 // ============================================================================
-export default async function BrandPage(
-  props: { params: Promise<{ slug: string }> }
-) {
+export default async function BrandPage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = await props.params;
   const decodedSlug = decodeURIComponent(slug);
 

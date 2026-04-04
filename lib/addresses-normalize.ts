@@ -5,14 +5,32 @@
  */
 
 export const CANONICAL_ADDRESS_KEYS = [
-  'type', 'label', 'first_name', 'last_name', 'company', 'address_1', 'address_2',
-  'city', 'state', 'postcode', 'country', 'email', 'phone',
+  "type",
+  "label",
+  "first_name",
+  "last_name",
+  "company",
+  "address_1",
+  "address_2",
+  "city",
+  "state",
+  "postcode",
+  "country",
+  "email",
+  "phone",
 ] as const;
 
 const NDIS_HCP_KEYS = [
-  'ndis_participant_name', 'ndis_number', 'ndis_dob', 'ndis_funding_type', 'ndis_approval',
-  'ndis_invoice_email',
-  'hcp_participant_name', 'hcp_number', 'hcp_provider_email', 'hcp_approval',
+  "ndis_participant_name",
+  "ndis_number",
+  "ndis_dob",
+  "ndis_funding_type",
+  "ndis_approval",
+  "ndis_invoice_email",
+  "hcp_participant_name",
+  "hcp_number",
+  "hcp_provider_email",
+  "hcp_approval",
 ] as const;
 
 /**
@@ -25,20 +43,36 @@ export function normalizeAddressFromWp(
   a: Record<string, unknown>,
   id: string
 ): Record<string, unknown> {
-  const type = (a.type === 'shipping' ? 'shipping' : 'billing') as 'billing' | 'shipping';
-  const prefix = type === 'shipping' ? 'shipping_' : 'billing_';
+  const type = (a.type === "shipping" ? "shipping" : "billing") as "billing" | "shipping";
+  const prefix = type === "shipping" ? "shipping_" : "billing_";
   const out: Record<string, unknown> = { id, type };
-  const keys = ['label', 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone'] as const;
+  const keys = [
+    "label",
+    "first_name",
+    "last_name",
+    "company",
+    "address_1",
+    "address_2",
+    "city",
+    "state",
+    "postcode",
+    "country",
+    "email",
+    "phone",
+  ] as const;
   for (const key of keys) {
     const v = a[key] ?? a[prefix + key];
-    out[key] = v === undefined || v === null ? '' : v;
+    out[key] = v === undefined || v === null ? "" : v;
   }
   for (const key of NDIS_HCP_KEYS) {
     const v = a[key] ?? a[prefix + key];
     if (v !== undefined && v !== null) {
-      out[key] = key === 'ndis_approval' || key === 'hcp_approval' ? Boolean(v === true || v === '1' || v === 1) : v;
+      out[key] =
+        key === "ndis_approval" || key === "hcp_approval"
+          ? Boolean(v === true || v === "1" || v === 1)
+          : v;
     } else {
-      out[key] = key === 'ndis_approval' || key === 'hcp_approval' ? false : '';
+      out[key] = key === "ndis_approval" || key === "hcp_approval" ? false : "";
     }
   }
   return out;

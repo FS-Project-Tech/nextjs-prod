@@ -32,10 +32,7 @@ export async function GET(req: NextRequest) {
     if (!res.ok) {
       // Propagate 401 so client retries until WordPress auth works (cross-browser cart)
       if (res.status === 401) {
-        return NextResponse.json(
-          { items: [], error: "Not authenticated" },
-          { status: 401 }
-        );
+        return NextResponse.json({ items: [], error: "Not authenticated" }, { status: 401 });
       }
       return NextResponse.json({ items: [] }, { status: 200 });
     }
@@ -49,4 +46,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items: [] }, { status: 200 });
   }
 }
-

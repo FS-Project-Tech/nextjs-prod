@@ -1,5 +1,5 @@
-import type { ImageData, Timestamps, MetaData } from './common';
- 
+import type { ImageData, Timestamps, MetaData } from "./common";
+
 /**
  * Unified product type for ProductCard and related components
  * This type is used across ProductsSlider, RecommendedSection, RecentlyViewedSection, etc.
@@ -29,21 +29,21 @@ export interface ProductCardProduct {
   image?: string;
   image_alt?: string;
 }
- 
+
 /**
  * Full WooCommerce product type
  */
 export interface WooCommerceProduct extends ProductCardProduct, Timestamps {
-  type: 'simple' | 'grouped' | 'external' | 'variable';
-  status: 'draft' | 'pending' | 'private' | 'publish';
+  type: "simple" | "grouped" | "external" | "variable";
+  status: "draft" | "pending" | "private" | "publish";
   featured: boolean;
-  catalog_visibility: 'visible' | 'catalog' | 'search' | 'hidden';
+  catalog_visibility: "visible" | "catalog" | "search" | "hidden";
   description?: string;
   short_description?: string;
-  stock_status?: 'instock' | 'outofstock' | 'onbackorder';
+  stock_status?: "instock" | "outofstock" | "onbackorder";
   stock_quantity?: number;
   manage_stock?: boolean;
-  backorders?: 'no' | 'notify' | 'yes';
+  backorders?: "no" | "notify" | "yes";
   categories?: Array<{ id: number; name: string; slug: string }>;
   tags?: Array<{ id: number; name: string; slug: string }>;
   attributes?: ProductAttribute[];
@@ -51,7 +51,7 @@ export interface WooCommerceProduct extends ProductCardProduct, Timestamps {
   variations?: number[];
   meta_data?: MetaData[];
 }
- 
+
 /**
  * Product attribute
  */
@@ -64,7 +64,7 @@ export interface ProductAttribute {
   variation: boolean;
   options: string[];
 }
- 
+
 /**
  * Product variation
  */
@@ -76,12 +76,12 @@ export interface ProductVariation {
   regular_price?: string;
   sale_price?: string;
   on_sale?: boolean;
-  stock_status?: 'instock' | 'outofstock' | 'onbackorder';
+  stock_status?: "instock" | "outofstock" | "onbackorder";
   stock_quantity?: number;
   attributes: Array<{ id: number; name: string; option: string }>;
   image?: ImageData;
 }
- 
+
 /**
  * Alias for backward compatibility
  */

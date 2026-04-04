@@ -13,4 +13,3 @@ export function getDeliveryFrequencyLabel(plan?: string | null): string {
   if (plan === "30") return "Every month";
   return "One-time";
 }
-

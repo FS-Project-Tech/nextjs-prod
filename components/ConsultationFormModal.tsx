@@ -102,7 +102,10 @@ export default function ConsultationFormModal({
       success("Consultation request submitted successfully! We'll contact you soon.");
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to submit consultation request. Please try again.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to submit consultation request. Please try again.";
       console.error("Consultation request error:", err);
       showError(message);
     } finally {
@@ -121,7 +124,10 @@ export default function ConsultationFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      onClick={onClose}
+    >
       <div
         ref={containerRef as any}
         role="dialog"
@@ -137,12 +143,7 @@ export default function ConsultationFormModal({
             className="text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="Close"
           >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -163,9 +164,7 @@ export default function ConsultationFormModal({
               id="email"
               required
               value={formData.email}
-              onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1f605f]"
               disabled={!!user?.email}
             />
@@ -179,9 +178,7 @@ export default function ConsultationFormModal({
               type="text"
               id="name"
               value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1f605f]"
             />
           </div>
@@ -208,9 +205,7 @@ export default function ConsultationFormModal({
               required
               rows={4}
               value={formData.comment}
-              onChange={(e) =>
-                setFormData({ ...formData, comment: e.target.value })
-              }
+              onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1f605f]"
               placeholder="Please provide details about your consultation needs..."
             />
@@ -238,4 +233,3 @@ export default function ConsultationFormModal({
     </div>
   );
 }
-

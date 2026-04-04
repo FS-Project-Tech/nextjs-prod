@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import PrefetchLink from "@/components/PrefetchLink";
-import {
-  sanitizeWordPressPageHTML,
-  decodeHTMLEntities,
-} from "@/lib/xss-sanitizer";
+import { sanitizeWordPressPageHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import {
   fetchNursingServicePageForUrl,
@@ -25,12 +22,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const page = await fetchNursingServicePageForUrl(slug);
   const titleText = page
-    ? decodeHTMLEntities(
-        page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug
-      )
+    ? decodeHTMLEntities(page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug)
     : slug;
-  const description =
-    page?.excerpt?.rendered?.replace(/<[^>]+>/g, "").trim() || undefined;
+  const description = page?.excerpt?.rendered?.replace(/<[^>]+>/g, "").trim() || undefined;
 
   return {
     title: `${titleText} | Joya Medical Supplies`,
@@ -44,9 +38,7 @@ export default async function NursingServiceDetailPage({ params }: Props) {
   const page = await fetchNursingServicePageForUrl(slug);
   if (!page) notFound();
 
-  const title = decodeHTMLEntities(
-    page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug
-  );
+  const title = decodeHTMLEntities(page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug);
   const content = page.content?.rendered || "";
 
   const breadcrumbItems = [
@@ -65,19 +57,13 @@ export default async function NursingServiceDetailPage({ params }: Props) {
             <nav className="mb-6 text-sm text-gray-500">
               <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <li>
-                  <PrefetchLink
-                    href="/"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/" className="hover:text-teal-600 transition-colors">
                     Home
                   </PrefetchLink>
                 </li>
                 <li aria-hidden>/</li>
                 <li>
-                  <PrefetchLink
-                    href="/nursing"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/nursing" className="hover:text-teal-600 transition-colors">
                     Nursing
                   </PrefetchLink>
                 </li>
@@ -94,9 +80,7 @@ export default async function NursingServiceDetailPage({ params }: Props) {
                 <li className="font-medium text-gray-900">{title}</li>
               </ol>
             </nav>
-            <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
-              {title}
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">{title}</h1>
           </div>
         </section>
 

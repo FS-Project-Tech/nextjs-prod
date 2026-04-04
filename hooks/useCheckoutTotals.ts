@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculateGST, calculateTotal } from "@/lib/cart-utils";
+import { calculateGST, calculateTotal } from "@/lib/cart/pricing";
 import type { InsuranceOption } from "@/lib/checkout-parcel-protection";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 

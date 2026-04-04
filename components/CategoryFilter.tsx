@@ -9,8 +9,7 @@ export default function CategoryTree({ categories }: any) {
 
   const parentCategories = safeCategories.filter((c) => c.parent === 0);
 
-  const getChildren = (parentId: number) =>
-    safeCategories.filter((c) => c.parent === parentId);
+  const getChildren = (parentId: number) => safeCategories.filter((c) => c.parent === parentId);
 
   return (
     <div>
@@ -20,9 +19,7 @@ export default function CategoryTree({ categories }: any) {
         {parentCategories.map((parent) => (
           <li key={parent.id}>
             <button
-              onClick={() =>
-                router.push(`/product-category/${parent.slug}`)
-              }
+              onClick={() => router.push(`/product-category/${parent.slug}`)}
               className="font-medium text-gray-800 hover:text-teal-600"
             >
               {parent.name}
@@ -32,9 +29,7 @@ export default function CategoryTree({ categories }: any) {
               {getChildren(parent.id).map((child) => (
                 <li key={child.id}>
                   <button
-                    onClick={() =>
-                      router.push(`/product-category/${child.slug}`)
-                    }
+                    onClick={() => router.push(`/product-category/${child.slug}`)}
                     className="text-sm text-gray-600 hover:text-teal-600"
                   >
                     — {child.name}

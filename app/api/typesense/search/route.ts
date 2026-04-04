@@ -53,8 +53,7 @@ export async function GET(request: NextRequest) {
     const facetsOnly = sp.get("facets_only") === "1";
     const forBrandFacets = sp.get("for_brand_facets") === "1";
     /** Category facet counts for current brand + price/sale filters; omit category filter so all buckets appear. */
-    const forBrandCategoryFacets =
-      sp.get("for_brand_category_facets") === "1";
+    const forBrandCategoryFacets = sp.get("for_brand_category_facets") === "1";
     if (forBrandCategoryFacets && !sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"))) {
       return NextResponse.json(
         {
@@ -67,36 +66,21 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-    const perPage = Math.min(
-      100,
-      Math.max(1, parseInt(sp.get("per_page") || "24", 10) || 24)
-    );
-    const page = Math.min(
-      500,
-      Math.max(1, parseInt(sp.get("page") || "1", 10) || 1)
-    );
+    const perPage = Math.min(100, Math.max(1, parseInt(sp.get("per_page") || "24", 10) || 24));
+    const page = Math.min(500, Math.max(1, parseInt(sp.get("page") || "1", 10) || 1));
 
-    const categorySlugRaw = sanitizeSlug(
-      sp.get("category_slug") || sp.get("categorySlug")
-    );
+    const categorySlugRaw = sanitizeSlug(sp.get("category_slug") || sp.get("categorySlug"));
     const categorySlug = forBrandCategoryFacets ? "" : categorySlugRaw;
     const brandSingle = sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"));
     const brands = forBrandFacets ? [] : parseBrands(sp.get("brands"));
 
-    const minPrice =
-      sp.get("min_price") || sp.get("minPrice") || "";
-    const maxPrice =
-      sp.get("max_price") || sp.get("maxPrice") || "";
+    const minPrice = sp.get("min_price") || sp.get("minPrice") || "";
+    const maxPrice = sp.get("max_price") || sp.get("maxPrice") || "";
 
     const onSaleOnly = sp.get("on_sale") === "true";
 
     const sortBy = sp.get("sortBy") || sp.get("sort") || "popularity";
-    const qRaw =
-      sp.get("q") ||
-      sp.get("search") ||
-      sp.get("query") ||
-      sp.get("Search") ||
-      "";
+    const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
     const q = sanitizeSlug(qRaw, 200) || "*";
 
     const filterParts = buildTypesenseFilterParts({
@@ -141,14 +125,10 @@ export async function GET(request: NextRequest) {
       .search(searchParams as Record<string, unknown>);
 
     const found = result.found ?? 0;
-    const totalPages = facetsOnly
-      ? 1
-      : Math.max(1, Math.ceil(found / perPage));
+    const totalPages = facetsOnly ? 1 : Math.max(1, Math.ceil(found / perPage));
 
     const products = (result.hits || []).map((h) =>
-      typesenseHitToListingProduct(
-        (h.document || {}) as Record<string, unknown>
-      )
+      typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
     );
 
     return NextResponse.json(
@@ -169,10 +149,9 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error("[api/typesense/search]", e);
     const msg = e instanceof Error ? e.message : "Typesense search failed";
-    const schemaHint =
-      /filter field|facet field|Could not find.*field/i.test(msg)
-        ? "Your Typesense collection fields differ from defaults. Set TYPESENSE_FIELD_CATEGORY_SLUG, TYPESENSE_FIELD_BRAND_SLUG, and TYPESENSE_FACET_BY (or run `node scripts/typesense-list-fields.mjs`) to match the schema."
-        : undefined;
+    const schemaHint = /filter field|facet field|Could not find.*field/i.test(msg)
+      ? "Your Typesense collection fields differ from defaults. Set TYPESENSE_FIELD_CATEGORY_SLUG, TYPESENSE_FIELD_BRAND_SLUG, and TYPESENSE_FACET_BY (or run `node scripts/typesense-list-fields.mjs`) to match the schema."
+      : undefined;
     return NextResponse.json(
       {
         error: msg,

@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import SubcategoryDigitalCatalogue from "./SubcategoryDigitalCatalogue";
-import { generateCataloguePDF } from "@/lib/catalogue-pdf";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 
 const HTMLFlipBook = dynamic(() => import("react-pageflip"), { ssr: false });
@@ -212,36 +211,36 @@ export default function CategorySubcategoryBook({
             style={{}}
             onFlip={handleFlip}
           >
-          {subcategories.flatMap((sub, index) => {
-            const introPageNumber = index * 2 + 1;
-            const tablePageNumber = index * 2 + 2;
-            return [
-              <Page key={`intro-${sub.id}`} number={introPageNumber}>
-                <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-8 text-center">
-                  <h1 className="text-2xl font-bold mb-2">{sub.name}</h1>
-                  <p className="text-sm text-teal-100 mb-1">{parentName}</p>
-                  <p className="text-xs text-teal-100/80">
-                    Flip the page to view SKU, product name, size and price for this subcategory.
-                  </p>
-                </div>
-              </Page>,
-              <Page key={`table-${sub.id}`} number={tablePageNumber}>
-                <div className="h-full flex flex-col bg-gray-50">
-                  <div className="px-4 py-2 border-b border-gray-200 bg-white text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    {sub.name} — Digital Catalogue
+            {subcategories.flatMap((sub, index) => {
+              const introPageNumber = index * 2 + 1;
+              const tablePageNumber = index * 2 + 2;
+              return [
+                <Page key={`intro-${sub.id}`} number={introPageNumber}>
+                  <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-8 text-center">
+                    <h1 className="text-2xl font-bold mb-2">{sub.name}</h1>
+                    <p className="text-sm text-teal-100 mb-1">{parentName}</p>
+                    <p className="text-xs text-teal-100/80">
+                      Flip the page to view SKU, product name, size and price for this subcategory.
+                    </p>
                   </div>
-                  <div className="flex-1 overflow-auto p-3">
-                    <SubcategoryDigitalCatalogue
-                      subcategorySlug={sub.slug}
-                      subcategoryName={sub.name}
-                      parentName={parentName}
-                      shouldLoad={index === activeTableSubcategoryIndex}
-                    />
+                </Page>,
+                <Page key={`table-${sub.id}`} number={tablePageNumber}>
+                  <div className="h-full flex flex-col bg-gray-50">
+                    <div className="px-4 py-2 border-b border-gray-200 bg-white text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      {sub.name} — Digital Catalogue
+                    </div>
+                    <div className="flex-1 overflow-auto p-3">
+                      <SubcategoryDigitalCatalogue
+                        subcategorySlug={sub.slug}
+                        subcategoryName={sub.name}
+                        parentName={parentName}
+                        shouldLoad={index === activeTableSubcategoryIndex}
+                      />
+                    </div>
                   </div>
-                </div>
-              </Page>,
-            ];
-          })}
+                </Page>,
+              ];
+            })}
           </HTMLFlipBook>
         </div>
         <button
@@ -257,4 +256,3 @@ export default function CategorySubcategoryBook({
     </div>
   );
 }
-

@@ -31,7 +31,7 @@ export default function () {
     return;
   }
 
-  const url = `${BASE_URL}/api/cart/sync`;
+  const url = `${BASE_URL}/api/cart`;
   const payload = JSON.stringify({
     items: [
       {
@@ -49,7 +49,7 @@ export default function () {
 
   const res = http.post(url, payload, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    tags: { name: "POST /api/cart/sync" },
+    tags: { name: "POST /api/cart" },
   });
 
   check(res, {
@@ -58,4 +58,3 @@ export default function () {
 
   sleep(1);
 }
-

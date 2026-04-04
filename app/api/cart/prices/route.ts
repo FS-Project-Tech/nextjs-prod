@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateCartPrices } from "@/lib/cart-sync";
+import { resolveUnitPricesForCartLines } from "@/lib/woo-rest-server";
 import type { CartItem } from "@/lib/types/cart";
 import { rateLimit } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
@@ -12,7 +12,7 @@ import { applyCorsHeaders } from "@/lib/cors";
  */
 export async function POST(req: NextRequest) {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     const response = new NextResponse(null, { status: 204 });
     return applyCorsHeaders(req, response);
   }
@@ -31,14 +31,11 @@ export async function POST(req: NextRequest) {
     const { items } = body;
 
     if (!Array.isArray(items)) {
-      const response = secureResponse(
-        { error: "Invalid items array" },
-        { status: 400 }
-      );
+      const response = secureResponse({ error: "Invalid items array" }, { status: 400 });
       return applyCorsHeaders(req, response);
     }
 
-    const priceMap = await updateCartPrices(items as CartItem[]);
+    const priceMap = await resolveUnitPricesForCartLines(items as CartItem[]);
 
     // Convert Map to object for JSON response
     const prices: Record<string, string> = {};
@@ -52,17 +49,17 @@ export async function POST(req: NextRequest) {
     });
     return applyCorsHeaders(req, response);
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.error("Price update error:", error);
     }
     const errorResponse = secureResponse(
       {
-        error: (error instanceof Error ? error.message : 'An error occurred') || "Failed to update prices",
+        error:
+          (error instanceof Error ? error.message : "An error occurred") ||
+          "Failed to update prices",
       },
       { status: 500 }
     );
     return applyCorsHeaders(req, errorResponse);
   }
 }
-
-

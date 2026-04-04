@@ -102,7 +102,7 @@
 //   // const { isAuthenticated, loading: authLoading } = useUser();
 //   const { isAuthenticated, loading: authLoading, user } = useUser();
 //   const { success, error: showError } = useToast();
-  
+
 //   // State
 //   const [items, setItems] = useState<number[]>([]);
 //   const [products, setProducts] = useState<WishlistProduct[]>([]);
@@ -164,25 +164,25 @@
 //       setProducts([]);
 //       return;
 //     }
-    
+
 //     setIsLoadingProducts(true);
-    
+
 //     try {
 //       const response = await fetch(
 //         `/api/products?include=${items.join(',')}&per_page=${items.length}`,
 //         { cache: 'no-store' }
 //       );
-      
+
 //       if (response.ok) {
 //         const data = await response.json();
 //         const productsList = data.products || data || [];
-        
+
 //         if (Array.isArray(productsList)) {
 //           // Filter to only include products in wishlist and maintain order
 //           const filtered = items
 //             .map(id => productsList.find((p: WishlistProduct) => p.id === id))
 //             .filter((p): p is WishlistProduct => p !== undefined);
-          
+
 //           setProducts(filtered);
 //         }
 //       }
@@ -391,11 +391,11 @@
 //  */
 // export function useWishlist(): WishlistContextType {
 //   const context = useContext(WishlistContext);
-  
+
 //   if (!context) {
 //     throw new Error('useWishlist must be used within a WishlistProvider');
 //   }
-  
+
 //   return context;
 // }
 
@@ -404,11 +404,8 @@
 //  */
 // export default WishlistProvider;
 
-
-
-
 "use client";
- 
+
 import React, {
   createContext,
   useContext,
@@ -418,30 +415,30 @@ import React, {
   useMemo,
   useRef,
   ReactNode,
-} from 'react';
-import { useUser } from '@/hooks/useUser';
-import { useToast } from '@/components/ToastProvider';
-import type { WishlistContextType, WishlistProduct } from '@/lib/types/wishlist';
- 
+} from "react";
+import { useUser } from "@/hooks/useUser";
+import { useToast } from "@/components/ToastProvider";
+import type { WishlistContextType, WishlistProduct } from "@/lib/types/wishlist";
+
 /**
  * Create Wishlist Context
  */
 const WishlistContext = createContext<WishlistContextType | null>(null);
- 
+
 /** Cookie for logged-in user wishlist */
-const USER_COOKIE_NAME = 'wishlist_items';
+const USER_COOKIE_NAME = "wishlist_items";
 /** Cookie for guest wishlist (only shown when logged out) */
-const GUEST_COOKIE_NAME = 'wishlist_items_guest';
- 
+const GUEST_COOKIE_NAME = "wishlist_items_guest";
+
 /** Normalize wishlist IDs from API, cookies, or JSON (handles string IDs from WordPress). */
 function normalizeWishlistIds(raw: unknown[]): number[] {
   const seen = new Set<number>();
   const out: number[] = [];
   for (const entry of raw) {
     const n =
-      typeof entry === 'number'
+      typeof entry === "number"
         ? entry
-        : typeof entry === 'string'
+        : typeof entry === "string"
           ? parseInt(entry, 10)
           : Number(entry);
     if (!Number.isFinite(n) || n <= 0) continue;
@@ -452,17 +449,17 @@ function normalizeWishlistIds(raw: unknown[]): number[] {
   }
   return out;
 }
- 
+
 /**
  * Get wishlist from a cookie by name
  */
 function getWishlistFromCookie(cookieName: string): number[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === "undefined") return [];
   try {
-    const cookies = document.cookie.split(';');
-    const wishlistCookie = cookies.find(c => c.trim().startsWith(`${cookieName}=`));
+    const cookies = document.cookie.split(";");
+    const wishlistCookie = cookies.find((c) => c.trim().startsWith(`${cookieName}=`));
     if (!wishlistCookie) return [];
-    const value = wishlistCookie.split('=')[1];
+    const value = wishlistCookie.split("=")[1];
     if (!value) return [];
     const decoded = decodeURIComponent(value);
     const parsed = JSON.parse(decoded);
@@ -474,51 +471,48 @@ function getWishlistFromCookie(cookieName: string): number[] {
     return [];
   }
 }
- 
+
 /**
  * Save wishlist to a cookie by name
  */
 function saveWishlistToCookie(wishlist: number[], cookieName: string): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     const value = JSON.stringify(wishlist);
     const encoded = encodeURIComponent(value);
     const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-    const isSecure = window.location.protocol === 'https:';
-    document.cookie = `${cookieName}=${encoded}; expires=${expires}; path=/; SameSite=Lax${isSecure ? '; Secure' : ''}`;
+    const isSecure = window.location.protocol === "https:";
+    document.cookie = `${cookieName}=${encoded}; expires=${expires}; path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
   } catch (error) {
-    console.error('Failed to save wishlist to cookie:', error);
+    console.error("Failed to save wishlist to cookie:", error);
   }
 }
- 
+
 /** Which cookie to use for current mode (user vs guest) */
 // function getActiveCookieName(isAuthenticated: boolean): string {
 //   return isAuthenticated ? USER_COOKIE_NAME : GUEST_COOKIE_NAME;
 // }
- 
-function getActiveCookieName(
-  isAuthenticated: boolean,
-  userId?: number | string
-): string {
+
+function getActiveCookieName(isAuthenticated: boolean, userId?: number | string): string {
   if (isAuthenticated && userId !== undefined && userId !== null) {
     return `${USER_COOKIE_NAME}_${userId}`;
   }
- 
+
   // while auth loading, avoid guest overwrite
   if (isAuthenticated && !userId) {
     return USER_COOKIE_NAME; // temporary safe fallback
   }
- 
+
   return GUEST_COOKIE_NAME;
 }
- 
+
 /**
  * WishlistProvider Props
  */
 interface WishlistProviderProps {
   children: ReactNode;
 }
- 
+
 /**
  * WishlistProvider Component
  * Manages wishlist state with authentication awareness
@@ -527,7 +521,7 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
   // const { isAuthenticated, loading: authLoading } = useUser();
   const { isAuthenticated, loading: authLoading, user } = useUser();
   const { success, error: showError } = useToast();
- 
+
   // State
   const [items, setItems] = useState<number[]>([]);
   const [products, setProducts] = useState<WishlistProduct[]>([]);
@@ -536,7 +530,7 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
   const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const wasAuthenticatedRef = useRef<boolean | undefined>(undefined);
- 
+
   /**
    * Load wishlist.
    * - Logged-in: fetch from WordPress via /api/wishlist (same list on any browser/device).
@@ -549,10 +543,10 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     try {
       if (isAuthenticated) {
         try {
-          const response = await fetch('/api/wishlist', {
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store',
+          const response = await fetch("/api/wishlist", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
           });
           if (response.ok) {
             const data = await response.json();
@@ -564,20 +558,20 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
             return;
           }
         } catch (err) {
-          console.error('Failed to load wishlist from API, falling back to cookie:', err);
+          console.error("Failed to load wishlist from API, falling back to cookie:", err);
         }
       }
       const cookieName = getActiveCookieName(isAuthenticated, user?.id);
       const cookieItems = getWishlistFromCookie(cookieName);
       setItems(cookieItems);
     } catch (err) {
-      console.error('Failed to load wishlist:', err);
-      setError('Failed to load wishlist');
+      console.error("Failed to load wishlist:", err);
+      setError("Failed to load wishlist");
     } finally {
       setIsLoading(false);
     }
   }, [isMounted, isAuthenticated, user?.id]);
- 
+
   /**
    * Load product details for wishlist items
    */
@@ -586,40 +580,40 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
       setProducts([]);
       return;
     }
-   
+
     setIsLoadingProducts(true);
-   
+
     try {
       const response = await fetch(
-        `/api/products?include=${items.join(',')}&per_page=${items.length}`,
-        { cache: 'no-store' }
+        `/api/products?include=${items.join(",")}&per_page=${items.length}`,
+        { cache: "no-store" }
       );
-     
+
       if (response.ok) {
         const data = await response.json();
         const productsList = data.products || data || [];
-       
+
         if (Array.isArray(productsList)) {
           // Filter to only include products in wishlist and maintain order
           const filtered = items
-            .map(id => productsList.find((p: WishlistProduct) => p.id === id))
+            .map((id) => productsList.find((p: WishlistProduct) => p.id === id))
             .filter((p): p is WishlistProduct => p !== undefined);
-         
+
           setProducts(filtered);
         }
       }
     } catch (err) {
-      console.error('Failed to load wishlist products:', err);
+      console.error("Failed to load wishlist products:", err);
     } finally {
       setIsLoadingProducts(false);
     }
   }, [items]);
- 
+
   // Initialize on mount
   useEffect(() => {
     setIsMounted(true);
   }, []);
- 
+
   // On logout: clear UI state so we don't show user's list; loadWishlist will then load guest list (don't clear user cookie)
   useEffect(() => {
     if (!isMounted || authLoading) return;
@@ -630,14 +624,14 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     }
     wasAuthenticatedRef.current = isAuthenticated;
   }, [isMounted, authLoading, isAuthenticated]);
- 
+
   // Load wishlist when mounted or auth changes (logged-in = from cookie; guest = empty)
   useEffect(() => {
     if (isMounted && !authLoading) {
       loadWishlist();
     }
   }, [isMounted, authLoading, isAuthenticated, loadWishlist]);
- 
+
   // Load products when items change
   useEffect(() => {
     if (isMounted && items.length > 0) {
@@ -646,14 +640,17 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
       setProducts([]);
     }
   }, [items, isMounted, loadProducts]);
- 
+
   /**
    * Check if product is in wishlist
    */
-  const isInWishlist = useCallback((productId: number): boolean => {
-    return items.includes(productId);
-  }, [items]);
- 
+  const isInWishlist = useCallback(
+    (productId: number): boolean => {
+      return items.includes(productId);
+    },
+    [items]
+  );
+
   /**
    * Add product to wishlist.
    * - Logged-in: call /api/wishlist (POST) so wishlist is stored in WordPress (any browser).
@@ -663,20 +660,20 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     async (productid: number): Promise<boolean> => {
       try {
         if (isAuthenticated) {
-          const response = await fetch('/api/wishlist', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
+          const response = await fetch("/api/wishlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
             // body: JSON.stringify({ productid }),
             body: JSON.stringify({ productId: productid }),
           });
           if (response.status === 401) {
-            showError('Please log in to use the wishlist.');
+            showError("Please log in to use the wishlist.");
             return false;
           }
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            showError((data && data.error) || 'Failed to add to wishlist');
+            showError((data && data.error) || "Failed to add to wishlist");
             return false;
           }
           const data = await response.json();
@@ -691,17 +688,17 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
             saveWishlistToCookie(updatedItems, GUEST_COOKIE_NAME);
           }
         }
-        success('Added to wishlist');
+        success("Added to wishlist");
         return true;
       } catch (err) {
-        console.error('Failed to add to wishlist:', err);
-        showError('Failed to add to wishlist');
+        console.error("Failed to add to wishlist:", err);
+        showError("Failed to add to wishlist");
         return false;
       }
     },
-    [isAuthenticated, user?.id, items, success, showError],
+    [isAuthenticated, user?.id, items, success, showError]
   );
- 
+
   /**
    * Remove product from wishlist.
    * - Logged-in: call /api/wishlist (DELETE) so WordPress wishlist is updated.
@@ -711,19 +708,19 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     async (productId: number): Promise<boolean> => {
       try {
         if (isAuthenticated) {
-          const response = await fetch('/api/wishlist', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
+          const response = await fetch("/api/wishlist", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
             body: JSON.stringify({ productId }),
           });
           if (response.status === 401) {
-            showError('Please log in to use the wishlist.');
+            showError("Please log in to use the wishlist.");
             return false;
           }
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            showError((data && data.error) || 'Failed to remove from wishlist');
+            showError((data && data.error) || "Failed to remove from wishlist");
             return false;
           }
           const data = await response.json();
@@ -737,17 +734,17 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
           saveWishlistToCookie(updatedItems, GUEST_COOKIE_NAME);
         }
         setProducts((prev) => prev.filter((p) => p.id !== productId));
-        success('Removed from wishlist');
+        success("Removed from wishlist");
         return true;
       } catch (err) {
-        console.error('Failed to remove from wishlist:', err);
-        showError('Failed to remove from wishlist');
+        console.error("Failed to remove from wishlist:", err);
+        showError("Failed to remove from wishlist");
         return false;
       }
     },
-    [isAuthenticated, user?.id, items, success, showError],
+    [isAuthenticated, user?.id, items, success, showError]
   );
- 
+
   /**
    * Refresh wishlist from server
    */
@@ -755,67 +752,63 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     await loadWishlist();
     await loadProducts();
   }, [loadWishlist, loadProducts]);
- 
+
   /**
    * Clear wishlist (clears current user or guest list)
    */
   const clearWishlist = useCallback(() => {
     setItems([]);
     setProducts([]);
-    const cookieName = getActiveCookieName(
-  isAuthenticated,
-  user?.id
-);
+    const cookieName = getActiveCookieName(isAuthenticated, user?.id);
     saveWishlistToCookie([], cookieName);
   }, [isAuthenticated, user?.id]);
- 
+
   // Context value
-  const value = useMemo<WishlistContextType>(() => ({
-    items: isMounted ? items : [],
-    products: isMounted ? products : [],
-    isLoading,
-    isLoadingProducts,
-    error,
-    addToWishlist,
-    removeFromWishlist,
-    isInWishlist,
-    refreshWishlist,
-    clearWishlist,
-  }), [
-    isMounted,
-    items,
-    products,
-    isLoading,
-    isLoadingProducts,
-    error,
-    addToWishlist,
-    removeFromWishlist,
-    isInWishlist,
-    refreshWishlist,
-    clearWishlist,
-  ]);
- 
-  return (
-    <WishlistContext.Provider value={value}>
-      {children}
-    </WishlistContext.Provider>
+  const value = useMemo<WishlistContextType>(
+    () => ({
+      items: isMounted ? items : [],
+      products: isMounted ? products : [],
+      isLoading,
+      isLoadingProducts,
+      error,
+      addToWishlist,
+      removeFromWishlist,
+      isInWishlist,
+      refreshWishlist,
+      clearWishlist,
+    }),
+    [
+      isMounted,
+      items,
+      products,
+      isLoading,
+      isLoadingProducts,
+      error,
+      addToWishlist,
+      removeFromWishlist,
+      isInWishlist,
+      refreshWishlist,
+      clearWishlist,
+    ]
   );
+
+  return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>;
 }
- 
+
 /**
  * useWishlist Hook
  * Access wishlist context
  */
 export function useWishlist(): WishlistContextType {
   const context = useContext(WishlistContext);
- 
+
   if (!context) {
-    throw new Error('useWishlist must be used within a WishlistProvider');
+    throw new Error("useWishlist must be used within a WishlistProvider");
   }
- 
+
   return context;
 }
- 
+
 /**
  * Export default
  */

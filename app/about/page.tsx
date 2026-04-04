@@ -11,10 +11,12 @@ import WhereWeSupplySection from "@/components/about/WhereWeSupplySection";
 
 export const metadata: Metadata = {
   title: "About Us",
-  description: "Learn about JOYA - your trusted partner for medical supplies, continence care products, and healthcare essentials. NDIS approved provider serving Australia.",
+  description:
+    "Learn about JOYA - your trusted partner for medical supplies, continence care products, and healthcare essentials. NDIS approved provider serving Australia.",
   openGraph: {
     title: "About Us - JOYA",
-    description: "Learn about JOYA - your trusted partner for medical supplies and healthcare essentials.",
+    description:
+      "Learn about JOYA - your trusted partner for medical supplies and healthcare essentials.",
     type: "website",
   },
   alternates: {
@@ -78,4 +80,3 @@ export default function AboutPage() {
     </div>
   );
 }
-

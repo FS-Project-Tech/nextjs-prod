@@ -25,7 +25,7 @@
 **2. `/wc/v3/products?search=...`**
 - **Issue**: Full-text search is expensive
 - **Action**:
-  - Add search index (Elasticsearch/Algolia)
+  - Add or tune search index (e.g. Typesense)
   - Limit search to title/SKU only
   - Cache popular searches
 - **Expected Improvement**: 70-90% latency reduction
@@ -321,7 +321,7 @@ WHERE p.post_type = 'shop_order' AND pm.meta_key = '_customer_user'
    - **Impact**: 30-50% latency reduction for complex queries
 
 10. **Add Search Index** (LOW-MEDIUM)
-    - Implement Elasticsearch/Algolia
+    - Implement or tune Typesense (or your chosen search backend)
     - **Time**: 1-2 weeks
     - **Impact**: 70-90% search latency reduction
 

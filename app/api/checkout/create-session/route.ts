@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextAuthOptions";
-import { parseCheckoutPayload } from "@/utils/checkout-validation";
+import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { getCheckoutSessionStore } from "@/lib/checkout-session-store";
@@ -54,13 +54,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Token checkout session is only available for card (eWAY) payments. Use the standard flow for on-account orders.",
+          error:
+            "Token checkout session is only available for card (eWAY) payments. Use the standard flow for on-account orders.",
         },
         { status: 400 }
       );
     }
 
-    const { validatedLineItems, shippingLine, totals } = await validateAndRecalculateCheckout(payload);
+    const { validatedLineItems, shippingLine, totals } =
+      await validateAndRecalculateCheckout(payload);
 
     const session = await getServerSession(authOptions);
     const user = session?.user as Record<string, unknown> | undefined;
@@ -87,9 +89,11 @@ export async function POST(req: NextRequest) {
           logCheckoutSession("info", "create-session.idempotent_replay", { idempotencyKey });
           return NextResponse.json({
             success: true,
-            redirectUrl,
-            expiresAt: existing.expiresAt,
-            idempotent: true,
+            data: {
+              redirectUrl,
+              expiresAt: existing.expiresAt,
+              idempotent: true,
+            },
           });
         }
       }
@@ -132,8 +136,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      redirectUrl,
-      expiresAt,
+      data: {
+        redirectUrl,
+        expiresAt,
+      },
     });
   } catch (error) {
     const zod = zodFail(error);
@@ -143,8 +149,7 @@ export async function POST(req: NextRequest) {
 
     const cartErrData = (error as any)?.data;
     if (cartErrData?.type === "cart_items_unavailable") {
-      const message =
-        "Some items in your cart are no longer available. Please review your cart.";
+      const message = "Some items in your cart are no longer available. Please review your cart.";
       logCheckoutSession("warn", "create-session.cart_items_unavailable", {
         message,
         missing: cartErrData.missing ?? [],

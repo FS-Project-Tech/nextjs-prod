@@ -1,5 +1,5 @@
 import type { CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
-import { calculateGST, calculateTotal } from "@/lib/cart-utils";
+import { calculateGST, calculateTotal } from "@/lib/cart/pricing";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
@@ -7,7 +7,9 @@ import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
 import wcAPI from "@/lib/woocommerce";
 
 function normCountry(v?: string): string {
-  const c = String(v || "").trim().toUpperCase();
+  const c = String(v || "")
+    .trim()
+    .toUpperCase();
   if (!c) return "AU";
   if (c === "AUSTRALIA") return "AU";
   return c;
@@ -18,8 +20,7 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   shippingLine: { method_id: string; method_title: string; total: string };
   totals: CheckoutTotals;
 }> {
-  const toItemKey = (productId: number, variationId?: number) =>
-    `${productId}:${variationId ?? 0}`;
+  const toItemKey = (productId: number, variationId?: number) => `${productId}:${variationId ?? 0}`;
 
   logWooBaseUrl();
   logRequestedItems(
@@ -143,4 +144,3 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     totals,
   };
 }
-

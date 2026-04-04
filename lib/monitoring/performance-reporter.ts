@@ -1,11 +1,11 @@
 /**
  * Performance Reporter
- * 
+ *
  * Generates reports from collected metrics
  */
 
-import { fetchMonitor } from './fetch-instrumentation';
-import { routeMonitor } from './route-performance';
+import { fetchMonitor } from "./fetch-instrumentation";
+import { routeMonitor } from "./route-performance";
 
 export interface PerformanceReport {
   timestamp: string;
@@ -47,15 +47,22 @@ export interface PerformanceReport {
 export function generatePerformanceReport(timeWindowMs?: number): PerformanceReport {
   // Get route performance
   const routeMetrics = routeMonitor.getAverageTimesByRoute(timeWindowMs);
-  const routes = Array.from(routeMetrics.entries()).map(([route, data]) => ({
-    route,
-    ...data,
-  })).sort((a, b) => b.avgDuration - a.avgDuration);
+  const routes = Array.from(routeMetrics.entries())
+    .map(([route, data]) => ({
+      route,
+      ...data,
+    }))
+    .sort((a, b) => b.avgDuration - a.avgDuration);
 
   // Get route → WP endpoint mapping
   const routeToWP = fetchMonitor.getRouteToWPEndpointMapping(timeWindowMs);
-  const routeToWPEndpoint: Array<{ route: string; wpEndpoint: string; count: number; avgTime: number }> = [];
-  
+  const routeToWPEndpoint: Array<{
+    route: string;
+    wpEndpoint: string;
+    count: number;
+    avgTime: number;
+  }> = [];
+
   for (const [route, endpoints] of routeToWP.entries()) {
     for (const [wpEndpoint, data] of endpoints.entries()) {
       routeToWPEndpoint.push({
@@ -72,7 +79,7 @@ export function generatePerformanceReport(timeWindowMs?: number): PerformanceRep
 
   // Get slowest requests
   const summary = fetchMonitor.getSummary(timeWindowMs);
-  const slowestRequests = summary.slowestRequests.map(m => ({
+  const slowestRequests = summary.slowestRequests.map((m) => ({
     url: m.url,
     duration: m.duration,
     route: m.route,
@@ -110,7 +117,7 @@ export function formatReportAsMarkdown(report: PerformanceReport): string {
   markdown += `## Next.js Routes (SSR/Edge Times)\n\n`;
   markdown += `| Route | Avg Duration (ms) | Requests | Avg Fetch Count | Avg Fetch Time (ms) | Error Rate |\n`;
   markdown += `|-------|-------------------|----------|-----------------|---------------------|------------|\n`;
-  
+
   for (const route of report.routes.slice(0, 30)) {
     markdown += `| ${route.route} | ${route.avgDuration.toFixed(2)} | ${route.requestCount} | ${route.avgFetchCount.toFixed(1)} | ${route.avgFetchTime.toFixed(2)} | ${(route.errorRate * 100).toFixed(1)}% |\n`;
   }
@@ -120,7 +127,7 @@ export function formatReportAsMarkdown(report: PerformanceReport): string {
   markdown += `## Route → WordPress Endpoint Mapping\n\n`;
   markdown += `| Next.js Route | WP Endpoint | Calls | Avg Time (ms) |\n`;
   markdown += `|---------------|-------------|-------|---------------|\n`;
-  
+
   for (const mapping of report.routeToWPEndpoint.slice(0, 50)) {
     markdown += `| ${mapping.route} | ${mapping.wpEndpoint} | ${mapping.count} | ${mapping.avgTime.toFixed(2)} |\n`;
   }
@@ -131,7 +138,7 @@ export function formatReportAsMarkdown(report: PerformanceReport): string {
     markdown += `## Duplicate Requests Detected\n\n`;
     markdown += `| URL | Duplicate Count | Avg Time (ms) |\n`;
     markdown += `|-----|-----------------|---------------|\n`;
-    
+
     for (const dup of report.duplicates) {
       markdown += `| ${dup.url} | ${dup.count} | ${dup.avgTime.toFixed(2)} |\n`;
     }
@@ -142,9 +149,9 @@ export function formatReportAsMarkdown(report: PerformanceReport): string {
   markdown += `## Slowest Requests\n\n`;
   markdown += `| URL | Duration (ms) | Route | Status |\n`;
   markdown += `|-----|---------------|-------|--------|\n`;
-  
+
   for (const req of report.slowestRequests) {
-    markdown += `| ${req.url} | ${req.duration.toFixed(2)} | ${req.route || 'N/A'} | ${req.status || 'N/A'} |\n`;
+    markdown += `| ${req.url} | ${req.duration.toFixed(2)} | ${req.route || "N/A"} | ${req.status || "N/A"} |\n`;
   }
 
   return markdown;
@@ -153,23 +160,25 @@ export function formatReportAsMarkdown(report: PerformanceReport): string {
 /**
  * Export report to file
  */
-export async function exportReportToFile(report: PerformanceReport, filename?: string): Promise<string> {
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  
-  const reportDir = path.join(process.cwd(), 'performance-reports');
+export async function exportReportToFile(
+  report: PerformanceReport,
+  filename?: string
+): Promise<string> {
+  const fs = await import("fs/promises");
+  const path = await import("path");
+
+  const reportDir = path.join(process.cwd(), "performance-reports");
   await fs.mkdir(reportDir, { recursive: true });
-  
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filepath = filename || path.join(reportDir, `performance-report-${timestamp}.json`);
-  
+
   await fs.writeFile(filepath, JSON.stringify(report, null, 2));
-  
+
   // Also generate markdown
-  const markdownPath = filepath.replace('.json', '.md');
+  const markdownPath = filepath.replace(".json", ".md");
   const markdown = formatReportAsMarkdown(report);
   await fs.writeFile(markdownPath, markdown);
-  
+
   return filepath;
 }
-

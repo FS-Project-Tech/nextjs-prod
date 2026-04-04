@@ -49,4 +49,3 @@ export type EwayResponse = {
   invoiceNumber?: string;
   totalAmountCents?: number;
 };
-

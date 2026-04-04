@@ -34,48 +34,66 @@ const defaultRight: SliderImage[] = [
 export default function HeroDualSlider({
   leftImages = [],
   rightImages = [],
+  /** ACF `mobile_left_side_banner`; if empty, uses desktop left slides on small screens */
+  mobileLeftImages = [],
+  /** ACF `mobile_right_side_banner`; if empty, uses desktop right slides when shown */
+  mobileRightImages = [],
 }: {
   leftImages?: SliderImage[];
   rightImages?: SliderImage[];
+  mobileLeftImages?: SliderImage[];
+  mobileRightImages?: SliderImage[];
 }) {
   /* ---- Normalize data ---- */
-  const { leftData, rightData } = useMemo(() => {
-    const normalize = (images: any[]): SliderImage[] =>
+  const { leftData, rightData, mobileLeftData, mobileRightOnly } = useMemo(() => {
+    const normalize = (images: SliderImage[]): SliderImage[] =>
       Array.isArray(images)
         ? images
             .map((img) => ({
-              src: img?.src || img?.url || "",
+              src: img?.src || (img as { url?: string })?.url || "",
               alt: img?.alt || "",
               link: img?.link || undefined,
             }))
             .filter((img) => img.src.trim())
         : [];
 
+    const leftNorm = normalize(leftImages);
+    const rightNorm = normalize(rightImages);
+    const mLeftNorm = normalize(mobileLeftImages);
+    const mRightNorm = normalize(mobileRightImages);
+
+    const leftData = leftNorm.length ? leftNorm : defaultLeft;
+    const rightData = rightNorm.length ? rightNorm : defaultRight;
+
     return {
-      leftData: normalize(leftImages).length
-        ? normalize(leftImages)
-        : defaultLeft,
-      rightData: normalize(rightImages).length
-        ? normalize(rightImages)
-        : defaultRight,
+      leftData,
+      rightData,
+      /** Falls back to desktop left when mobile repeater empty */
+      mobileLeftData: mLeftNorm.length ? mLeftNorm : leftData,
+      /** Only ACF mobile-right slides (no fallback) so we don’t stack duplicate defaults */
+      mobileRightOnly: mRightNorm,
     };
-  }, [leftImages, rightImages]);
+  }, [leftImages, rightImages, mobileLeftImages, mobileRightImages]);
 
   /* ---- Slide renderer ---- */
   const renderSlide = (
     img: SliderImage,
     index: number,
     sizes: string,
-    objectPosition: "left" | "center" = "center"
+    heightClass: string,
+    objectFit: "cover" | "contain" = "cover"
   ) => {
+    const fitClass = objectFit === "contain" ? "object-contain" : "object-cover";
     const image = (
-      <div className="relative h-56 w-full overflow-hidden rounded-xl sm:h-72 md:h-80 lg:h-96">
+      <div
+        className={`relative w-full overflow-hidden rounded-xl bg-white ${heightClass}`}
+      >
         <Image
           src={img.src}
           alt={img.alt || `Slide ${index + 1}`}
           fill
           sizes={sizes}
-          className="object-cover"
+          className={`${fitClass} object-center`}
           priority={index === 0}
         />
       </div>
@@ -90,71 +108,125 @@ export default function HeroDualSlider({
     );
   };
 
-  /* ---------------- UI ---------------- */
+  const paginationStyles = (
+    <style jsx global>{`
+      .hero-slider-left .swiper-pagination,
+      .hero-slider-right .swiper-pagination,
+      .hero-slider-mobile-left .swiper-pagination,
+      .hero-slider-mobile-right .swiper-pagination {
+        bottom: 20px !important;
+      }
+
+      .swiper-pagination-bullet {
+        width: 12px;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.5);
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        transition: all 0.3s ease;
+      }
+
+      .swiper-pagination-bullet-active {
+        width: 32px;
+        border-radius: 6px;
+        background: rgb(20, 184, 166);
+        border-color: rgb(20, 184, 166);
+        box-shadow: 0 2px 8px rgba(20, 184, 166, 0.6);
+      }
+    `}</style>
+  );
 
   return (
     <div className="container mx-auto">
-      {/* 
-        Mobile & Tablet: 1 column (stacked)
-        Desktop (md+): 4 columns (3 + 1 layout)
-      */}
-      <div className="grid gap-4 grid-cols-1 ">
-        {/* -------- LEFT BANNER -------- */}
-        <div className="md:col-span-3">
-          <Swiper
-            modules={[Pagination, Autoplay]}
-            pagination={{ clickable: true }}
-            autoplay={{ delay: 4000, disableOnInteraction: false }}
-            className="hero-slider-left"
-          >
-            {leftData.map((img, i) => (
-              <SwiperSlide key={i}>
-                {renderSlide(img, i, "(max-width: 768px) 100vw, 75vw", "left")}
-              </SwiperSlide>
-            ))}
-          </Swiper>
-        </div>
+      {/* ---- Mobile / tablet: &lt; md — ACF mobile repeaters (fallback = desktop) ---- */}
+      <div className="md:hidden space-y-4">
+        <Swiper
+          modules={[Pagination, Autoplay]}
+          pagination={{ clickable: true }}
+          autoplay={{ delay: 4000, disableOnInteraction: false }}
+          className="hero-slider-mobile-left"
+        >
+          {mobileLeftData.map((img, i) => (
+            <SwiperSlide key={`m-l-${i}`}>
+              {renderSlide(
+                img,
+                i,
+                "100vw",
+                "h-64 sm:h-65",
+                "contain"
+              )}
+            </SwiperSlide>
+          ))}
+        </Swiper>
 
-        {/* -------- RIGHT BANNER -------- */}
-        {/* <div className="md:col-span-1">
+        {mobileRightOnly.length > 0 && (
           <Swiper
             modules={[Pagination, Autoplay]}
             pagination={{ clickable: true }}
             autoplay={{ delay: 4500, disableOnInteraction: false }}
-            className="hero-slider-right"
+            className="hero-slider-mobile-right"
           >
-            {rightData.map((img, i) => (
-              <SwiperSlide key={i}>
-                {renderSlide(img, i, "(max-width: 768px) 100vw, 25vw", "center")}
+            {mobileRightOnly.map((img, i) => (
+              <SwiperSlide key={`m-r-${i}`}>
+                {renderSlide(
+                  img,
+                  i,
+                  "100vw",
+                  "h-48 sm:h-56",
+                  "contain"
+                )}
               </SwiperSlide>
             ))}
           </Swiper>
-        </div> */}
+        )}
       </div>
 
-      {/* -------- Pagination styles -------- */}
-      <style jsx global>{`
-        .hero-slider-left .swiper-pagination,
-        .hero-slider-right .swiper-pagination {
-          bottom: 20px !important;
-        }
+      {/* ---- Desktop: md+ — desktop ACF only ---- */}
+      <div className="hidden md:block">
+        <div className="grid grid-cols-1 gap-4">
+          <div className="md:col-span-3">
+            <Swiper
+              modules={[Pagination, Autoplay]}
+              pagination={{ clickable: true }}
+              autoplay={{ delay: 4000, disableOnInteraction: false }}
+              className="hero-slider-left"
+            >
+              {leftData.map((img, i) => (
+                <SwiperSlide key={i}>
+                  {renderSlide(
+                    img,
+                    i,
+                    "(max-width: 768px) 100vw, 75vw",
+                    "h-56 w-full sm:h-72 md:h-80 lg:h-96"
+                  )}
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          </div>
 
-        .swiper-pagination-bullet {
-          width: 12px;
-          height: 12px;
-          background: rgba(255, 255, 255, 0.5);
-          border: 2px solid rgba(255, 255, 255, 0.8);
-          transition: all 0.3s ease;
-        }
+          {/* -------- RIGHT BANNER (desktop) -------- */}
+          {/* <div className="md:col-span-1">
+            <Swiper
+              modules={[Pagination, Autoplay]}
+              pagination={{ clickable: true }}
+              autoplay={{ delay: 4500, disableOnInteraction: false }}
+              className="hero-slider-right"
+            >
+              {rightData.map((img, i) => (
+                <SwiperSlide key={i}>
+                  {renderSlide(
+                    img,
+                    i,
+                    "(max-width: 768px) 100vw, 25vw",
+                    "h-56 w-full sm:h-72 md:h-80 lg:h-96"
+                  )}
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          </div> */}
+        </div>
+      </div>
 
-        .swiper-pagination-bullet-active {
-          width: 32px;
-          border-radius: 6px;
-          background: rgb(20, 184, 166);
-          border-color: rgb(20, 184, 166);
-          box-shadow: 0 2px 8px rgba(20, 184, 166, 0.6);
-        }
-      `}</style>
+      {paginationStyles}
     </div>
   );
 }

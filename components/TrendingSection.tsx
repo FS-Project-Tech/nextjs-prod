@@ -18,10 +18,8 @@ function toProductCardProduct(p: WooCommerceProduct): ProductCardProduct {
     sku: p.sku != null ? String(p.sku) : undefined,
     tax_class: p.tax_class != null ? String(p.tax_class) : undefined,
     tax_status: p.tax_status != null ? String(p.tax_status) : undefined,
-    average_rating:
-      p.average_rating != null ? String(p.average_rating) : undefined,
-    rating_count:
-      p.rating_count != null ? Number(p.rating_count) : undefined,
+    average_rating: p.average_rating != null ? String(p.average_rating) : undefined,
+    rating_count: p.rating_count != null ? Number(p.rating_count) : undefined,
     images: Array.isArray(p.images) ? p.images : undefined,
   };
 }

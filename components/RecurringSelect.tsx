@@ -7,10 +7,7 @@ interface RecurringSelectProps {
   value?: RecurringPlan;
 }
 
-export default function RecurringSelect({
-  onChange,
-  value = "none",
-}: RecurringSelectProps) {
+export default function RecurringSelect({ onChange, value = "none" }: RecurringSelectProps) {
   const plans: Array<{ value: RecurringPlan; label: string; description: string }> = [
     { value: "none", label: "One-time delivery", description: "Single purchase" },
     { value: "14", label: "Every 14 days", description: "Bi-weekly subscription" },
@@ -19,9 +16,7 @@ export default function RecurringSelect({
 
   return (
     <div className="space-y-2" suppressHydrationWarning>
-      <label className="block text-sm font-medium text-gray-700">
-        Delivery Plan
-      </label>
+      <label className="block text-sm font-medium text-gray-700">Delivery Plan</label>
       <div className="flex flex-wrap gap-2">
         {plans.map((plan) => {
           const isSelected = value === plan.value;
@@ -44,4 +39,3 @@ export default function RecurringSelect({
     </div>
   );
 }
-

@@ -49,16 +49,12 @@ end
 return current
 `;
 
-  const current = Number(
-    await redis.eval(lua, 1, redisKey, String(windowSeconds))
-  );
+  const current = Number(await redis.eval(lua, 1, redisKey, String(windowSeconds)));
   const remaining = Math.max(0, maxRequests - current);
-  const resetSeconds =
-    windowSeconds - (nowSec % windowSeconds) || windowSeconds;
+  const resetSeconds = windowSeconds - (nowSec % windowSeconds) || windowSeconds;
 
   if (current > maxRequests) {
     return { ok: false, limit: maxRequests, remaining: 0, resetSeconds };
   }
   return { ok: true, limit: maxRequests, remaining, resetSeconds };
 }
-

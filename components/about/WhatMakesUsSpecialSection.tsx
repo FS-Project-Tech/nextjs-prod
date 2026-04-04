@@ -9,11 +9,17 @@ const specialPoints: SpecialPoint[] = [
   {
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+        />
       </svg>
     ),
     title: "Measure & Fit-Out Service at Home",
-    description: "We come to you! Free personal visit by our staff for compression garments fitting. Avoid sizing errors and explore color, material, and suitability options before purchasing.",
+    description:
+      "We come to you! Free personal visit by our staff for compression garments fitting. Avoid sizing errors and explore color, material, and suitability options before purchasing.",
     highlight: true,
   },
   {
@@ -23,17 +29,24 @@ const specialPoints: SpecialPoint[] = [
       </svg>
     ),
     title: "Free Delivery - Gold Coast Region",
-    description: "Free delivery within the Gold Coast region for orders over $300. A service unmatched in the industry, making quality healthcare products more accessible.",
+    description:
+      "Free delivery within the Gold Coast region for orders over $300. A service unmatched in the industry, making quality healthcare products more accessible.",
     highlight: true,
   },
   {
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
       </svg>
     ),
     title: "Emergency Delivery Service",
-    description: "Exclusive to registered health professionals and care services. Less than 4-hour delivery within a 90-kilometre radius of the Gold Coast for urgent medical supply needs.",
+    description:
+      "Exclusive to registered health professionals and care services. Less than 4-hour delivery within a 90-kilometre radius of the Gold Coast for urgent medical supply needs.",
     highlight: true,
   },
 ];
@@ -47,9 +60,9 @@ export default function WhatMakesUsSpecialSection() {
             What Makes Us Special
           </h2>
           <p className="text-lg text-gray-600 mb-10 max-w-3xl mx-auto">
-            At Joya, we understand that everyone might not be able to reach us online, so we have 
-            decided to come to you. Our unique services are designed to make healthcare products more 
-            accessible and convenient for everyone.
+            At Joya, we understand that everyone might not be able to reach us online, so we have
+            decided to come to you. Our unique services are designed to make healthcare products
+            more accessible and convenient for everyone.
           </p>
         </div>
         <div className="max-w-5xl mx-auto">
@@ -63,12 +76,14 @@ export default function WhatMakesUsSpecialSection() {
                     : "bg-white border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div className={`mb-4 flex justify-center ${
-                  point.highlight ? "text-teal-600" : "text-gray-600"
-                }`}>
-                  <div className={`p-3 rounded-lg ${
-                    point.highlight ? "bg-teal-100" : "bg-gray-100"
-                  }`}>
+                <div
+                  className={`mb-4 flex justify-center ${
+                    point.highlight ? "text-teal-600" : "text-gray-600"
+                  }`}
+                >
+                  <div
+                    className={`p-3 rounded-lg ${point.highlight ? "bg-teal-100" : "bg-gray-100"}`}
+                  >
                     {point.icon}
                   </div>
                 </div>
@@ -86,4 +101,3 @@ export default function WhatMakesUsSpecialSection() {
     </section>
   );
 }
-

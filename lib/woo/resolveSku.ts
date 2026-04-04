@@ -28,9 +28,7 @@ export async function resolveProductRefBySku(
       params: { sku: s, per_page: 20, status: "publish" },
     });
     const list = Array.isArray(data) ? data : [];
-    const exact = list.filter(
-      (p: { sku?: string }) => String(p?.sku ?? "").trim() === s
-    );
+    const exact = list.filter((p: { sku?: string }) => String(p?.sku ?? "").trim() === s);
 
     if (exact.length > 1) {
       return {
@@ -56,18 +54,16 @@ export async function resolveProductRefBySku(
   }
 
   const hint =
-    parentIdHint != null && Number.isFinite(parentIdHint) && parentIdHint > 0
-      ? parentIdHint
-      : 0;
+    parentIdHint != null && Number.isFinite(parentIdHint) && parentIdHint > 0 ? parentIdHint : 0;
   if (hint > 0) {
     try {
       const { data } = await wcAPI.get(`/products/${hint}/variations`, {
         params: { per_page: 100 },
       });
       const vars = Array.isArray(data) ? data : [];
-      const hit = vars.find(
-        (v: { sku?: string }) => String(v?.sku ?? "").trim() === s
-      ) as { id?: number } | undefined;
+      const hit = vars.find((v: { sku?: string }) => String(v?.sku ?? "").trim() === s) as
+        | { id?: number }
+        | undefined;
       const vid = Number(hit?.id || 0);
       if (vid > 0) {
         return {

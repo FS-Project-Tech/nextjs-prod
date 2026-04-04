@@ -3,14 +3,14 @@ import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
 import { fetchEvents, decodeHTMLEntities } from "@/lib/cms-events";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
- 
+
 export const metadata: Metadata = {
   title: "Events",
   description:
     "Upcoming and past events from Joya Medical Supplies — workshops, expos, and community updates.",
   alternates: { canonical: "/events" },
 };
- 
+
 export default async function EventsPage({
   searchParams,
 }: {
@@ -19,18 +19,18 @@ export default async function EventsPage({
   const { page = "1" } = await searchParams;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const perPage = 12;
- 
+
   const { events, totalPages, meta } = await fetchEvents({
     per: perPage,
     page: pageNum,
   });
- 
+
   const breadcrumbItems = [{ label: "Home", href: "/" }, { label: "Events" }];
- 
+
   function buildPageUrl(p: number) {
     return p <= 1 ? "/events" : `/events?page=${p}`;
   }
- 
+
   return (
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
@@ -40,10 +40,7 @@ export default async function EventsPage({
             <nav className="mb-3 text-sm text-gray-500">
               <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <li>
-                  <PrefetchLink
-                    href="/"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/" className="hover:text-teal-600 transition-colors">
                     Home
                   </PrefetchLink>
                 </li>
@@ -51,36 +48,26 @@ export default async function EventsPage({
                 <li className="text-gray-900 font-medium">Events</li>
               </ol>
             </nav>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Events
-            </h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Events</h1>
             <p className="mt-2 max-w-2xl text-sm text-gray-600 sm:text-base">
-              Stay informed about our latest events, trade shows, and community
-              activities.
+              Stay informed about our latest events, trade shows, and community activities.
             </p>
           </div>
         </div>
- 
+
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
           <div className="mx-auto max-w-8xl">
             <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {events.map((event) => {
                 const rawTitle =
-                  event.title?.rendered?.replace(/<[^>]+>/g, "").trim() ||
-                  "Untitled";
-                const title = rawTitle
-                  ? decodeHTMLEntities(rawTitle)
-                  : "Untitled";
-                const img =
-                  event._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
-                const dateLabel = new Date(event.date).toLocaleDateString(
-                  "en-AU",
-                  {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  },
-                );
+                  event.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Untitled";
+                const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Untitled";
+                const img = event._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
+                const dateLabel = new Date(event.date).toLocaleDateString("en-AU", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                });
                 return (
                   <li key={event.id}>
                     <Link
@@ -105,10 +92,7 @@ export default async function EventsPage({
                         <h2 className="text-sm font-semibold leading-snug text-teal-800 group-hover:text-teal-600 sm:text-base line-clamp-3">
                           {title}
                         </h2>
-                        <time
-                          className="mt-2 text-xs text-gray-500"
-                          dateTime={event.date}
-                        >
+                        <time className="mt-2 text-xs text-gray-500" dateTime={event.date}>
                           {dateLabel}
                         </time>
                       </div>
@@ -118,7 +102,7 @@ export default async function EventsPage({
               })}
             </ul>
           </div>
- 
+
           <div className="mx-auto max-w-5xl">
             {totalPages > 1 && (
               <nav
@@ -134,21 +118,19 @@ export default async function EventsPage({
                   </Link>
                 )}
                 <div className="flex gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (p) => (
-                      <Link
-                        key={p}
-                        href={buildPageUrl(p)}
-                        className={`min-w-[2.5rem] rounded-lg px-3 py-2 text-center text-sm font-medium ${
-                          p === pageNum
-                            ? "bg-teal-600 text-white"
-                            : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {p}
-                      </Link>
-                    ),
-                  )}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <Link
+                      key={p}
+                      href={buildPageUrl(p)}
+                      className={`min-w-[2.5rem] rounded-lg px-3 py-2 text-center text-sm font-medium ${
+                        p === pageNum
+                          ? "bg-teal-600 text-white"
+                          : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {p}
+                    </Link>
+                  ))}
                 </div>
                 {pageNum < totalPages && (
                   <Link
@@ -161,30 +143,24 @@ export default async function EventsPage({
               </nav>
             )}
           </div>
- 
+
           {events.length === 0 && (
             <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-600 space-y-3">
               {!process.env.NEXT_PUBLIC_WP_URL ? (
                 <p>
                   Events feed is not configured. Add{" "}
-                  <code className="rounded bg-gray-100 px-1 text-sm">
-                    NEXT_PUBLIC_WP_URL
-                  </code>{" "}
-                  to your environment.
+                  <code className="rounded bg-gray-100 px-1 text-sm">NEXT_PUBLIC_WP_URL</code> to
+                  your environment.
                 </p>
               ) : !meta.apiOk ? (
                 <p>
-                  Could not load events from WordPress. Check that your events
-                  post type is public and has{" "}
-                  <code className="rounded bg-gray-100 px-1 text-sm">
-                    show_in_rest
-                  </code>{" "}
+                  Could not load events from WordPress. Check that your events post type is public
+                  and has <code className="rounded bg-gray-100 px-1 text-sm">show_in_rest</code>{" "}
                   enabled, or set{" "}
                   <code className="rounded bg-gray-100 px-1 text-sm">
                     NEXT_PUBLIC_WP_EVENTS_REST_BASE
                   </code>{" "}
-                  to your CPT REST base (tried automatically: events, event,
-                  tribe_events).
+                  to your CPT REST base (tried automatically: events, event, tribe_events).
                 </p>
               ) : (
                 <p>There are no published events to show yet.</p>

@@ -3,13 +3,13 @@ import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
 import { fetchPosts, fetchCategories } from "@/lib/cms-posts";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
- 
+
 export const metadata: Metadata = {
   title: "Blog",
   description: "Articles, guides, and updates from Joya Medical Supplies.",
   alternates: { canonical: "/blog" },
 };
- 
+
 export default async function BlogPage({
   searchParams,
 }: {
@@ -18,7 +18,7 @@ export default async function BlogPage({
   const { page = "1", category } = await searchParams;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const perPage = 10;
- 
+
   const [postsData, categories] = await Promise.all([
     fetchPosts({
       per: perPage,
@@ -27,10 +27,10 @@ export default async function BlogPage({
     }),
     fetchCategories(),
   ]);
- 
+
   const posts = postsData.posts;
   const totalPages = postsData.totalPages;
- 
+
   const breadcrumbItems = [{ label: "Home", href: "/" }, { label: "Blog" }];
   function buildPageUrl(page: number) {
     const params = new URLSearchParams();
@@ -59,7 +59,7 @@ export default async function BlogPage({
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Blog</h1>
           </div>
         </div>
- 
+
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
           {/* Category filter */}
           {categories.length > 0 && (
@@ -67,7 +67,9 @@ export default async function BlogPage({
               <Link
                 href="/blog"
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  !category ? "bg-teal-600 text-white" : "bg-white text-gray-700 border border-gray-200 hover:border-teal-300"
+                  !category
+                    ? "bg-teal-600 text-white"
+                    : "bg-white text-gray-700 border border-gray-200 hover:border-teal-300"
                 }`}
               >
                 All
@@ -87,12 +89,16 @@ export default async function BlogPage({
               ))}
             </div>
           )}
- 
+
           {/* Post list - basic card design */}
           <ul className="space-y-6">
             {posts.map((post) => {
               const title = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Untitled";
-              const excerpt = post.excerpt?.rendered?.replace(/<[^>]+>/g, "").trim().slice(0, 200) || "";
+              const excerpt =
+                post.excerpt?.rendered
+                  ?.replace(/<[^>]+>/g, "")
+                  .trim()
+                  .slice(0, 200) || "";
               const img = post._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
               return (
                 <li key={post.id}>
@@ -125,9 +131,9 @@ export default async function BlogPage({
               );
             })}
           </ul>
- 
- {/* Pagination */}
- {totalPages > 1 && (
+
+          {/* Pagination */}
+          {totalPages > 1 && (
             <nav
               className="mt-10 flex flex-wrap items-center justify-center gap-2"
               aria-label="Blog pagination"
@@ -165,7 +171,7 @@ export default async function BlogPage({
               )}
             </nav>
           )}
- 
+
           {posts.length === 0 && (
             <p className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-600">
               No posts found.

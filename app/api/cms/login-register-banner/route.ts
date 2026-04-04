@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchLoginRegisterBanner } from "@/lib/login-register-banner";
- 
+
 /**
  * GET /api/cms/login-register-banner
  * Public JSON for login/register side panel (ACF Options).
@@ -14,9 +14,6 @@ export async function GET() {
       },
     });
   } catch {
-    return NextResponse.json(
-      { imageUrl: null, linkUrl: null, fromCms: false },
-      { status: 200 }
-    );
+    return NextResponse.json({ imageUrl: null, linkUrl: null, fromCms: false }, { status: 200 });
   }
 }

@@ -101,9 +101,7 @@ export default function CategoryBookClient({
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="text-sm text-gray-600 self-end">
-        Page 1 of {totalPages}
-      </div>
+      <div className="text-sm text-gray-600 self-end">Page 1 of {totalPages}</div>
       <div className="bg-gradient-to-b from-gray-200 to-gray-300 p-4 rounded-2xl shadow-inner">
         <HTMLFlipBook
           width={600}
@@ -201,4 +199,3 @@ export default function CategoryBookClient({
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 // Note: address deletions are now persisted server-side (in WordPress and the
 // fallback file store via addresses-memory-store). We no longer filter by a
@@ -14,7 +14,7 @@ export function clearAddressesDeletedIds(): void {
 
 export interface Address {
   id?: string;
-  type: 'billing' | 'shipping';
+  type: "billing" | "shipping";
   label?: string;
   first_name: string;
   last_name: string;
@@ -50,7 +50,7 @@ interface UseAddressesResult {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<unknown>;
-  addAddress: (address: Omit<Address, 'id'>) => Promise<void>;
+  addAddress: (address: Omit<Address, "id">) => Promise<void>;
   updateAddress: (id: string, address: Partial<Address>) => Promise<void>;
   deleteAddress: (id: string) => Promise<void>;
   isAdding: boolean;
@@ -62,23 +62,18 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
   const { enabled = true } = options ?? {};
   const queryClient = useQueryClient();
 
-  const {
-    data,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['addresses'],
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["addresses"],
     enabled,
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/addresses', {
-        credentials: 'include',
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
+      const response = await fetch("/api/dashboard/addresses", {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-store", Pragma: "no-cache" },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch addresses');
+        throw new Error("Failed to fetch addresses");
       }
 
       const result = await response.json();
@@ -92,17 +87,17 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
   });
 
   const addMutation = useMutation({
-    mutationFn: async (address: Omit<Address, 'id'>) => {
-      const response = await fetch('/api/dashboard/addresses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+    mutationFn: async (address: Omit<Address, "id">) => {
+      const response = await fetch("/api/dashboard/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(address),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to add address');
+        throw new Error(error.error || "Failed to add address");
       }
 
       return response.json();
@@ -110,12 +105,14 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
     onSuccess: (data: { address?: Address; message?: string }) => {
       const newAddress = data?.address;
       if (newAddress && newAddress.id != null) {
-        queryClient.setQueryData<Address[]>(['addresses'], (old) => {
+        queryClient.setQueryData<Address[]>(["addresses"], (old) => {
           const list = old ?? [];
           const idStr = String(newAddress.id);
           const exists = list.some((a) => String(a.id) === idStr);
           if (exists) {
-            return list.map((a) => (String(a.id) === idStr ? { ...newAddress, id: newAddress.id } : a));
+            return list.map((a) =>
+              String(a.id) === idStr ? { ...newAddress, id: newAddress.id } : a
+            );
           }
           return [...list, { ...newAddress, id: newAddress.id }];
         });
@@ -130,15 +127,15 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
     mutationFn: async ({ id, address }: { id: string; address: Partial<Address> }) => {
       const idStr = String(id);
       const response = await fetch(`/api/dashboard/addresses/${encodeURIComponent(idStr)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(address),
       });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error((error as { error?: string }).error || 'Failed to update address');
+        throw new Error((error as { error?: string }).error || "Failed to update address");
       }
 
       const result = await response.json();
@@ -149,15 +146,39 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
       const updated = data.updated as unknown as Record<string, unknown> | undefined;
       const idStr = String(data.id);
       if (updated) {
-        queryClient.setQueryData<Address[]>(['addresses'], (old) => {
+        queryClient.setQueryData<Address[]>(["addresses"], (old) => {
           if (!old) return old;
           return old.map((a) => {
             if (String(a.id) !== idStr) return a;
-            const keys = ['type', 'label', 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone', 'ndis_participant_name', 'ndis_number', 'ndis_dob', 'ndis_funding_type', 'ndis_approval', 'ndis_invoice_email', 'hcp_participant_name', 'hcp_number', 'hcp_provider_email', 'hcp_approval'] as const;
+            const keys = [
+              "type",
+              "label",
+              "first_name",
+              "last_name",
+              "company",
+              "address_1",
+              "address_2",
+              "city",
+              "state",
+              "postcode",
+              "country",
+              "email",
+              "phone",
+              "ndis_participant_name",
+              "ndis_number",
+              "ndis_dob",
+              "ndis_funding_type",
+              "ndis_approval",
+              "ndis_invoice_email",
+              "hcp_participant_name",
+              "hcp_number",
+              "hcp_provider_email",
+              "hcp_approval",
+            ] as const;
             const merged = { ...a } as unknown as Record<string, unknown>;
             for (const key of keys) {
               if (Object.prototype.hasOwnProperty.call(updated, key)) {
-                merged[key] = updated[key] ?? '';
+                merged[key] = updated[key] ?? "";
               }
             }
             if (updated.id != null) merged.id = updated.id as string;
@@ -172,24 +193,24 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/dashboard/addresses/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        credentials: 'include',
+        method: "DELETE",
+        credentials: "include",
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete address');
+        throw new Error(error.error || "Failed to delete address");
       }
 
       return response.json();
     },
     onSuccess: (_data, deletedId) => {
       const idStr = String(deletedId);
-      queryClient.setQueryData<Address[]>(['addresses'], (old) =>
+      queryClient.setQueryData<Address[]>(["addresses"], (old) =>
         old ? old.filter((a) => String(a.id) !== idStr) : old
       );
       // Invalidate so next refetch gets fresh data from API (prevents address reappearing after refresh)
-      queryClient.invalidateQueries({ queryKey: ['addresses'] });
+      queryClient.invalidateQueries({ queryKey: ["addresses"] });
     },
   });
 
@@ -212,4 +233,3 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
     isDeleting: deleteMutation.isPending,
   };
 }
-

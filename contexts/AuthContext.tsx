@@ -131,8 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         router.push(dest);
         return { success: true };
       } catch (err: unknown) {
-        const errorMessage =
-          err instanceof Error ? err.message : "An error occurred during login.";
+        const errorMessage = err instanceof Error ? err.message : "An error occurred during login.";
         setError({ code: "LOGIN_ERROR", message: errorMessage });
         return { success: false, error: errorMessage };
       }

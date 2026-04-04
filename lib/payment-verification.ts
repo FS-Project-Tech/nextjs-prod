@@ -78,4 +78,3 @@ export function verifyPaymentAmount(
 ): boolean {
   return Math.abs(paymentAmount - orderTotal) <= tolerance;
 }
-

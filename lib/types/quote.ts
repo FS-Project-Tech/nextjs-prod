@@ -10,7 +10,7 @@ export interface QuoteItem {
 }
 
 export interface QuoteStatusHistory {
-  status: 'pending' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  status: "pending" | "sent" | "accepted" | "rejected" | "expired";
   changed_at: string;
   changed_by?: string;
   reason?: string;
@@ -22,7 +22,7 @@ export interface QuoteComment {
   quote_id: string;
   author: string;
   author_email: string;
-  author_type: 'customer' | 'admin';
+  author_type: "customer" | "admin";
   content: string;
   created_at: string;
   updated_at?: string;
@@ -41,7 +41,7 @@ export interface Quote {
   shipping_method?: string;
   discount: number;
   total: number;
-  status: 'pending' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  status: "pending" | "sent" | "accepted" | "rejected" | "expired";
   notes?: string;
   admin_notes?: string;
   created_at: string;
@@ -65,4 +65,3 @@ export interface QuoteRequestPayload {
   total: number;
   notes?: string;
 }
-

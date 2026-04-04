@@ -8,11 +8,7 @@ import {
   isEwayConfigured,
   verifyEwayPayment,
 } from "@/lib/services/ewayService";
-import {
-  extractWooOrderId,
-  resolveOrderPostId,
-  updateWooOrder,
-} from "@/lib/services/wooService";
+import { extractWooOrderId, resolveOrderPostId, updateWooOrder } from "@/lib/services/wooService";
 
 export type HandlePaymentContext = {
   method: "eway" | "cod";
@@ -48,9 +44,7 @@ async function resolvePostId(order: unknown): Promise<number | null> {
 /**
  * Single entry after Woo order exists: finalize COD (On Account) or start eWAY hosted payment.
  */
-export async function handlePayment(
-  ctx: HandlePaymentContext
-): Promise<HandlePaymentResult> {
+export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePaymentResult> {
   const postId = await resolvePostId(ctx.order);
   if (postId == null) {
     console.error("[payment] handlePayment: missing order id");
@@ -104,15 +98,8 @@ export async function handlePayment(
   }
 
   const total =
-    typeof o.total === "string"
-      ? o.total
-      : typeof o.total === "number"
-        ? String(o.total)
-        : "0";
-  const currency =
-    typeof o.currency === "string" && o.currency.trim()
-      ? o.currency.trim()
-      : "AUD";
+    typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0";
+  const currency = typeof o.currency === "string" && o.currency.trim() ? o.currency.trim() : "AUD";
 
   console.log("[payment] eway: creating hosted payment", { postId });
   const eway = await createEwayHostedPayment({
@@ -240,11 +227,7 @@ function readTransactionStatus(body: Record<string, unknown>): boolean | null {
     body.Transaction && typeof body.Transaction === "object"
       ? (body.Transaction as Record<string, unknown>)
       : null;
-  const candidates = [
-    body.TransactionStatus,
-    tx?.TransactionStatus,
-    body.transactionStatus,
-  ];
+  const candidates = [body.TransactionStatus, tx?.TransactionStatus, body.transactionStatus];
   for (const c of candidates) {
     if (c === true) return true;
     if (c === false) return false;
@@ -262,17 +245,11 @@ function readTransactionStatus(body: Record<string, unknown>): boolean | null {
 export async function processEwayWebhookPayload(
   body: Record<string, unknown>
 ): Promise<{ handled: boolean; message: string }> {
-  console.log("[payment-webhook] payload", {
-    keys: Object.keys(body),
-    preview: JSON.stringify(body).slice(0, 1200),
-  });
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[payment-webhook] received", { keyCount: Object.keys(body).length });
+  }
 
-  const accessCode = pickString(body, [
-    "AccessCode",
-    "accessCode",
-    "access_code",
-    "Accesscode",
-  ]);
+  const accessCode = pickString(body, ["AccessCode", "accessCode", "access_code", "Accesscode"]);
 
   if (accessCode) {
     const orderRef =
@@ -293,18 +270,12 @@ export async function processEwayWebhookPayload(
     }
     return {
       handled: true,
-      message: r.paid
-        ? "Order marked paid."
-        : "Payment not approved or order unresolved.",
+      message: r.paid ? "Order marked paid." : "Payment not approved or order unresolved.",
     };
   }
 
   const txOk = readTransactionStatus(body);
-  const invoiceRef = pickString(body, [
-    "InvoiceReference",
-    "invoice_reference",
-    "order_id",
-  ]);
+  const invoiceRef = pickString(body, ["InvoiceReference", "invoice_reference", "order_id"]);
 
   if (txOk === true && invoiceRef) {
     const postId = await resolveOrderPostId(invoiceRef);

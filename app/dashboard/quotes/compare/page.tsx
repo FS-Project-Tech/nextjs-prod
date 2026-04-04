@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { useToast } from '@/components/ToastProvider';
-import { formatPrice } from '@/lib/format-utils';
-import { compareQuotes, getPriceDifference, getTotalDifference, findBestQuote } from '@/lib/quote-comparison';
-import type { Quote } from '@/lib/types/quote';
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useToast } from "@/components/ToastProvider";
+import { formatPrice } from "@/lib/format-utils";
+import {
+  compareQuotes,
+  getPriceDifference,
+  getTotalDifference,
+  findBestQuote,
+} from "@/lib/quote-comparison";
+import type { Quote } from "@/lib/types/quote";
 
 function QuoteComparisonContent() {
   const router = useRouter();
@@ -19,37 +24,37 @@ function QuoteComparisonContent() {
     const fetchQuotes = async () => {
       try {
         setLoading(true);
-        const quoteIds = searchParams.get('ids')?.split(',').filter(Boolean) || [];
+        const quoteIds = searchParams.get("ids")?.split(",").filter(Boolean) || [];
 
         if (quoteIds.length === 0) {
-          router.push('/dashboard/quotes');
+          router.push("/dashboard/quotes");
           return;
         }
 
         // Fetch all quotes
-        const quotePromises = quoteIds.map(id =>
+        const quotePromises = quoteIds.map((id) =>
           fetch(`/api/dashboard/quotes/${id}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          }).then(res => res.json())
+            credentials: "include",
+            cache: "no-store",
+          }).then((res) => res.json())
         );
 
         const results = await Promise.all(quotePromises);
         const fetchedQuotes = results
-          .filter(result => result.quote)
-          .map(result => result.quote as Quote);
+          .filter((result) => result.quote)
+          .map((result) => result.quote as Quote);
 
         if (fetchedQuotes.length === 0) {
-          showError('No quotes found to compare');
-          router.push('/dashboard/quotes');
+          showError("No quotes found to compare");
+          router.push("/dashboard/quotes");
           return;
         }
 
         setQuotes(fetchedQuotes);
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load quotes';
+        const errorMessage = err instanceof Error ? err.message : "Failed to load quotes";
         showError(errorMessage);
-        router.push('/dashboard/quotes');
+        router.push("/dashboard/quotes");
       } finally {
         setLoading(false);
       }
@@ -87,7 +92,12 @@ function QuoteComparisonContent() {
           className="text-teal-600 hover:text-teal-700 flex items-center gap-2"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Back to Quotes
         </Link>
@@ -98,18 +108,18 @@ function QuoteComparisonContent() {
     );
   }
 
-  const getStatusColor = (status: Quote['status']) => {
+  const getStatusColor = (status: Quote["status"]) => {
     switch (status) {
-      case 'accepted':
-        return 'bg-green-100 text-green-800';
-      case 'rejected':
-        return 'bg-red-100 text-red-800';
-      case 'sent':
-        return 'bg-blue-100 text-blue-800';
-      case 'expired':
-        return 'bg-gray-100 text-gray-800';
+      case "accepted":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      case "sent":
+        return "bg-blue-100 text-blue-800";
+      case "expired":
+        return "bg-gray-100 text-gray-800";
       default:
-        return 'bg-yellow-100 text-yellow-800';
+        return "bg-yellow-100 text-yellow-800";
     }
   };
 
@@ -123,13 +133,18 @@ function QuoteComparisonContent() {
             className="text-teal-600 hover:text-teal-700 flex items-center gap-2 mb-2"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
             Back to Quotes
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Compare Quotes</h1>
           <p className="text-gray-600 mt-1">
-            Comparing {quotes.length} quote{quotes.length !== 1 ? 's' : ''}
+            Comparing {quotes.length} quote{quotes.length !== 1 ? "s" : ""}
           </p>
         </div>
         {bestQuote && (
@@ -157,7 +172,7 @@ function QuoteComparisonContent() {
                 <th
                   key={quote.id}
                   className={`px-4 py-3 text-center text-sm font-semibold text-gray-900 min-w-[200px] ${
-                    bestQuote?.id === quote.id ? 'bg-teal-50' : ''
+                    bestQuote?.id === quote.id ? "bg-teal-50" : ""
                   }`}
                 >
                   <div className="space-y-1">
@@ -167,7 +182,9 @@ function QuoteComparisonContent() {
                     >
                       {quote.quote_number}
                     </Link>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}
+                    >
                       {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
                     </span>
                     {bestQuote?.id === quote.id && (
@@ -200,14 +217,17 @@ function QuoteComparisonContent() {
               </td>
               {quotes.map((quote) => (
                 <td key={quote.id} className="px-4 py-3 text-sm text-gray-600 text-center">
-                  {quote.expires_at ? new Date(quote.expires_at).toLocaleDateString() : 'N/A'}
+                  {quote.expires_at ? new Date(quote.expires_at).toLocaleDateString() : "N/A"}
                 </td>
               ))}
             </tr>
 
             {/* Items Section */}
             <tr className="bg-gray-50">
-              <td colSpan={quotes.length + 1} className="px-4 py-2 text-sm font-semibold text-gray-900">
+              <td
+                colSpan={quotes.length + 1}
+                className="px-4 py-2 text-sm font-semibold text-gray-900"
+              >
                 Items
               </td>
             </tr>
@@ -216,9 +236,7 @@ function QuoteComparisonContent() {
               <tr key={itemIndex} className="border-b border-gray-100">
                 <td className="px-4 py-3 text-sm sticky left-0 bg-white z-10">
                   <div className="font-medium text-gray-900">{item.name}</div>
-                  {item.sku && (
-                    <div className="text-xs text-gray-500 mt-0.5">SKU: {item.sku}</div>
-                  )}
+                  {item.sku && <div className="text-xs text-gray-500 mt-0.5">SKU: {item.sku}</div>}
                   <div className="text-xs text-gray-500 mt-0.5">Qty: {item.quantity}</div>
                 </td>
                 {quotes.map((quote) => {
@@ -237,12 +255,8 @@ function QuoteComparisonContent() {
                   return (
                     <td key={quote.id} className="px-4 py-3 text-sm text-center">
                       <div className="space-y-1">
-                        <div className="font-medium text-gray-900">
-                          {formatPrice(price!)}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Total: {formatPrice(total!)}
-                        </div>
+                        <div className="font-medium text-gray-900">{formatPrice(price!)}</div>
+                        <div className="text-xs text-gray-500">Total: {formatPrice(total!)}</div>
                       </div>
                     </td>
                   );
@@ -252,7 +266,10 @@ function QuoteComparisonContent() {
 
             {/* Totals Section */}
             <tr className="bg-gray-50">
-              <td colSpan={quotes.length + 1} className="px-4 py-2 text-sm font-semibold text-gray-900">
+              <td
+                colSpan={quotes.length + 1}
+                className="px-4 py-2 text-sm font-semibold text-gray-900"
+              >
                 Pricing Summary
               </td>
             </tr>
@@ -263,7 +280,10 @@ function QuoteComparisonContent() {
                 Subtotal
               </td>
               {quotes.map((quote) => (
-                <td key={quote.id} className="px-4 py-3 text-sm text-gray-900 text-center font-medium">
+                <td
+                  key={quote.id}
+                  className="px-4 py-3 text-sm text-gray-900 text-center font-medium"
+                >
                   {formatPrice(quote.subtotal)}
                 </td>
               ))}
@@ -282,14 +302,14 @@ function QuoteComparisonContent() {
             </tr>
 
             {/* Discount */}
-            {quotes.some(q => q.discount > 0) && (
+            {quotes.some((q) => q.discount > 0) && (
               <tr className="border-b border-gray-100">
                 <td className="px-4 py-3 text-sm font-medium text-gray-700 sticky left-0 bg-white z-10">
                   Discount
                 </td>
                 {quotes.map((quote) => (
                   <td key={quote.id} className="px-4 py-3 text-sm text-emerald-600 text-center">
-                    {quote.discount > 0 ? `-${formatPrice(quote.discount)}` : '—'}
+                    {quote.discount > 0 ? `-${formatPrice(quote.discount)}` : "—"}
                   </td>
                 ))}
               </tr>
@@ -306,15 +326,11 @@ function QuoteComparisonContent() {
                   <td
                     key={quote.id}
                     className={`px-4 py-3 text-center ${
-                      isBest
-                        ? 'text-teal-700 font-bold text-lg'
-                        : 'text-gray-900 font-semibold'
+                      isBest ? "text-teal-700 font-bold text-lg" : "text-gray-900 font-semibold"
                     }`}
                   >
                     {formatPrice(quote.total)}
-                    {isBest && (
-                      <div className="text-xs text-teal-600 mt-1">Best Value</div>
-                    )}
+                    {isBest && <div className="text-xs text-teal-600 mt-1">Best Value</div>}
                   </td>
                 );
               })}
@@ -324,7 +340,10 @@ function QuoteComparisonContent() {
             {quotes.length === 2 && (
               <>
                 <tr className="bg-gray-50">
-                  <td colSpan={quotes.length + 1} className="px-4 py-2 text-sm font-semibold text-gray-900">
+                  <td
+                    colSpan={quotes.length + 1}
+                    className="px-4 py-2 text-sm font-semibold text-gray-900"
+                  >
                     Price Comparison
                   </td>
                 </tr>
@@ -339,18 +358,23 @@ function QuoteComparisonContent() {
                     );
                     return (
                       <td colSpan={2} className="px-4 py-3 text-sm text-center">
-                        <div className={`font-medium ${
-                          diff.isBetter ? 'text-emerald-600' : 'text-red-600'
-                        }`}>
-                          {diff.isBetter ? '↓' : '↑'} {formatPrice(Math.abs(diff.difference))}
+                        <div
+                          className={`font-medium ${
+                            diff.isBetter ? "text-emerald-600" : "text-red-600"
+                          }`}
+                        >
+                          {diff.isBetter ? "↓" : "↑"} {formatPrice(Math.abs(diff.difference))}
                           {diff.percentage !== null && (
                             <span className="text-xs ml-1">
-                              ({diff.percentage > 0 ? '+' : ''}{diff.percentage.toFixed(1)}%)
+                              ({diff.percentage > 0 ? "+" : ""}
+                              {diff.percentage.toFixed(1)}%)
                             </span>
                           )}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          Quote {quotes[1].quote_number} is {diff.isBetter ? 'cheaper' : 'more expensive'} than Quote {quotes[0].quote_number}
+                          Quote {quotes[1].quote_number} is{" "}
+                          {diff.isBetter ? "cheaper" : "more expensive"} than Quote{" "}
+                          {quotes[0].quote_number}
                         </div>
                       </td>
                     );
@@ -380,16 +404,17 @@ function QuoteComparisonContent() {
 
 export default function QuoteComparisonPage() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading quotes for comparison...</p>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
+            <p className="mt-4 text-gray-600">Loading quotes for comparison...</p>
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <QuoteComparisonContent />
     </Suspense>
   );
 }
-

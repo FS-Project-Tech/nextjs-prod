@@ -58,20 +58,20 @@ class APICache {
    * Generate cache key from request parameters
    */
   generateKey(endpoint: string, params?: Record<string, any>): string {
-    const sortedParams = params 
+    const sortedParams = params
       ? Object.keys(params)
           .sort()
-          .map(key => `${key}=${JSON.stringify(params[key])}`)
-          .join('&')
-      : '';
-    return `${endpoint}${sortedParams ? `?${sortedParams}` : ''}`;
+          .map((key) => `${key}=${JSON.stringify(params[key])}`)
+          .join("&")
+      : "";
+    return `${endpoint}${sortedParams ? `?${sortedParams}` : ""}`;
   }
 }
 
 // Server-side cache instance (only in Node.js environment)
 let serverCache: APICache | null = null;
 
-if (typeof window === 'undefined') {
+if (typeof window === "undefined") {
   serverCache = new APICache();
 }
 
@@ -84,7 +84,7 @@ export async function getCachedResponse<T>(
   ttl?: number
 ): Promise<T> {
   // Only cache on server-side
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     return fetchFn();
   }
 
@@ -129,6 +129,5 @@ export function generateCacheKey(endpoint: string, params?: Record<string, any>)
   if (serverCache) {
     return serverCache.generateKey(endpoint, params);
   }
-  return `${endpoint}${params ? JSON.stringify(params) : ''}`;
+  return `${endpoint}${params ? JSON.stringify(params) : ""}`;
 }
-

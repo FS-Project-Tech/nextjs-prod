@@ -9,6 +9,7 @@ import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import Container from "@/components/Container";
 import ShopListingLayout from "@/components/ShopListingLayout";
+import ListingMobileSortFilter from "@/components/ListingMobileSortFilter";
 import { createSafeHTML } from "@/lib/xss-sanitizer";
 
 // Dynamically import FilterSidebar - heavy component with filters and sliders
@@ -20,9 +21,9 @@ const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
 // Extract slug from pathname
 function extractSlugFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
-  if (!pathname.startsWith('/product-category/')) return null;
-  const nested = pathname.split('/product-category/')[1] || "";
-  const parts = nested.split('/').filter(Boolean);
+  if (!pathname.startsWith("/product-category/")) return null;
+  const nested = pathname.split("/product-category/")[1] || "";
+  const parts = nested.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : null;
 }
 
@@ -31,11 +32,11 @@ interface CategoryResponse {
   categoryDescription?: string;
 }
 
-export default function CategoryPageClient({ 
+export default function CategoryPageClient({
   initialSlug,
-  initialCategoryName, 
-  initialCategoryDescription
-}: { 
+  initialCategoryName,
+  initialCategoryDescription,
+}: {
   initialSlug: string;
   initialCategoryName?: string;
   initialCategoryDescription?: string;
@@ -49,22 +50,25 @@ export default function CategoryPageClient({
   const categorySlug = slugFromPath || initialSlug;
 
   // Fetch category name when slug changes
-  const fetchCategoryName = useCallback(async (slug: string) => {
-    if (slug === initialSlug && initialCategoryName && initialCategoryDescription) return;
-    
-    try {
-      const res = await fetch(`/api/category-by-slug?slug=${encodeURIComponent(slug)}`);
-      if (!res.ok) return;
-      
-      const json: CategoryResponse = await res.json();
-      if (json.category?.name) {
-        setCategoryName(json.category.name);
-        setCategoryDescription(json.categoryDescription || "");
+  const fetchCategoryName = useCallback(
+    async (slug: string) => {
+      if (slug === initialSlug && initialCategoryName && initialCategoryDescription) return;
+
+      try {
+        const res = await fetch(`/api/category-by-slug?slug=${encodeURIComponent(slug)}`);
+        if (!res.ok) return;
+
+        const json: CategoryResponse = await res.json();
+        if (json.category?.name) {
+          setCategoryName(json.category.name);
+          setCategoryDescription(json.categoryDescription || "");
+        }
+      } catch {
+        // Keep existing name on error
       }
-    } catch {
-      // Keep existing name on error
-    }
-  }, [initialSlug, initialCategoryName, initialCategoryDescription]);
+    },
+    [initialSlug, initialCategoryName, initialCategoryDescription]
+  );
 
   // Effect to fetch category name when slug changes
   useEffect(() => {
@@ -79,20 +83,26 @@ export default function CategoryPageClient({
 
   return (
     <ShopListingLayout>
-    <div className="min-h-screen py-4" suppressHydrationWarning>
-      <Container suppressHydrationWarning>
-        <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Shop', href: '/shop' }, { label: categoryName }]} />
-        
-       
-        
-        <div className="flex flex-col lg:flex-row gap-6" suppressHydrationWarning>
-          {/* Filter Sidebar */}
-          <aside className="lg:w-64 flex-shrink-0" suppressHydrationWarning>
-            <FilterSidebar categorySlug={categorySlug} />
-          </aside>
-          
-          {/* Product Grid - Wrapped in Suspense for useSearchParams */}
-          <div className="flex-1 min-w-0" suppressHydrationWarning>
+      <div className="min-h-screen py-4" suppressHydrationWarning>
+        <Container suppressHydrationWarning>
+          <Breadcrumbs
+            items={[
+              { label: "Home", href: "/" },
+              { label: "Shop", href: "/shop" },
+              { label: categoryName },
+            ]}
+          />
+
+          <div className="flex flex-col lg:flex-row gap-6" suppressHydrationWarning>
+            <ListingMobileSortFilter categorySlug={categorySlug} />
+
+            {/* Filter Sidebar */}
+            <aside className="hidden lg:block lg:w-64 flex-shrink-0" suppressHydrationWarning>
+              <FilterSidebar categorySlug={categorySlug} />
+            </aside>
+
+            {/* Product Grid - Wrapped in Suspense for useSearchParams */}
+            <div className="flex-1 min-w-0" suppressHydrationWarning>
               <div className="mb-6" suppressHydrationWarning>
                 <h1 className="text-2xl font-semibold text-gray-900">{categoryName}</h1>
                 {categoryDescription && (
@@ -115,14 +125,13 @@ export default function CategoryPageClient({
                   </div>
                 )}
               </div>
-            <Suspense fallback={<ProductGridSkeleton />}>
-              <ProductGrid categorySlug={categorySlug || undefined} />
-            </Suspense>
+              <Suspense fallback={<ProductGridSkeleton />}>
+                <ProductGrid categorySlug={categorySlug || undefined} />
+              </Suspense>
+            </div>
           </div>
-        </div>
-      </Container>
-    </div>
+        </Container>
+      </div>
     </ShopListingLayout>
   );
 }
-

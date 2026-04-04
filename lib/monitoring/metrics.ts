@@ -1,6 +1,6 @@
 /**
  * Performance Metrics Collection
- * 
+ *
  * Tracks:
  * - API response times
  * - Cache hit rates
@@ -9,7 +9,7 @@
  * - Request counts
  */
 
-import { hasAxiosResponse, getAxiosErrorDetails, getErrorName } from '@/lib/utils/errors';
+import { hasAxiosResponse, getAxiosErrorDetails, getErrorName } from "@/lib/utils/errors";
 
 interface Metric {
   name: string;
@@ -43,9 +43,9 @@ class MetricsCollector {
    * Record API response time
    */
   recordApiTime(endpoint: string, duration: number, status?: number): void {
-    this.record('api.response_time', duration, {
+    this.record("api.response_time", duration, {
       endpoint,
-      status: status?.toString() || 'unknown',
+      status: status?.toString() || "unknown",
     });
   }
 
@@ -53,21 +53,21 @@ class MetricsCollector {
    * Record cache hit/miss
    */
   recordCacheHit(type: string, hit: boolean): void {
-    this.record('cache.hit', hit ? 1 : 0, { type });
+    this.record("cache.hit", hit ? 1 : 0, { type });
   }
 
   /**
    * Record payload size
    */
   recordPayloadSize(endpoint: string, size: number): void {
-    this.record('api.payload_size', size, { endpoint });
+    this.record("api.payload_size", size, { endpoint });
   }
 
   /**
    * Record error
    */
   recordError(endpoint: string, errorType: string): void {
-    this.record('api.error', 1, { endpoint, error_type: errorType });
+    this.record("api.error", 1, { endpoint, error_type: errorType });
   }
 
   /**
@@ -89,34 +89,33 @@ class MetricsCollector {
     };
   } {
     const cutoff = Date.now() - timeWindowMs;
-    const recent = this.metrics.filter(m => m.timestamp > cutoff);
+    const recent = this.metrics.filter((m) => m.timestamp > cutoff);
 
-    const apiTimes = recent.filter(m => m.name === 'api.response_time');
-    const cacheHits = recent.filter(m => m.name === 'cache.hit');
-    const payloadSizes = recent.filter(m => m.name === 'api.payload_size');
-    const errors = recent.filter(m => m.name === 'api.error');
+    const apiTimes = recent.filter((m) => m.name === "api.response_time");
+    const cacheHits = recent.filter((m) => m.name === "cache.hit");
+    const payloadSizes = recent.filter((m) => m.name === "api.payload_size");
+    const errors = recent.filter((m) => m.name === "api.error");
 
     return {
       api: {
-        avgResponseTime: apiTimes.length > 0
-          ? apiTimes.reduce((sum, m) => sum + m.value, 0) / apiTimes.length
-          : 0,
+        avgResponseTime:
+          apiTimes.length > 0 ? apiTimes.reduce((sum, m) => sum + m.value, 0) / apiTimes.length : 0,
         totalRequests: apiTimes.length,
         errorRate: apiTimes.length > 0 ? errors.length / apiTimes.length : 0,
       },
       cache: {
-        hitRate: cacheHits.length > 0
-          ? cacheHits.filter(m => m.value === 1).length / cacheHits.length
-          : 0,
+        hitRate:
+          cacheHits.length > 0
+            ? cacheHits.filter((m) => m.value === 1).length / cacheHits.length
+            : 0,
         totalRequests: cacheHits.length,
       },
       payload: {
-        avgSize: payloadSizes.length > 0
-          ? payloadSizes.reduce((sum, m) => sum + m.value, 0) / payloadSizes.length
-          : 0,
-        maxSize: payloadSizes.length > 0
-          ? Math.max(...payloadSizes.map(m => m.value))
-          : 0,
+        avgSize:
+          payloadSizes.length > 0
+            ? payloadSizes.reduce((sum, m) => sum + m.value, 0) / payloadSizes.length
+            : 0,
+        maxSize: payloadSizes.length > 0 ? Math.max(...payloadSizes.map((m) => m.value)) : 0,
       },
     };
   }
@@ -126,9 +125,7 @@ class MetricsCollector {
    */
   getMetrics(name: string, timeWindowMs?: number): Metric[] {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
-    return this.metrics.filter(
-      m => m.name === name && m.timestamp > cutoff
-    );
+    return this.metrics.filter((m) => m.name === name && m.timestamp > cutoff);
   }
 
   /**
@@ -144,12 +141,9 @@ export const metricsCollector = new MetricsCollector();
 /**
  * Middleware to track API performance
  */
-export async function trackApiPerformance<T>(
-  endpoint: string,
-  fn: () => Promise<T>
-): Promise<T> {
+export async function trackApiPerformance<T>(endpoint: string, fn: () => Promise<T>): Promise<T> {
   const start = Date.now();
-  let status = 200;
+  const status = 200;
 
   try {
     const result = await fn();
@@ -164,8 +158,7 @@ export async function trackApiPerformance<T>(
     }
     const duration = Date.now() - start;
     metricsCollector.recordApiTime(endpoint, duration, status);
-    metricsCollector.recordError(endpoint, getErrorName(error) || 'Unknown');
+    metricsCollector.recordError(endpoint, getErrorName(error) || "Unknown");
     throw error;
   }
 }
-

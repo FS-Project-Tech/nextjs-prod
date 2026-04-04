@@ -3,11 +3,7 @@
  * Use {@link createWooOrder} / {@link updateWooOrder} from `@/services/woocommerce` (re-exported here).
  */
 import wcAPI from "@/lib/woocommerce";
-import {
-  createWooOrder,
-  updateWooOrder,
-  type WooCreateOrderInput,
-} from "@/services/woocommerce";
+import { createWooOrder, updateWooOrder, type WooCreateOrderInput } from "@/services/woocommerce";
 import { logWooOrderLineItems, logValidatedItems } from "@/lib/woo/debugLogger";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 
@@ -94,9 +90,7 @@ export function extractWooOrderId(order: unknown): number | string | null {
   const orderObj =
     o.order != null && typeof o.order === "object" && !Array.isArray(o.order)
       ? (o.order as Record<string, unknown>)
-      : root.order != null &&
-          typeof root.order === "object" &&
-          !Array.isArray(root.order)
+      : root.order != null && typeof root.order === "object" && !Array.isArray(root.order)
         ? (root.order as Record<string, unknown>)
         : null;
   if (orderObj) {
@@ -110,9 +104,7 @@ export function extractWooOrderId(order: unknown): number | string | null {
 /**
  * POST /orders with validation that line_items map to real product IDs (catches bad plugins).
  */
-export async function createValidatedCheckoutOrder(
-  input: WooCreateOrderInput
-): Promise<unknown> {
+export async function createValidatedCheckoutOrder(input: WooCreateOrderInput): Promise<unknown> {
   logValidatedItems(
     input.line_items.map((li) => ({
       product_id: li.product_id,
@@ -138,8 +130,7 @@ export async function createValidatedCheckoutOrder(
   logWooOrderLineItems(
     lineItems.map((li) => ({
       product_id: Number(li?.product_id || 0),
-      variation_id:
-        li?.variation_id != null ? Number(li.variation_id || 0) : null,
+      variation_id: li?.variation_id != null ? Number(li.variation_id || 0) : null,
       name: typeof li?.name === "string" ? li.name : "",
       quantity: Number(li?.quantity || 0),
       subtotal: String(li?.subtotal ?? ""),
@@ -165,9 +156,7 @@ export async function createValidatedCheckoutOrder(
 export async function appendParcelProtectionFee(orderId: number): Promise<void> {
   const { data } = await wcAPI.get(`/orders/${orderId}`);
   const existing = Array.isArray((data as { fee_lines?: unknown }).fee_lines)
-    ? (
-        (data as { fee_lines: Array<Record<string, unknown>> }).fee_lines
-      ).map((f) => ({
+    ? (data as { fee_lines: Array<Record<string, unknown>> }).fee_lines.map((f) => ({
         id: f.id,
         name: f.name,
         total: f.total,

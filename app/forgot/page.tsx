@@ -1,6 +1,6 @@
 "use client";
 
-import ForgotForm from '@/components/auth/ForgotForm';
+import ForgotForm from "@/components/auth/ForgotForm";
 
 export default function ForgotPage() {
   return (
@@ -42,4 +42,3 @@ export default function ForgotPage() {
     </div>
   );
 }
-

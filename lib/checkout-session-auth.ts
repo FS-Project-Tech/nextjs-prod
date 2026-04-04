@@ -8,7 +8,10 @@ export function assertCheckoutSessionServerAuth(req: NextRequest): NextResponse 
   const expected = process.env.CHECKOUT_SESSION_SERVER_SECRET?.trim();
   if (!expected) {
     return NextResponse.json(
-      { success: false, error: "Checkout session API is not configured (missing CHECKOUT_SESSION_SERVER_SECRET)." },
+      {
+        success: false,
+        error: "Checkout session API is not configured (missing CHECKOUT_SESSION_SERVER_SECRET).",
+      },
       { status: 503 }
     );
   }

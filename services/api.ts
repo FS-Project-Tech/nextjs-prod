@@ -10,7 +10,11 @@ type FetchJsonOptions = {
   init?: RequestInit;
 };
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -77,4 +81,3 @@ export async function fetchJsonCached<T>(url: string, options: FetchJsonOptions)
     }
   );
 }
-

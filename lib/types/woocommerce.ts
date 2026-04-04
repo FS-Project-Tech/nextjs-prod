@@ -2,17 +2,17 @@
  * WooCommerce API Types
  * Types for WooCommerce REST API responses used in API routes
  */
- 
+
 // =============================================================================
 // Generic Response Types
 // =============================================================================
- 
+
 export interface WCApiResponse<T> {
   data: T;
   status: number;
   headers: Record<string, string>;
 }
- 
+
 export interface WCErrorResponse {
   code: string;
   message: string;
@@ -21,11 +21,11 @@ export interface WCErrorResponse {
     params?: Record<string, string>;
   };
 }
- 
+
 // =============================================================================
 // Customer Types
 // =============================================================================
- 
+
 export interface WCCustomer {
   id: number;
   email: string;
@@ -39,7 +39,7 @@ export interface WCCustomer {
   date_modified?: string;
   role?: string;
 }
- 
+
 export interface WCAddress {
   first_name: string;
   last_name: string;
@@ -53,11 +53,11 @@ export interface WCAddress {
   email?: string;
   phone?: string;
 }
- 
+
 // =============================================================================
 // Order Types
 // =============================================================================
- 
+
 export interface WCOrder {
   id: number;
   parent_id: number;
@@ -82,7 +82,7 @@ export interface WCOrder {
   customer_note?: string;
   meta_data?: WCMetaData[];
 }
- 
+
 export interface WCLineItem {
   id: number;
   name: string;
@@ -102,7 +102,7 @@ export interface WCLineItem {
   };
   meta_data?: WCMetaData[];
 }
- 
+
 export interface WCShippingLine {
   id: number;
   method_title: string;
@@ -111,7 +111,7 @@ export interface WCShippingLine {
   total_tax: string;
   meta_data?: WCMetaData[];
 }
- 
+
 export interface WCCouponLine {
   id: number;
   code: string;
@@ -119,22 +119,22 @@ export interface WCCouponLine {
   discount_tax: string;
   meta_data?: WCMetaData[];
 }
- 
+
 export interface WCMetaData {
   id?: number;
   key: string;
   value: string | number | boolean | Record<string, unknown>;
 }
- 
+
 // =============================================================================
 // Coupon Types
 // =============================================================================
- 
+
 export interface WCCoupon {
   id: number;
   code: string;
   amount: string;
-  discount_type: 'percent' | 'fixed_cart' | 'fixed_product';
+  discount_type: "percent" | "fixed_cart" | "fixed_product";
   description: string;
   date_expires?: string | null;
   usage_count: number;
@@ -149,11 +149,11 @@ export interface WCCoupon {
   free_shipping: boolean;
   meta_data?: WCMetaData[];
 }
- 
+
 // =============================================================================
 // Payment Gateway Types
 // =============================================================================
- 
+
 export interface WCPaymentGateway {
   id: string;
   title: string;
@@ -164,7 +164,7 @@ export interface WCPaymentGateway {
   method_description: string;
   settings: Record<string, WCGatewaySetting>;
 }
- 
+
 export interface WCGatewaySetting {
   id: string;
   label: string;
@@ -173,17 +173,17 @@ export interface WCGatewaySetting {
   value: string;
   default: string;
 }
- 
+
 // =============================================================================
 // Shipping Types
 // =============================================================================
- 
+
 export interface WCShippingZone {
   id: number;
   name: string;
   order: number;
 }
- 
+
 export interface WCShippingMethod {
   id: string;
   title: string;
@@ -192,11 +192,11 @@ export interface WCShippingMethod {
   tax_status?: string;
   settings?: Record<string, WCGatewaySetting>;
 }
- 
+
 // =============================================================================
 // Cart Types (Store API)
 // =============================================================================
- 
+
 export interface WCCartItem {
   key: string;
   id: number;
@@ -212,7 +212,7 @@ export interface WCCartItem {
   product_id: number;
   variation_id?: number;
 }
- 
+
 export interface WCCart {
   items: WCCartItem[];
   totals: {
@@ -232,37 +232,34 @@ export interface WCCart {
     shipping_rates: WCShippingMethod[];
   }>;
 }
- 
+
 // =============================================================================
 // Utility Types
 // =============================================================================
- 
+
 /**
  * Extract error message from WooCommerce error response
  */
 export function getWCErrorMessage(error: unknown): string {
-  if (error && typeof error === 'object') {
-    if ('response' in error) {
+  if (error && typeof error === "object") {
+    if ("response" in error) {
       const response = error as { response?: { data?: WCErrorResponse } };
       if (response.response?.data?.message) {
         return response.response.data.message;
       }
     }
-    if ('message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    if ("message" in error && typeof (error as { message?: unknown }).message === "string") {
       return (error as { message: string }).message;
     }
   }
-  return 'An unexpected error occurred';
+  return "An unexpected error occurred";
 }
- 
+
 /**
  * Type guard for WooCommerce error response
  */
 export function isWCError(response: unknown): response is WCErrorResponse {
   return (
-    typeof response === 'object' &&
-    response !== null &&
-    'code' in response &&
-    'message' in response
+    typeof response === "object" && response !== null && "code" in response && "message" in response
   );
 }

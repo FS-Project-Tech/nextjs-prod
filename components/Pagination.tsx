@@ -3,7 +3,8 @@ import PrefetchLink from "@/components/PrefetchLink";
 function makeHref(basePath: string, query: Record<string, string | undefined>, page: number) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) if (v) q.set(k, v);
-  if (page > 1) q.set("page", String(page)); else q.delete("page");
+  if (page > 1) q.set("page", String(page));
+  else q.delete("page");
   const s = q.toString();
   return `${basePath}${s ? `?${s}` : ""}`;
 }
@@ -37,7 +38,13 @@ export default function Pagination({
         Prev
       </PrefetchLink>
       {start > 1 && (
-        <PrefetchLink href={makeHref(basePath, query, 1)} prefetch={true} className="rounded border px-3 py-1 text-sm hover:bg-gray-50">1</PrefetchLink>
+        <PrefetchLink
+          href={makeHref(basePath, query, 1)}
+          prefetch={true}
+          className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+        >
+          1
+        </PrefetchLink>
       )}
       {start > 2 && <span className="px-1 text-gray-500">…</span>}
       {pages.map((p) => (
@@ -53,7 +60,13 @@ export default function Pagination({
       ))}
       {end < totalPages - 1 && <span className="px-1 text-gray-500">…</span>}
       {end < totalPages && (
-        <PrefetchLink href={makeHref(basePath, query, totalPages)} prefetch={true} className="rounded border px-3 py-1 text-sm hover:bg-gray-50">{totalPages}</PrefetchLink>
+        <PrefetchLink
+          href={makeHref(basePath, query, totalPages)}
+          prefetch={true}
+          className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+        >
+          {totalPages}
+        </PrefetchLink>
       )}
       <PrefetchLink
         href={makeHref(basePath, query, Math.min(totalPages, currentPage + 1))}
@@ -66,5 +79,3 @@ export default function Pagination({
     </nav>
   );
 }
-
-

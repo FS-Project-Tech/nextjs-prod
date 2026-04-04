@@ -6,7 +6,13 @@
 /**
  * User roles
  */
-export type UserRole = 'administrator' | 'editor' | 'author' | 'contributor' | 'subscriber' | 'customer';
+export type UserRole =
+  | "administrator"
+  | "editor"
+  | "author"
+  | "contributor"
+  | "subscriber"
+  | "customer";
 
 /**
  * User interface
@@ -50,7 +56,7 @@ export interface Address {
 /**
  * Auth status types
  */
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
+export type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 
 /**
  * Auth error types
@@ -70,9 +76,13 @@ export interface AuthContextType {
   isLoading: boolean;
   status: AuthStatus;
   error: AuthError | null;
-  
+
   // Actions
-  login: (username: string, password: string, redirectTo?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    username: string,
+    password: string,
+    redirectTo?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   /** NextAuth `update()` → refetch `/api/auth/session` (not `/api/auth/validate`). */
   validateSession: () => Promise<void>;
@@ -88,4 +98,3 @@ export interface SessionData {
   user: User;
   expiresAt: number;
 }
-

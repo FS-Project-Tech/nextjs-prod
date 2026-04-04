@@ -47,10 +47,10 @@ export default function LoginForm() {
   const params = useSearchParams();
   const { error: showToastError, success: showToastSuccess } = useToast();
   // const { login: authLogin } = useAuth();
-  
+
   // Get and validate next parameter securely
   // const nextParam = validateNextParam(params.get("next"), ALLOWED_REDIRECT_PATHS, '/my-account');
-  const nextParam = validateNextParam(params.get("next"), ALLOWED_REDIRECT_PATHS, '/dashboard');
+  const nextParam = validateNextParam(params.get("next"), ALLOWED_REDIRECT_PATHS, "/dashboard");
 
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -104,32 +104,30 @@ export default function LoginForm() {
       // // Success - AuthContext handles the redirect
       // setLoginSuccess(true);
       // showToastSuccess("Login successful! Redirecting...");
-      
+
       const result = await signIn("credentials", {
-        redirect: false,                  // handle redirect in the form
-        username: data.username.trim(),   // your WP username/email
+        redirect: false, // handle redirect in the form
+        username: data.username.trim(), // your WP username/email
         password: data.password,
-        callbackUrl: nextParam,           // where to go after login
+        callbackUrl: nextParam, // where to go after login
       });
-      
+
       if (!result || result.error) {
-        const errorMessage =
-          result?.error || "Unable to sign in. Please try again.";
+        const errorMessage = result?.error || "Unable to sign in. Please try again.";
         setFormError(errorMessage);
         setError("root", { message: errorMessage });
         showToastError(errorMessage);
         return;
       }
-      
+
       // Login success: NextAuth session cookie is set
       setLoginSuccess(true);
       showToastSuccess("Login successful! Redirecting...");
       router.push(result.url || nextParam);
     } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : "An unexpected error occurred. Please try again.";
-      
+      const errorMessage =
+        err instanceof Error ? err.message : "An unexpected error occurred. Please try again.";
+
       setFormError(errorMessage);
       setError("root", { message: errorMessage });
       showToastError(errorMessage);
@@ -161,9 +159,15 @@ export default function LoginForm() {
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Mail className={`h-5 w-5 ${
-                errors.username ? "text-red-400" : usernameValue ? "text-teal-500" : "text-slate-400"
-              }`} />
+              <Mail
+                className={`h-5 w-5 ${
+                  errors.username
+                    ? "text-red-400"
+                    : usernameValue
+                      ? "text-teal-500"
+                      : "text-slate-400"
+                }`}
+              />
             </div>
             <input
               id="username"
@@ -176,14 +180,18 @@ export default function LoginForm() {
                 errors.username
                   ? "border-red-300 focus:border-red-500 focus:ring-red-500/40 bg-red-50"
                   : usernameValue && !errors.username
-                  ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
-                  : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
+                    ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
+                    : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
               }`}
               placeholder="Enter your email or username"
             />
           </div>
           {errors.username && (
-            <div id="username-error" className="mt-1.5 flex items-start gap-1.5 text-sm text-red-600" role="alert">
+            <div
+              id="username-error"
+              className="mt-1.5 flex items-start gap-1.5 text-sm text-red-600"
+              role="alert"
+            >
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{errors.username.message}</span>
             </div>
@@ -197,9 +205,15 @@ export default function LoginForm() {
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Lock className={`h-5 w-5 ${
-                errors.password ? "text-red-400" : passwordValue ? "text-teal-500" : "text-slate-400"
-              }`} />
+              <Lock
+                className={`h-5 w-5 ${
+                  errors.password
+                    ? "text-red-400"
+                    : passwordValue
+                      ? "text-teal-500"
+                      : "text-slate-400"
+                }`}
+              />
             </div>
             <input
               id="password"
@@ -212,8 +226,8 @@ export default function LoginForm() {
                 errors.password
                   ? "border-red-300 focus:border-red-500 focus:ring-red-500/40 bg-red-50"
                   : passwordValue && !errors.password
-                  ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
-                  : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
+                    ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
+                    : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
               }`}
               placeholder="Enter your password"
             />
@@ -223,15 +237,15 @@ export default function LoginForm() {
               className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {showPassword ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
           {errors.password && (
-            <div id="password-error" className="mt-1.5 flex items-start gap-1.5 text-sm text-red-600" role="alert">
+            <div
+              id="password-error"
+              className="mt-1.5 flex items-start gap-1.5 text-sm text-red-600"
+              role="alert"
+            >
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{errors.password.message}</span>
             </div>
@@ -248,8 +262,8 @@ export default function LoginForm() {
             />
             <span className="text-slate-600">Remember me</span>
           </label>
-          <Link 
-            href="/forgot" 
+          <Link
+            href="/forgot"
             className="text-teal-600 hover:text-teal-700 hover:underline font-medium transition-colors"
           >
             Forgot password?
@@ -258,8 +272,8 @@ export default function LoginForm() {
 
         {/* Success Message */}
         {loginSuccess && (
-          <div 
-            className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700" 
+          <div
+            className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700"
             role="alert"
             aria-live="polite"
           >
@@ -272,8 +286,8 @@ export default function LoginForm() {
 
         {/* Form Error Message */}
         {(formError || errors.root) && (
-          <div 
-            className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" 
+          <div
+            className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
             role="alert"
             aria-live="assertive"
           >
@@ -291,8 +305,8 @@ export default function LoginForm() {
             loginSuccess
               ? "bg-green-600 hover:bg-green-700 focus:ring-green-500"
               : formError || errors.root
-              ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
-              : "bg-teal-600 hover:bg-teal-500 focus:ring-teal-500"
+                ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                : "bg-teal-600 hover:bg-teal-500 focus:ring-teal-500"
           } disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-current`}
           aria-busy={isSubmitting}
         >

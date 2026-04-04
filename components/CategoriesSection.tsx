@@ -13,12 +13,8 @@ export default async function CategoriesSection() {
 
   const items: CategorySectionItem[] = updates
     .map((item: Record<string, unknown>) => {
-      const category_link = item.category_link as
-        | { url?: string; target?: string }
-        | undefined;
-      const category_image = item.category_image as
-        | { url?: string; alt?: string }
-        | undefined;
+      const category_link = item.category_link as { url?: string; target?: string } | undefined;
+      const category_image = item.category_image as { url?: string; alt?: string } | undefined;
       const url = category_image?.url;
       if (!url) return null;
       return {

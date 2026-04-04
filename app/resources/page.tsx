@@ -29,7 +29,9 @@ export default function ResourcesPage() {
                     Home
                   </PrefetchLink>
                 </li>
-                <li aria-hidden className="select-none">/</li>
+                <li aria-hidden className="select-none">
+                  /
+                </li>
                 <li className="text-gray-900 font-medium">Resources</li>
               </ol>
             </nav>
@@ -67,7 +69,12 @@ export default function ResourcesPage() {
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
                   </svg>
                 </Link>
               </li>

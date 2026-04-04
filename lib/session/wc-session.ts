@@ -11,7 +11,7 @@ import {
   SessionCustomer,
   SessionErrorCode,
   DEFAULT_SESSION_CONFIG,
-} from './types';
+} from "./types";
 import {
   createSession,
   updateSession,
@@ -19,84 +19,78 @@ import {
   cacheSession,
   getCachedSession,
   createSessionError,
-} from './manager';
-import { secureFetch } from './secure-fetch';
-import { getWpBaseUrl } from '../wp-utils';
-import { getErrorMessage } from '@/lib/utils/errors';
+} from "./manager";
+import { secureFetch } from "./secure-fetch";
+import { getWpBaseUrl } from "../wp-utils";
+import { getErrorMessage } from "@/lib/utils/errors";
 
 /**
  * WooCommerce session storage key
  */
-const WC_SESSION_KEY = 'wc_session_hash';
+const WC_SESSION_KEY = "wc_session_hash";
 
 /**
  * WooCommerce API endpoints
  */
 const WC_ENDPOINTS = {
-  cart: '/wp-json/wc/store/v1/cart',
-  customer: '/wp-json/wc/v3/customers',
-  session: '/wp-json/wc/store/v1/cart/customer',
+  cart: "/wp-json/wc/store/v1/cart",
+  customer: "/wp-json/wc/v3/customers",
+  session: "/wp-json/wc/store/v1/cart/customer",
 };
 
 /**
  * Create a new WooCommerce cart session
  */
-export async function createWcSession(
-  authSession?: SessionData
-): Promise<SessionData> {
+export async function createWcSession(authSession?: SessionData): Promise<SessionData> {
   const wpBase = getWpBaseUrl();
-  
+
   // Create guest session if no auth
   if (!authSession?.token) {
     return createSession(SessionType.GUEST, {
       cart: {
         cartKey: generateSessionId(),
-        cartHash: '',
+        cartHash: "",
         itemCount: 0,
         lastUpdated: Date.now(),
       },
     });
   }
-  
+
   // Try to get existing cart for authenticated user
   try {
     const result = await secureFetch<{
       items: unknown[];
       totals: { total_items: number };
       extensions?: { session_hash?: string };
-    }>(
-      `${wpBase}${WC_ENDPOINTS.cart}`,
-      authSession,
-      {
-        timeout: DEFAULT_SESSION_CONFIG.networkTimeout,
-        retries: 2,
-      }
-    );
-    
+    }>(`${wpBase}${WC_ENDPOINTS.cart}`, authSession, {
+      timeout: DEFAULT_SESSION_CONFIG.networkTimeout,
+      retries: 2,
+    });
+
     if (result.data) {
       const cartData: CartSession = {
         cartKey: result.data.extensions?.session_hash || generateSessionId(),
-        cartHash: '',
+        cartHash: "",
         itemCount: result.data.totals?.total_items || result.data.items?.length || 0,
         lastUpdated: Date.now(),
       };
-      
+
       return updateSession(authSession, {
         cart: cartData,
       });
     }
   } catch (error: unknown) {
     // Log but continue with empty cart
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Failed to fetch existing cart:', getErrorMessage(error));
+    if (process.env.NODE_ENV === "development") {
+      console.debug("Failed to fetch existing cart:", getErrorMessage(error));
     }
   }
-  
+
   // Return auth session with empty cart
   return updateSession(authSession, {
     cart: {
       cartKey: generateSessionId(),
-      cartHash: '',
+      cartHash: "",
       itemCount: 0,
       lastUpdated: Date.now(),
     },
@@ -111,36 +105,33 @@ export async function syncWcCart(session: SessionData): Promise<SessionData> {
   if (!wpBase) {
     return session;
   }
-  
+
   try {
     const result = await secureFetch<{
       items: unknown[];
       totals: { total_items: number };
       extensions?: { session_hash?: string };
-    }>(
-      `${wpBase}${WC_ENDPOINTS.cart}`,
-      session,
-      {
-        includeCart: true,
-        timeout: DEFAULT_SESSION_CONFIG.networkTimeout,
-      }
-    );
-    
+    }>(`${wpBase}${WC_ENDPOINTS.cart}`, session, {
+      includeCart: true,
+      timeout: DEFAULT_SESSION_CONFIG.networkTimeout,
+    });
+
     if (result.data) {
       return updateSession(session, {
         cart: {
           ...session.cart,
-          cartKey: result.data.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
+          cartKey:
+            result.data.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
           itemCount: result.data.totals?.total_items || result.data.items?.length || 0,
           lastUpdated: Date.now(),
         },
       });
     }
-    
+
     return session;
   } catch (error: unknown) {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Cart sync failed:', getErrorMessage(error));
+    if (process.env.NODE_ENV === "development") {
+      console.debug("Cart sync failed:", getErrorMessage(error));
     }
     return session;
   }
@@ -164,35 +155,31 @@ export async function addToWcCart(
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const body: Record<string, unknown> = {
     id: productId,
     quantity,
   };
-  
+
   if (variation) {
     body.variation = variation.attributes || {};
     body.variation_id = variation.id;
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
     extensions?: { session_hash?: string };
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/add-item`,
-    session,
-    {
-      method: 'POST',
-      body: JSON.stringify(body),
-      includeCart: true,
-      requireAuth: false,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/add-item`, session, {
+    method: "POST",
+    body: JSON.stringify(body),
+    includeCart: true,
+    requireAuth: false,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -200,16 +187,20 @@ export async function addToWcCart(
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
-      cartKey: result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
-      itemCount: result.data?.totals?.total_items || result.data?.items?.length || (session.cart?.itemCount || 0) + quantity,
+      cartKey:
+        result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
+      itemCount:
+        result.data?.totals?.total_items ||
+        result.data?.items?.length ||
+        (session.cart?.itemCount || 0) + quantity,
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -232,24 +223,20 @@ export async function removeFromWcCart(
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
     extensions?: { session_hash?: string };
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/remove-item`,
-    session,
-    {
-      method: 'POST',
-      body: JSON.stringify({ key: itemKey }),
-      includeCart: true,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/remove-item`, session, {
+    method: "POST",
+    body: JSON.stringify({ key: itemKey }),
+    includeCart: true,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -257,16 +244,17 @@ export async function removeFromWcCart(
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
-      cartKey: result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
+      cartKey:
+        result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
       itemCount: result.data?.totals?.total_items || result.data?.items?.length || 0,
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -290,24 +278,20 @@ export async function updateWcCartItem(
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
     extensions?: { session_hash?: string };
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/update-item`,
-    session,
-    {
-      method: 'POST',
-      body: JSON.stringify({ key: itemKey, quantity }),
-      includeCart: true,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/update-item`, session, {
+    method: "POST",
+    body: JSON.stringify({ key: itemKey, quantity }),
+    includeCart: true,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -315,16 +299,17 @@ export async function updateWcCartItem(
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
-      cartKey: result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
+      cartKey:
+        result.data?.extensions?.session_hash || session.cart?.cartKey || generateSessionId(),
       itemCount: result.data?.totals?.total_items || result.data?.items?.length || 0,
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -344,22 +329,18 @@ export async function clearWcCart(session: SessionData): Promise<{
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/items`,
-    session,
-    {
-      method: 'DELETE',
-      includeCart: true,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/items`, session, {
+    method: "DELETE",
+    includeCart: true,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -367,7 +348,7 @@ export async function clearWcCart(session: SessionData): Promise<{
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
@@ -376,7 +357,7 @@ export async function clearWcCart(session: SessionData): Promise<{
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -399,24 +380,20 @@ export async function applyWcCoupon(
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
     coupons: unknown[];
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/apply-coupon`,
-    session,
-    {
-      method: 'POST',
-      body: JSON.stringify({ code: couponCode }),
-      includeCart: true,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/apply-coupon`, session, {
+    method: "POST",
+    body: JSON.stringify({ code: couponCode }),
+    includeCart: true,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -424,14 +401,14 @@ export async function applyWcCoupon(
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -454,24 +431,20 @@ export async function removeWcCoupon(
     return {
       success: false,
       session,
-      error: 'WordPress URL not configured',
+      error: "WordPress URL not configured",
     };
   }
-  
+
   const result = await secureFetch<{
     items: unknown[];
     totals: { total_items: number };
     coupons: unknown[];
-  }>(
-    `${wpBase}${WC_ENDPOINTS.cart}/remove-coupon`,
-    session,
-    {
-      method: 'POST',
-      body: JSON.stringify({ code: couponCode }),
-      includeCart: true,
-    }
-  );
-  
+  }>(`${wpBase}${WC_ENDPOINTS.cart}/remove-coupon`, session, {
+    method: "POST",
+    body: JSON.stringify({ code: couponCode }),
+    includeCart: true,
+  });
+
   if (result.error) {
     return {
       success: false,
@@ -479,14 +452,14 @@ export async function removeWcCoupon(
       error: result.error.message,
     };
   }
-  
+
   const updatedSession = updateSession(session, {
     cart: {
       ...session.cart,
       lastUpdated: Date.now(),
     },
   });
-  
+
   return {
     success: true,
     session: updatedSession,
@@ -496,39 +469,35 @@ export async function removeWcCoupon(
 /**
  * Get WooCommerce customer data
  */
-export async function getWcCustomer(
-  session: SessionData
-): Promise<SessionCustomer | null> {
+export async function getWcCustomer(session: SessionData): Promise<SessionCustomer | null> {
   if (!session.user?.email) {
     return null;
   }
-  
+
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
     return null;
   }
-  
-  const result = await secureFetch<Array<{
-    id: number;
-    email: string;
-    first_name: string;
-    last_name: string;
-    billing: Record<string, string>;
-    shipping: Record<string, string>;
-  }>>(
-    `${wpBase}${WC_ENDPOINTS.customer}?email=${encodeURIComponent(session.user.email)}`,
-    session,
-    {
-      requireAuth: true,
-    }
-  );
-  
+
+  const result = await secureFetch<
+    Array<{
+      id: number;
+      email: string;
+      first_name: string;
+      last_name: string;
+      billing: Record<string, string>;
+      shipping: Record<string, string>;
+    }>
+  >(`${wpBase}${WC_ENDPOINTS.customer}?email=${encodeURIComponent(session.user.email)}`, session, {
+    requireAuth: true,
+  });
+
   if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
     return null;
   }
-  
+
   const customer = result.data[0];
-  
+
   return {
     id: customer.id,
     email: customer.email,
@@ -572,7 +541,7 @@ export async function mergeWcCart(
   if (!guestSession.cart || guestSession.cart.itemCount === 0) {
     return createWcSession(authSession);
   }
-  
+
   // WooCommerce handles cart merge automatically when
   // the session is transferred. We just need to sync.
   return syncWcCart(authSession);
@@ -581,16 +550,13 @@ export async function mergeWcCart(
 /**
  * Create or restore WooCommerce session from storage
  */
-export async function initializeWcSession(
-  authSession?: SessionData
-): Promise<SessionData> {
+export async function initializeWcSession(authSession?: SessionData): Promise<SessionData> {
   // Check for cached session
   const cached = authSession?.id ? getCachedSession(authSession.id) : null;
   if (cached?.cart) {
     return cached;
   }
-  
+
   // Create new session
   return createWcSession(authSession);
 }
-

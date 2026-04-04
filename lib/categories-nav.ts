@@ -1,15 +1,6 @@
-import {
-  getUnifiedCategories,
-  type UnifiedCategory,
-} from "@/lib/categories-unified";
+import { getUnifiedCategories, type UnifiedCategory } from "@/lib/categories-unified";
 
-const NAV_PARENT_SLUGS = [
-  "continence-care",
-  "woundcare",
-  "urinary-care",
-  "skincare",
-  "nutrition",
-];
+const NAV_PARENT_SLUGS = ["continence-care", "woundcare", "urinary-care", "skincare", "nutrition"];
 
 export async function getCategoriesForNav() {
   const payload = await getUnifiedCategories();
@@ -24,10 +15,7 @@ export async function getCategoriesForNav() {
 
   const parentIds = parentCategories.map((cat) => cat.id);
 
-  function getAllDescendants(
-    categories: UnifiedCategory[],
-    rootIds: number[]
-  ): UnifiedCategory[] {
+  function getAllDescendants(categories: UnifiedCategory[], rootIds: number[]): UnifiedCategory[] {
     const result: UnifiedCategory[] = [];
 
     function findChildren(pids: number[]) {

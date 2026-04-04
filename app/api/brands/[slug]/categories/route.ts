@@ -12,10 +12,7 @@ interface CatRow {
  * GET /api/brands/[slug]/categories
  * Categories that appear on products for this brand (from custom WP brands endpoint).
  */
-export async function GET(
-  _request: NextRequest,
-  context: { params: Promise<{ slug: string }> }
-) {
+export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
     const decoded = decodeURIComponent(slug || "");

@@ -18,8 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   return {
     title: `${category.name} | Digital Catalogue`,
-    description:
-      category.description || `Digital product catalogue for ${category.name}.`,
+    description: category.description || `Digital product catalogue for ${category.name}.`,
   };
 }
 
@@ -42,12 +41,8 @@ export default async function CategoryBookPage({ params }: Props) {
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
       <div className="container mx-auto max-w-4xl px-4 py-8">
-        <CategoryBookClient
-          categorySlug={category.slug}
-          categoryName={category.name}
-        />
+        <CategoryBookClient categorySlug={category.slug} categoryName={category.name} />
       </div>
     </>
   );
 }
-

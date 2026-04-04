@@ -1,14 +1,14 @@
 /**
  * WooGraphQL Authentication
- * 
+ *
  * GraphQL-based authentication with JWT tokens
  * Requires: WPGraphQL + WPGraphQL JWT Authentication plugins
- * 
+ *
  * @see https://www.wpgraphql.com/
  * @see https://github.com/wp-graphql/wp-graphql-jwt-authentication
  */
 
-import { graphqlQuery, graphqlMutation, isGraphQLAvailable } from './client';
+import { graphqlQuery, graphqlMutation, isGraphQLAvailable } from "./client";
 
 // ============================================================================
 // Types
@@ -168,12 +168,9 @@ const GET_CUSTOMER_QUERY = `
 /**
  * Login via GraphQL
  */
-export async function graphqlLogin(
-  username: string,
-  password: string
-): Promise<LoginResult> {
+export async function graphqlLogin(username: string, password: string): Promise<LoginResult> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL is not available');
+    throw new Error("GraphQL is not available");
   }
 
   const data = await graphqlMutation<{ login: LoginResult }>(LOGIN_MUTATION, {
@@ -182,7 +179,7 @@ export async function graphqlLogin(
   });
 
   if (!data?.login?.authToken) {
-    throw new Error('Login failed: No auth token received');
+    throw new Error("Login failed: No auth token received");
   }
 
   return data.login;
@@ -191,11 +188,9 @@ export async function graphqlLogin(
 /**
  * Refresh JWT token via GraphQL
  */
-export async function graphqlRefreshToken(
-  refreshToken: string
-): Promise<string> {
+export async function graphqlRefreshToken(refreshToken: string): Promise<string> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL is not available');
+    throw new Error("GraphQL is not available");
   }
 
   const data = await graphqlMutation<{ refreshJwtAuthToken: RefreshResult }>(
@@ -207,7 +202,7 @@ export async function graphqlRefreshToken(
   );
 
   if (!data?.refreshJwtAuthToken?.authToken) {
-    throw new Error('Token refresh failed');
+    throw new Error("Token refresh failed");
   }
 
   return data.refreshJwtAuthToken.authToken;
@@ -224,19 +219,16 @@ export async function graphqlRegisterUser(input: {
   lastName?: string;
 }): Promise<RegisterResult> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL is not available');
+    throw new Error("GraphQL is not available");
   }
 
-  const data = await graphqlMutation<{ registerUser: RegisterResult }>(
-    REGISTER_USER_MUTATION,
-    {
-      variables: input,
-      timeout: 15000,
-    }
-  );
+  const data = await graphqlMutation<{ registerUser: RegisterResult }>(REGISTER_USER_MUTATION, {
+    variables: input,
+    timeout: 15000,
+  });
 
   if (!data?.registerUser?.user) {
-    throw new Error('Registration failed');
+    throw new Error("Registration failed");
   }
 
   return data.registerUser;
@@ -245,27 +237,22 @@ export async function graphqlRegisterUser(input: {
 /**
  * Get current viewer (authenticated user) via GraphQL
  */
-export async function graphqlGetViewer(
-  authToken: string
-): Promise<GraphQLUser | null> {
+export async function graphqlGetViewer(authToken: string): Promise<GraphQLUser | null> {
   if (!isGraphQLAvailable()) {
     return null;
   }
 
   try {
-    const data = await graphqlQuery<{ viewer: GraphQLUser | null }>(
-      GET_VIEWER_QUERY,
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-        timeout: 10000,
-      }
-    );
+    const data = await graphqlQuery<{ viewer: GraphQLUser | null }>(GET_VIEWER_QUERY, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      timeout: 10000,
+    });
 
     return data?.viewer || null;
   } catch (error) {
-    console.error('Failed to get viewer:', error);
+    console.error("Failed to get viewer:", error);
     return null;
   }
 }
@@ -273,27 +260,22 @@ export async function graphqlGetViewer(
 /**
  * Get customer data via GraphQL (WooCommerce customer)
  */
-export async function graphqlGetCustomer(
-  authToken: string
-): Promise<CustomerResult | null> {
+export async function graphqlGetCustomer(authToken: string): Promise<CustomerResult | null> {
   if (!isGraphQLAvailable()) {
     return null;
   }
 
   try {
-    const data = await graphqlQuery<{ customer: CustomerResult | null }>(
-      GET_CUSTOMER_QUERY,
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-        timeout: 10000,
-      }
-    );
+    const data = await graphqlQuery<{ customer: CustomerResult | null }>(GET_CUSTOMER_QUERY, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      timeout: 10000,
+    });
 
     return data?.customer || null;
   } catch (error) {
-    console.error('Failed to get customer:', error);
+    console.error("Failed to get customer:", error);
     return null;
   }
 }
@@ -317,11 +299,14 @@ export function normalizeGraphQLUser(graphqlUser: GraphQLUser) {
   return {
     id: graphqlUser.databaseId,
     email: graphqlUser.email,
-    name: graphqlUser.name || `${graphqlUser.firstName || ''} ${graphqlUser.lastName || ''}`.trim() || graphqlUser.username,
+    name:
+      graphqlUser.name ||
+      `${graphqlUser.firstName || ""} ${graphqlUser.lastName || ""}`.trim() ||
+      graphqlUser.username,
     username: graphqlUser.username,
-    firstName: graphqlUser.firstName || '',
-    lastName: graphqlUser.lastName || '',
-    roles: graphqlUser.roles?.nodes.map(r => r.name) || [],
+    firstName: graphqlUser.firstName || "",
+    lastName: graphqlUser.lastName || "",
+    roles: graphqlUser.roles?.nodes.map((r) => r.name) || [],
   };
 }
 
@@ -331,4 +316,3 @@ export function normalizeGraphQLUser(graphqlUser: GraphQLUser) {
 export function isGraphQLAuthAvailable(): boolean {
   return isGraphQLAvailable();
 }
-

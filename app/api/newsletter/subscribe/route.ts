@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimit } from '@/lib/api-security';
-import { sanitizeEmail } from '@/lib/sanitize';
-import { secureResponse } from '@/lib/security-headers';
+import { rateLimit } from "@/lib/api-security";
+import { sanitizeEmail } from "@/lib/sanitize";
+import { secureResponse } from "@/lib/security-headers";
 
 /**
  * Newsletter Subscription API
  * Handles newsletter subscription requests
  * Protected with rate limiting to prevent abuse
- * 
+ *
  * In production, integrate with your email marketing service (Mailchimp, SendGrid, etc.)
  */
 export async function POST(req: NextRequest) {
@@ -30,10 +30,7 @@ export async function POST(req: NextRequest) {
 
     // Validate email
     if (!email) {
-      return secureResponse(
-        { error: "Email is required" },
-        { status: 400 }
-      );
+      return secureResponse({ error: "Email is required" }, { status: 400 });
     }
 
     // TODO: Integrate with your email marketing service
@@ -42,9 +39,9 @@ export async function POST(req: NextRequest) {
     // - SendGrid API
     // - ConvertKit API
     // - WordPress plugin API
-    
+
     // For now, just log the subscription (only in development)
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log(`Newsletter subscription: ${email}`);
     }
 
@@ -56,7 +53,7 @@ export async function POST(req: NextRequest) {
       message: "Successfully subscribed to newsletter",
     });
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.error("Newsletter subscription error:", error);
     }
     return secureResponse(
@@ -65,5 +62,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-

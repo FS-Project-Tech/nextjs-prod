@@ -1,12 +1,12 @@
 /**
  * Route Performance Monitoring
- * 
+ *
  * Tracks SSR/Edge execution times for Next.js routes
  */
 
 interface RouteMetrics {
   route: string;
-  type: 'page' | 'api' | 'server-action';
+  type: "page" | "api" | "server-action";
   duration: number;
   timestamp: number;
   fetchCount: number;
@@ -23,7 +23,7 @@ class RoutePerformanceMonitor {
    */
   track(
     route: string,
-    type: 'page' | 'api' | 'server-action',
+    type: "page" | "api" | "server-action",
     duration: number,
     fetchCount: number = 0,
     fetchTime: number = 0,
@@ -48,23 +48,29 @@ class RoutePerformanceMonitor {
   /**
    * Get average SSR/Edge times by route
    */
-  getAverageTimesByRoute(timeWindowMs?: number): Map<string, {
-    avgDuration: number;
-    requestCount: number;
-    avgFetchCount: number;
-    avgFetchTime: number;
-    errorRate: number;
-  }> {
+  getAverageTimesByRoute(timeWindowMs?: number): Map<
+    string,
+    {
+      avgDuration: number;
+      requestCount: number;
+      avgFetchCount: number;
+      avgFetchTime: number;
+      errorRate: number;
+    }
+  > {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
-    const recent = this.metrics.filter(m => m.timestamp > cutoff);
+    const recent = this.metrics.filter((m) => m.timestamp > cutoff);
 
-    const routeData = new Map<string, {
-      durations: number[];
-      fetchCounts: number[];
-      fetchTimes: number[];
-      errors: number;
-      total: number;
-    }>();
+    const routeData = new Map<
+      string,
+      {
+        durations: number[];
+        fetchCounts: number[];
+        fetchTimes: number[];
+        errors: number;
+        total: number;
+      }
+    >();
 
     for (const metric of recent) {
       if (!routeData.has(metric.route)) {
@@ -85,13 +91,16 @@ class RoutePerformanceMonitor {
       data.total++;
     }
 
-    const result = new Map<string, {
-      avgDuration: number;
-      requestCount: number;
-      avgFetchCount: number;
-      avgFetchTime: number;
-      errorRate: number;
-    }>();
+    const result = new Map<
+      string,
+      {
+        avgDuration: number;
+        requestCount: number;
+        avgFetchCount: number;
+        avgFetchTime: number;
+        errorRate: number;
+      }
+    >();
 
     for (const [route, data] of routeData.entries()) {
       result.set(route, {
@@ -112,7 +121,7 @@ class RoutePerformanceMonitor {
   getSlowestRoutes(limit: number = 20, timeWindowMs?: number): RouteMetrics[] {
     const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
     return [...this.metrics]
-      .filter(m => m.timestamp > cutoff)
+      .filter((m) => m.timestamp > cutoff)
       .sort((a, b) => b.duration - a.duration)
       .slice(0, limit);
   }
@@ -140,7 +149,7 @@ export const routeMonitor = new RoutePerformanceMonitor();
 export function withRouteTracking<T extends (...args: any[]) => Promise<any>>(
   handler: T,
   route: string,
-  type: 'page' | 'api' | 'server-action' = 'api'
+  type: "page" | "api" | "server-action" = "api"
 ): T {
   return (async (...args: any[]) => {
     const startTime = Date.now();
@@ -154,7 +163,10 @@ export function withRouteTracking<T extends (...args: any[]) => Promise<any>>(
       const fetchStart = Date.now();
       fetchCount++;
       try {
-        const response = await originalFetch(fetchArgs[0] as RequestInfo | URL, fetchArgs[1] as RequestInit | undefined);
+        const response = await originalFetch(
+          fetchArgs[0] as RequestInfo | URL,
+          fetchArgs[1] as RequestInit | undefined
+        );
         fetchTime += Date.now() - fetchStart;
         return response;
       } catch (err: any) {
@@ -166,16 +178,16 @@ export function withRouteTracking<T extends (...args: any[]) => Promise<any>>(
     try {
       const result = await handler(...args);
       const duration = Date.now() - startTime;
-      
+
       routeMonitor.track(route, type, duration, fetchCount, fetchTime);
-      
+
       return result;
     } catch (err: any) {
       const duration = Date.now() - startTime;
-      error = err.message || 'Unknown error';
-      
+      error = err.message || "Unknown error";
+
       routeMonitor.track(route, type, duration, fetchCount, fetchTime, error);
-      
+
       throw err;
     } finally {
       // Restore original fetch
@@ -183,4 +195,3 @@ export function withRouteTracking<T extends (...args: any[]) => Promise<any>>(
     }
   }) as T;
 }
-

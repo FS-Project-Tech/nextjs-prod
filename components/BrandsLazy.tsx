@@ -24,9 +24,7 @@ export default function BrandsLazy({ brands }: { brands: Brand[] }) {
   const filteredBrands = useMemo(() => {
     if (!selectedLetter) return brands;
 
-    return brands.filter((brand) =>
-      brand.name.toUpperCase().startsWith(selectedLetter)
-    );
+    return brands.filter((brand) => brand.name.toUpperCase().startsWith(selectedLetter));
   }, [brands, selectedLetter]);
 
   const visibleBrands = filteredBrands.slice(0, visibleCount);
@@ -42,9 +40,7 @@ export default function BrandsLazy({ brands }: { brands: Brand[] }) {
             setVisibleCount(ITEMS_PER_LOAD);
           }}
           className={`px-3 py-1 rounded border ${
-            selectedLetter === null
-              ? "bg-teal-600 text-white"
-              : "bg-white text-gray-700"
+            selectedLetter === null ? "bg-teal-600 text-white" : "bg-white text-gray-700"
           }`}
         >
           All
@@ -83,31 +79,27 @@ export default function BrandsLazy({ brands }: { brands: Brand[] }) {
                       ? brand.image
                       : brand.image?.src || brand.image?.thumbnail || "";
                   return imageUrl ? (
-                  <div className="relative h-32 w-32">
-                    <Image
-                      src={imageUrl}
-                      alt={brand.name}
-                      fill
-                      className="object-contain"
-                      sizes="150px"
-                    />
-                  </div>
+                    <div className="relative h-32 w-32">
+                      <Image
+                        src={imageUrl}
+                        alt={brand.name}
+                        fill
+                        className="object-contain"
+                        sizes="150px"
+                      />
+                    </div>
                   ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 text-2xl font-semibold text-teal-700">
-                    {brand.name.charAt(0).toUpperCase()}
-                  </div>
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 text-2xl font-semibold text-teal-700">
+                      {brand.name.charAt(0).toUpperCase()}
+                    </div>
                   );
                 })()}
               </div>
 
-              <span className="mt-3 text-sm font-medium text-gray-900">
-                {brand.name}
-              </span>
+              <span className="mt-3 text-sm font-medium text-gray-900">{brand.name}</span>
 
               {brand.count ? (
-                <span className="text-xs text-gray-500">
-                  {brand.count} products
-                </span>
+                <span className="text-xs text-gray-500">{brand.count} products</span>
               ) : null}
             </Link>
           </li>

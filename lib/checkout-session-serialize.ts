@@ -6,8 +6,7 @@ export function toPublicSession(record: CheckoutSessionRecord): CheckoutSessionP
   /** Woo (token redeem) must receive server-resolved ids after SKU validation, not stale client ids. */
   const line_items = record.validatedLineItems.map((li, idx) => {
     const origSku = p.line_items[idx]?.sku;
-    const sku =
-      typeof origSku === "string" && origSku.trim() !== "" ? origSku.trim() : undefined;
+    const sku = typeof origSku === "string" && origSku.trim() !== "" ? origSku.trim() : undefined;
     return {
       product_id: li.product_id,
       quantity: li.quantity,

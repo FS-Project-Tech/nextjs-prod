@@ -120,20 +120,20 @@ export const authOptions: NextAuthOptions = {
     //   return session;
     // },
     async session({ session, token }) {
-        // Expose basic user info + roles + a flag that we have a WP token
-        if (session.user) {
-          session.user.name = token.name ?? session.user.name;
-          session.user.email = token.email ?? session.user.email;
-          (session.user as any).id = token.sub ?? undefined;
-          (session.user as any).roles = token.roles ?? [];
-          (session.user as any).hasWpToken = Boolean(token.wpToken);
-        }
-      
-        // Expose the WP JWT on the session object so server routes can use it
-        (session as any).wpToken = token.wpToken;
-      
-        return session;
-      },
+      // Expose basic user info + roles + a flag that we have a WP token
+      if (session.user) {
+        session.user.name = token.name ?? session.user.name;
+        session.user.email = token.email ?? session.user.email;
+        (session.user as any).id = token.sub ?? undefined;
+        (session.user as any).roles = token.roles ?? [];
+        (session.user as any).hasWpToken = Boolean(token.wpToken);
+      }
+
+      // Expose the WP JWT on the session object so server routes can use it
+      (session as any).wpToken = token.wpToken;
+
+      return session;
+    },
   },
   pages: {
     // You can keep your custom /login page and call NextAuth's signIn there

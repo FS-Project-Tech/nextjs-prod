@@ -1,8 +1,6 @@
 import "dotenv/config";
 
-const host = (process.env.NEXT_PUBLIC_TYPESENSE_HOST || "")
-  .replace(/^https?:\/\//, "")
-  .trim();
+const host = (process.env.NEXT_PUBLIC_TYPESENSE_HOST || "").replace(/^https?:\/\//, "").trim();
 const key = (process.env.NEXT_PUBLIC_TYPESENSE_API_KEY || "").trim();
 const collection =
   process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||

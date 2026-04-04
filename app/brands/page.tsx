@@ -51,11 +51,9 @@ async function getBrands(): Promise<Brand[]> {
   }
 }
 
-
-
 export default async function BrandsPage() {
   const brands = await getBrands();
-  
+
   return (
     <main id="main-content" className="min-h-screen py-8">
       <Container>
@@ -68,9 +66,7 @@ export default async function BrandsPage() {
         />
 
         <div className="mt-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Shop by Brand
-          </h1>
+          <h1 className="text-3xl font-bold text-gray-900">Shop by Brand</h1>
           <p className="mt-2 text-gray-600">
             Browse our brands and find products from your favorite manufacturers.
           </p>
@@ -79,9 +75,7 @@ export default async function BrandsPage() {
 
         {brands.length === 0 ? (
           <div className="mt-12 rounded-xl border border-gray-200 bg-gray-50 px-6 py-12 text-center">
-            <p className="text-gray-600">
-              No brands available at the moment.
-            </p>
+            <p className="text-gray-600">No brands available at the moment.</p>
             <Link
               href="/shop"
               className="mt-4 inline-block text-teal-600 font-medium hover:underline"

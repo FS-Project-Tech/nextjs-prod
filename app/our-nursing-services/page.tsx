@@ -3,10 +3,7 @@ import { notFound } from "next/navigation";
 import PrefetchLink from "@/components/PrefetchLink";
 import NursingServiceCard from "@/components/NursingServiceCard";
 import { fetchPageBySlug } from "@/lib/cms-pages";
-import {
-  decodeHTMLEntities,
-  sanitizeWordPressPageHTML,
-} from "@/lib/xss-sanitizer";
+import { decodeHTMLEntities, sanitizeWordPressPageHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import {
   getOurNursingServicesCards,
@@ -21,7 +18,10 @@ function stripLeadingDuplicateH1(html: string, pageTitlePlain: string): string {
   const m = html.match(/^\s*<h1\b[^>]*>([\s\S]*?)<\/h1>\s*/i);
   if (!m) return html;
   const inner = decodeHTMLEntities(
-    m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    m[1]
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
   )
     .toLowerCase()
     .trim();
@@ -33,8 +33,7 @@ function stripLeadingDuplicateH1(html: string, pageTitlePlain: string): string {
 
 export const metadata: Metadata = {
   title: "Our Nursing Services | Joya Medical Supplies",
-  description:
-    "Professional nursing services including wound management and stoma care at home.",
+  description: "Professional nursing services including wound management and stoma care at home.",
   alternates: { canonical: "/our-nursing-services" },
 };
 
@@ -46,8 +45,7 @@ export default async function OurNursingServicesPage() {
   const nursingDetailSlugs = await getOurNursingServiceDetailSlugs();
 
   const heading = decodeHTMLEntities(
-    wpPage.title?.rendered?.replace(/<[^>]+>/g, "").trim() ||
-      "Our Nursing Services"
+    wpPage.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Our Nursing Services"
   );
 
   const breadcrumbItems = [
@@ -65,19 +63,13 @@ export default async function OurNursingServicesPage() {
             <nav className="mb-6 text-sm text-gray-500">
               <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <li>
-                  <PrefetchLink
-                    href="/"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/" className="hover:text-teal-600 transition-colors">
                     Home
                   </PrefetchLink>
                 </li>
                 <li aria-hidden>/</li>
                 <li>
-                  <PrefetchLink
-                    href="/nursing"
-                    className="hover:text-teal-600 transition-colors"
-                  >
+                  <PrefetchLink href="/nursing" className="hover:text-teal-600 transition-colors">
                     Nursing
                   </PrefetchLink>
                 </li>
@@ -111,10 +103,7 @@ export default async function OurNursingServicesPage() {
               dangerouslySetInnerHTML={{
                 __html: rewriteNursingHubLinksToNext(
                   sanitizeWordPressPageHTML(
-                    stripLeadingDuplicateH1(
-                      wpPage.content?.rendered || "",
-                      heading
-                    )
+                    stripLeadingDuplicateH1(wpPage.content?.rendered || "", heading)
                   ),
                   nursingDetailSlugs
                 ),

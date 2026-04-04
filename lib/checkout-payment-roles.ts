@@ -5,18 +5,10 @@
 
 import { getAuthToken, getUserData } from "@/lib/auth-server";
 
-export const PAY_ON_ACCOUNT_ROLE_SLUGS = new Set([
-  "administrator",
-  "ndis_approved",
-]);
+export const PAY_ON_ACCOUNT_ROLE_SLUGS = new Set(["administrator", "ndis_approved"]);
 
 /** Methods that normal customers must never use (validated on /api/checkout) */
-export const PAY_ON_ACCOUNT_PAYMENT_METHODS = new Set([
-  "cod",
-  "bacs",
-  "bank_transfer",
-  "cheque",
-]);
+export const PAY_ON_ACCOUNT_PAYMENT_METHODS = new Set(["cod", "bacs", "bank_transfer", "cheque"]);
 
 export function normalizeRoleSlug(role: string): string {
   return String(role || "")

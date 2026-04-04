@@ -44,17 +44,11 @@ export default function SubscribeForm() {
         className="px-4 py-2 rounded-md text-black w-full bg-white"
       />
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="px-4 py-2 bg-white text-teal rounded-md"
-      >
+      <button type="submit" disabled={loading} className="px-4 py-2 bg-white text-teal rounded-md">
         {loading ? "..." : "Subscribe"}
       </button>
 
-      {message && (
-        <p className="text-xs mt-2 text-white">{message}</p>
-      )}
+      {message && <p className="text-xs mt-2 text-white">{message}</p>}
     </form>
   );
 }

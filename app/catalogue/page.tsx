@@ -17,10 +17,7 @@ export default async function CataloguePage() {
   const unified = await getUnifiedCategories();
   const categories = getRootCategoriesNonEmpty(unified);
 
-  const breadcrumbItems = [
-    { label: "Home", href: "/" },
-    { label: "Catalogue" },
-  ];
+  const breadcrumbItems = [{ label: "Home", href: "/" }, { label: "Catalogue" }];
 
   return (
     <>

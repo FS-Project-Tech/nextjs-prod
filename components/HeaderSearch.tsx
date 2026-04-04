@@ -112,7 +112,6 @@ export default function HeaderSearch() {
 
   return (
     <div className="relative w-full max-w-xl">
-      
       {/* 🔍 Input */}
       <input
         ref={inputRef}
@@ -131,7 +130,6 @@ export default function HeaderSearch() {
       {/* 🔥 Dropdown */}
       {show && (
         <div className="absolute w-full bg-white shadow-lg mt-1 z-50 rounded max-h-96 overflow-auto">
-
           {/* 🔥 Categories */}
           {categories.length > 0 && (
             <div className="p-2 border-b">
@@ -139,9 +137,7 @@ export default function HeaderSearch() {
               {categories.slice(0, 3).map((cat) => (
                 <div
                   key={cat.value}
-                  onMouseDown={() =>
-                    router.push(`/search?q=${query}&category=${cat.value}`)
-                  }
+                  onMouseDown={() => router.push(`/search?q=${query}&category=${cat.value}`)}
                   className="text-blue-600 text-sm py-1 cursor-pointer hover:underline"
                 >
                   {cat.value} ({cat.count})
@@ -157,9 +153,7 @@ export default function HeaderSearch() {
               {brands.slice(0, 3).map((brand) => (
                 <div
                   key={brand.value}
-                  onMouseDown={() =>
-                    router.push(`/search?q=${query}&brand=${brand.value}`)
-                  }
+                  onMouseDown={() => router.push(`/search?q=${query}&brand=${brand.value}`)}
                   className="text-green-600 text-sm py-1 cursor-pointer hover:underline"
                 >
                   {brand.value} ({brand.count})
@@ -205,10 +199,7 @@ export default function HeaderSearch() {
                     <p
                       className="text-xs text-gray-400"
                       dangerouslySetInnerHTML={{
-                        __html: highlight(
-                          Array.isArray(hit.sku) ? hit.sku[0] : hit.sku,
-                          query
-                        ),
+                        __html: highlight(Array.isArray(hit.sku) ? hit.sku[0] : hit.sku, query),
                       }}
                     />
                   </div>
@@ -218,9 +209,7 @@ export default function HeaderSearch() {
 
             {/* 🔥 View All */}
             <div
-              onMouseDown={() =>
-                router.push(`/search?q=${encodeURIComponent(query)}`)
-              }
+              onMouseDown={() => router.push(`/search?q=${encodeURIComponent(query)}`)}
               className="text-center text-blue-600 text-sm py-2 cursor-pointer hover:underline"
             >
               View all results →

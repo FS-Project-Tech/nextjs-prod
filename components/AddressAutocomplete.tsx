@@ -69,8 +69,7 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
 
 function parseAddressComponents(place: google.maps.places.PlaceResult): AddressParts {
   const components = place.address_components || [];
-  const get = (type: string) =>
-    components.find((c) => c.types.includes(type))?.long_name || "";
+  const get = (type: string) => components.find((c) => c.types.includes(type))?.long_name || "";
   const getShort = (type: string) =>
     components.find((c) => c.types.includes(type))?.short_name || "";
 
@@ -78,25 +77,23 @@ function parseAddressComponents(place: google.maps.places.PlaceResult): AddressP
   const route = get("route");
   const subpremise = get("subpremise");
   const address1 =
-  [streetNumber, route].filter(Boolean).join(" ") ||
-  place.name ||
-  place.formatted_address?.split(",")[0] ||
-  "";
+    [streetNumber, route].filter(Boolean).join(" ") ||
+    place.name ||
+    place.formatted_address?.split(",")[0] ||
+    "";
   const address2 = subpremise || undefined;
   const city =
-  get("locality") ||
-  get("sublocality_level_1") ||
-  get("sublocality") ||
-  get("postal_town") ||
-  get("administrative_area_level_2");
+    get("locality") ||
+    get("sublocality_level_1") ||
+    get("sublocality") ||
+    get("postal_town") ||
+    get("administrative_area_level_2");
 
-const state =
-  getShort("administrative_area_level_1") ||
-  get("administrative_area_level_1");
+  const state = getShort("administrative_area_level_1") || get("administrative_area_level_1");
 
-const postcode = get("postal_code");
+  const postcode = get("postal_code");
 
-const country = getShort("country") || "AU";
+  const country = getShort("country") || "AU";
   return {
     address_1: address1.trim(),
     address_2: address2?.trim() || undefined,
@@ -167,19 +164,14 @@ export default function AddressAutocomplete({
         }
 
         if (place.place_id) {
-          const service = new google.maps.places.PlacesService(
-            document.createElement("div")
-          );
+          const service = new google.maps.places.PlacesService(document.createElement("div"));
           service.getDetails(
             {
               placeId: place.place_id,
               fields: ["address_components", "formatted_address", "name"],
             },
             (detailPlace, status) => {
-              if (
-                status === google.maps.places.PlacesServiceStatus.OK &&
-                detailPlace
-              ) {
+              if (status === google.maps.places.PlacesServiceStatus.OK && detailPlace) {
                 applyParsed(detailPlace);
               } else {
                 const addr1 = place.formatted_address?.split(",")[0]?.trim() || place.name || "";

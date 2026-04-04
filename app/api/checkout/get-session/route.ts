@@ -45,12 +45,18 @@ export async function POST(req: NextRequest) {
 
   if (!record) {
     logCheckoutSession("warn", "get-session.not_found", { tokenPrefix: token.slice(0, 8) });
-    return NextResponse.json({ success: false, error: "Invalid or unknown checkout token." }, { status: 404 });
+    return NextResponse.json(
+      { success: false, error: "Invalid or unknown checkout token." },
+      { status: 404 }
+    );
   }
 
   if (record.expiresAt < Date.now()) {
     logCheckoutSession("warn", "get-session.expired", { tokenPrefix: token.slice(0, 8) });
-    return NextResponse.json({ success: false, error: "Checkout session has expired." }, { status: 410 });
+    return NextResponse.json(
+      { success: false, error: "Checkout session has expired." },
+      { status: 410 }
+    );
   }
 
   if (record.used) {

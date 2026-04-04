@@ -147,8 +147,7 @@ export default function AllCategoriesDrawer({
   const handleCategoryClick = useCallback(
     (category: WCCategory) => {
       const existingSubcategories = childrenMap[category.id];
-      const hasSubcategories =
-        existingSubcategories && existingSubcategories.length > 0;
+      const hasSubcategories = existingSubcategories && existingSubcategories.length > 0;
 
       if (hasSubcategories) {
         setSelectedCategory(category);
@@ -221,12 +220,7 @@ export default function AllCategoriesDrawer({
                     onClick={handleBackToCategories}
                     className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
                   >
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -240,9 +234,7 @@ export default function AllCategoriesDrawer({
                   </button>
                 </>
               ) : (
-                <h3 className="text-base font-semibold text-gray-900">
-                  Browse Categories
-                </h3>
+                <h3 className="text-base font-semibold text-gray-900">Browse Categories</h3>
               )}
               <button
                 onClick={() => {
@@ -268,9 +260,7 @@ export default function AllCategoriesDrawer({
                 loadingSubcategories ? (
                   <div className="p-4 text-sm text-gray-600">Loading...</div>
                 ) : subcategories.length === 0 ? (
-                  <div className="p-4 text-sm text-gray-600">
-                    No subcategories found.
-                  </div>
+                  <div className="p-4 text-sm text-gray-600">No subcategories found.</div>
                 ) : (
                   <ul className="space-y-0">
                     {subcategories.map((sub) => (
@@ -311,12 +301,7 @@ export default function AllCategoriesDrawer({
                     className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors"
                     aria-label="Back to categories"
                   >
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -351,9 +336,7 @@ export default function AllCategoriesDrawer({
                   {loadingSubcategories ? (
                     <div className="p-4 text-sm text-gray-600">Loading...</div>
                   ) : subcategories.length === 0 ? (
-                    <div className="p-4 text-sm text-gray-600">
-                      No subcategories found.
-                    </div>
+                    <div className="p-4 text-sm text-gray-600">No subcategories found.</div>
                   ) : (
                     <ul className="space-y-0">
                       {subcategories.map((sub) => (
@@ -377,9 +360,7 @@ export default function AllCategoriesDrawer({
             {!subcategoryDrawerOpen && (
               <>
                 <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-3">
-                  <h3 className="text-base font-semibold text-gray-900">
-                    Shop by Category
-                  </h3>
+                  <h3 className="text-base font-semibold text-gray-900">Shop by Category</h3>
                   <button
                     onClick={() => {
                       setDrawerOpen(false);

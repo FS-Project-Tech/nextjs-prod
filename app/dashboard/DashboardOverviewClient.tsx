@@ -13,9 +13,7 @@ interface DashboardOverviewClientProps {
   };
 }
 
-export default function DashboardOverviewClient({
-  initialUser,
-}: DashboardOverviewClientProps) {
+export default function DashboardOverviewClient({ initialUser }: DashboardOverviewClientProps) {
   const { user, loading: userLoading } = useUser();
   const [lastLogin, setLastLogin] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -53,9 +51,7 @@ export default function DashboardOverviewClient({
         return data;
       }
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.error || `Failed to fetch stats: ${response.status}`
-      );
+      throw new Error(errorData.error || `Failed to fetch stats: ${response.status}`);
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -81,9 +77,7 @@ export default function DashboardOverviewClient({
         <h1 className="text-3xl font-bold mb-2" suppressHydrationWarning>
           Welcome back, {mounted && effectiveUser?.name ? effectiveUser.name : "User"}!
         </h1>
-        <p className="text-teal-100">
-          Here&apos;s an overview of your account activity
-        </p>
+        <p className="text-teal-100">Here&apos;s an overview of your account activity</p>
       </div>
 
       {/* Stats Grid */}
@@ -96,18 +90,11 @@ export default function DashboardOverviewClient({
                 <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-1" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {customerData?.orders_count ??
-                    customerData?.order_count ??
-                    0}
+                  {customerData?.orders_count ?? customerData?.order_count ?? 0}
                 </p>
               )}
             </div>
-            <svg
-              className="h-6 w-6"
-              fill="none"
-              stroke="#0f766e"
-              viewBox="0 0 24 24"
-            >
+            <svg className="h-6 w-6" fill="none" stroke="#0f766e" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -151,21 +138,15 @@ export default function DashboardOverviewClient({
 
       {/* Profile Info */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Profile Information
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h2>
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <dt className="text-sm font-medium text-gray-500">Name</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {effectiveUser?.name || "N/A"}
-            </dd>
+            <dd className="mt-1 text-sm text-gray-900">{effectiveUser?.name || "N/A"}</dd>
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Email</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {effectiveUser?.email || "N/A"}
-            </dd>
+            <dd className="mt-1 text-sm text-gray-900">{effectiveUser?.email || "N/A"}</dd>
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Role</dt>
@@ -175,21 +156,13 @@ export default function DashboardOverviewClient({
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Last Login</dt>
-            <dd
-              className="mt-1 text-sm text-gray-900"
-              suppressHydrationWarning
-            >
+            <dd className="mt-1 text-sm text-gray-900" suppressHydrationWarning>
               {mounted ? lastLogin || "N/A" : "N/A"}
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">
-              Member Since
-            </dt>
-            <dd
-              className="mt-1 text-sm text-gray-900"
-              suppressHydrationWarning
-            >
+            <dt className="text-sm font-medium text-gray-500">Member Since</dt>
+            <dd className="mt-1 text-sm text-gray-900" suppressHydrationWarning>
               {mounted && customerData?.date_created
                 ? new Date(customerData.date_created).toLocaleDateString()
                 : "N/A"}

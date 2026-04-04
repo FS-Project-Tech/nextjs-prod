@@ -3,9 +3,9 @@
  * Handles storing and retrieving quote templates
  */
 
-import { getWpBaseUrl } from './auth';
-import { getAuthToken } from './auth-server';
-import type { QuoteTemplate, QuoteTemplatePayload } from './types/quote-template';
+import { getWpBaseUrl } from "./auth";
+import { getAuthToken } from "./auth-server";
+import type { QuoteTemplate, QuoteTemplatePayload } from "./types/quote-template";
 
 /**
  * Generate unique template ID
@@ -26,12 +26,12 @@ export async function storeTemplate(
 ): Promise<QuoteTemplate | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   const templateId = generateTemplateId();
@@ -55,20 +55,20 @@ export async function storeTemplate(
   try {
     // Store as WordPress custom post type
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quote-templates`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         title: template.name,
-        status: 'publish',
+        status: "publish",
         meta: {
           template_id: templateId,
           template_data: JSON.stringify(template),
           user_email: userEmail,
-          user_id: userId || '',
-          is_default: template.is_default ? '1' : '0',
+          user_id: userId || "",
+          is_default: template.is_default ? "1" : "0",
         },
       }),
     });
@@ -77,10 +77,10 @@ export async function storeTemplate(
       return template;
     }
 
-    console.error('Failed to store template:', await response.text());
+    console.error("Failed to store template:", await response.text());
     return null;
   } catch (error) {
-    console.error('Error storing template:', error);
+    console.error("Error storing template:", error);
     throw error;
   }
 }
@@ -105,9 +105,9 @@ export async function fetchUserTemplates(userEmail: string): Promise<QuoteTempla
       `${wpBase}/wp-json/wp/v2/quote-templates?meta_key=user_email&meta_value=${encodeURIComponent(userEmail)}&per_page=100`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-        cache: 'no-store',
+        cache: "no-store",
       }
     );
 
@@ -128,7 +128,7 @@ export async function fetchUserTemplates(userEmail: string): Promise<QuoteTempla
                 id: templateData.id || post.meta?.template_id || post.id.toString(),
               };
             } catch (parseError) {
-              console.error('Error parsing template data:', parseError);
+              console.error("Error parsing template data:", parseError);
               return null;
             }
           })
@@ -136,7 +136,7 @@ export async function fetchUserTemplates(userEmail: string): Promise<QuoteTempla
       }
     }
   } catch (fetchError) {
-    console.debug('Custom post type fetch failed, templates may not be stored yet');
+    console.debug("Custom post type fetch failed, templates may not be stored yet");
   }
 
   return [];
@@ -164,9 +164,9 @@ export async function getTemplateById(
       `${wpBase}/wp-json/wp/v2/quote-templates?meta_key=template_id&meta_value=${encodeURIComponent(templateId)}&per_page=1`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-        cache: 'no-store',
+        cache: "no-store",
       }
     );
 
@@ -191,13 +191,13 @@ export async function getTemplateById(
             id: templateData.id || post.meta?.template_id || post.id.toString(),
           };
         } catch (parseError) {
-          console.error('Error parsing template data:', parseError);
+          console.error("Error parsing template data:", parseError);
           return null;
         }
       }
     }
   } catch (error) {
-    console.error('Error fetching template:', error);
+    console.error("Error fetching template:", error);
   }
 
   return null;
@@ -213,18 +213,18 @@ export async function updateTemplate(
 ): Promise<QuoteTemplate | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   // Get existing template
   const existing = await getTemplateById(templateId, userEmail);
   if (!existing) {
-    throw new Error('Template not found');
+    throw new Error("Template not found");
   }
 
   const updated: QuoteTemplate = {
@@ -239,28 +239,28 @@ export async function updateTemplate(
       `${wpBase}/wp-json/wp/v2/quote-templates?meta_key=template_id&meta_value=${encodeURIComponent(templateId)}&per_page=1`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
     if (!findResponse.ok) {
-      throw new Error('Failed to find template');
+      throw new Error("Failed to find template");
     }
 
     const posts = await findResponse.json();
     if (!Array.isArray(posts) || posts.length === 0) {
-      throw new Error('Template not found');
+      throw new Error("Template not found");
     }
 
     const postId = posts[0].id;
 
     // Update the template
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quote-templates/${postId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         title: updated.name,
@@ -268,8 +268,8 @@ export async function updateTemplate(
           template_id: templateId,
           template_data: JSON.stringify(updated),
           user_email: userEmail,
-          user_id: updated.user_id || '',
-          is_default: updated.is_default ? '1' : '0',
+          user_id: updated.user_id || "",
+          is_default: updated.is_default ? "1" : "0",
         },
       }),
     });
@@ -280,7 +280,7 @@ export async function updateTemplate(
 
     return null;
   } catch (error) {
-    console.error('Error updating template:', error);
+    console.error("Error updating template:", error);
     throw error;
   }
 }
@@ -288,24 +288,21 @@ export async function updateTemplate(
 /**
  * Delete template
  */
-export async function deleteTemplate(
-  templateId: string,
-  userEmail: string
-): Promise<boolean> {
+export async function deleteTemplate(templateId: string, userEmail: string): Promise<boolean> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   // Verify ownership
   const template = await getTemplateById(templateId, userEmail);
   if (!template) {
-    throw new Error('Template not found or unauthorized');
+    throw new Error("Template not found or unauthorized");
   }
 
   try {
@@ -314,33 +311,33 @@ export async function deleteTemplate(
       `${wpBase}/wp-json/wp/v2/quote-templates?meta_key=template_id&meta_value=${encodeURIComponent(templateId)}&per_page=1`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
     if (!findResponse.ok) {
-      throw new Error('Failed to find template');
+      throw new Error("Failed to find template");
     }
 
     const posts = await findResponse.json();
     if (!Array.isArray(posts) || posts.length === 0) {
-      throw new Error('Template not found');
+      throw new Error("Template not found");
     }
 
     const postId = posts[0].id;
 
     // Delete the template
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quote-templates/${postId}`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
     return response.ok;
   } catch (error) {
-    console.error('Error deleting template:', error);
+    console.error("Error deleting template:", error);
     throw error;
   }
 }
@@ -374,7 +371,7 @@ export async function incrementTemplateUsage(templateId: string): Promise<void> 
       `${wpBase}/wp-json/wp/v2/quote-templates?meta_key=template_id&meta_value=${encodeURIComponent(templateId)}&per_page=1`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
@@ -387,24 +384,23 @@ export async function incrementTemplateUsage(templateId: string): Promise<void> 
     const postId = posts[0].id;
 
     await fetch(`${wpBase}/wp-json/wp/v2/quote-templates/${postId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         meta: {
           template_id: templateId,
           template_data: JSON.stringify(updated),
           user_email: template.user_email,
-          user_id: template.user_id || '',
-          is_default: updated.is_default ? '1' : '0',
+          user_id: template.user_id || "",
+          is_default: updated.is_default ? "1" : "0",
         },
       }),
     });
   } catch (error) {
-    console.error('Error incrementing template usage:', error);
+    console.error("Error incrementing template usage:", error);
     // Don't throw - usage tracking failure shouldn't break the flow
   }
 }
-

@@ -33,22 +33,22 @@ function generateToken(): string {
  */
 export function generateAccessToken(type: "cart"): string {
   if (typeof window === "undefined") return "";
-  
+
   const token = generateToken();
   const expiresAt = Date.now() + TOKEN_EXPIRY_MS;
-  
+
   const tokenData: TokenData = {
     token,
     expiresAt,
     type,
   };
-  
+
   try {
     sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokenData));
   } catch (e) {
     console.error("Failed to store access token:", e);
   }
-  
+
   return token;
 }
 
@@ -58,25 +58,25 @@ export function generateAccessToken(type: "cart"): string {
 export function validateAccessToken(token: string | null, requiredType: "cart"): boolean {
   if (typeof window === "undefined") return false;
   if (!token) return false;
-  
+
   try {
     const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!stored) return false;
-    
+
     const tokenData: TokenData = JSON.parse(stored);
-    
+
     // Check if token matches
     if (tokenData.token !== token) return false;
-    
+
     // Check if token has expired
     if (Date.now() > tokenData.expiresAt) {
       sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       return false;
     }
-    
+
     // Check if token type matches
     if (tokenData.type !== requiredType) return false;
-    
+
     return true;
   } catch (e) {
     console.error("Failed to validate access token:", e);
@@ -89,19 +89,19 @@ export function validateAccessToken(token: string | null, requiredType: "cart"):
  */
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
-  
+
   try {
     const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!stored) return null;
-    
+
     const tokenData: TokenData = JSON.parse(stored);
-    
+
     // Check if expired
     if (Date.now() > tokenData.expiresAt) {
       sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
-    
+
     return tokenData.token;
   } catch (e) {
     return null;
@@ -113,7 +113,7 @@ export function getStoredToken(): string | null {
  */
 export function clearAccessToken(): void {
   if (typeof window === "undefined") return;
-  
+
   try {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch (e) {
@@ -128,4 +128,3 @@ export function getCartUrl(): string {
   const token = generateAccessToken("cart");
   return `/cart?token=${token}`;
 }
-

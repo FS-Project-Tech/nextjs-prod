@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/wp-utils";
 import { verifyEwayPayment } from "@/lib/services/ewayService";
-
+ 
 /**
  * GET - Fetch order details by ID (post ID) or order number
  *
@@ -20,11 +20,11 @@ export async function GET(
       reqUrl.searchParams.get("AccessCode") ||
       reqUrl.searchParams.get("accessCode") ||
       "";
-
+ 
     // Await params (Next.js 15+ requires this)
     const resolvedParams = await params;
     const orderId = resolvedParams?.id;
-
+ 
     if (!orderId) {
       console.error("Order API: Missing order ID in params");
       return NextResponse.json(
@@ -32,13 +32,13 @@ export async function GET(
         { status: 400 }
       );
     }
-
+ 
     console.log(`Order API: Fetching order ${orderId}`);
-
+ 
     // 1. Try direct fetch (works when orderId is post ID)
     try {
       const { data: order } = await wcAPI.get(`/orders/${orderId}`);
-
+ 
       if (order) {
         if (
           accessCode &&
@@ -56,10 +56,18 @@ export async function GET(
                 patch.transaction_id = verification.transactionId;
               }
               await wcAPI.put(`/orders/${order.id}`, patch);
-              // Woo PUT sometimes returns an empty body; always GET so the client never receives 200 + empty JSON.
-              const { data: refreshed } = await wcAPI.get(`/orders/${order.id}`);
+              // Woo PUT / indexing can lag; refetch a few times so the client never lands on an empty 200.
+              let refreshed: Record<string, unknown> | null = null;
+              for (let r = 0; r < 6; r++) {
+                const { data: again } = await wcAPI.get(`/orders/${order.id}`);
+                if (again && typeof again === "object") {
+                  refreshed = again as Record<string, unknown>;
+                  break;
+                }
+                await new Promise((res) => setTimeout(res, 350 + r * 120));
+              }
               if (!refreshed || typeof refreshed !== "object") {
-                console.error("Order API: eWAY verified but refetch returned no order body");
+                console.error("Order API: eWAY verified but refetch returned no order body after retries");
                 return NextResponse.json(
                   { error: "Order was updated but details could not be loaded. Please refresh." },
                   { status: 502 }
@@ -131,20 +139,20 @@ export async function GET(
         throw directErr;
       }
     }
-
+ 
     // 2. Fallback: search by order number (for Sequential Order Numbers plugin, etc.)
     console.log(`Order API: Direct fetch failed, searching by order number ${orderId}`);
     const { data: orders } = await wcAPI.get("/orders", {
       params: { search: orderId, per_page: 20 },
     });
-
+ 
     const match = Array.isArray(orders)
       ? orders.find(
           (o: { id?: number; number?: string; order_number?: string }) =>
             String(o.number ?? o.order_number ?? o.id) === orderId
         )
       : null;
-
+ 
     if (match) {
       // Fetch full order by post ID
       const { data: fullOrder } = await wcAPI.get(`/orders/${match.id}`);
@@ -155,7 +163,7 @@ export async function GET(
         return NextResponse.json({ order: fullOrder });
       }
     }
-
+ 
     // 3. Fallback: custom WordPress endpoint (order-by-number) when search fails
     const wpBase = getWpBaseUrl();
     if (wpBase) {
@@ -180,7 +188,7 @@ export async function GET(
         console.warn("Order API: Custom order-by-number endpoint failed:", lookupErr);
       }
     }
-
+ 
     console.error(`Order API: Order ${orderId} not found in WooCommerce`);
     return NextResponse.json(
       { error: "Order not found" },
@@ -188,12 +196,12 @@ export async function GET(
     );
   } catch (error) {
     // Type assertion for axios-style errors
-    const err = error as Error & { 
-      response?: { data?: unknown; status?: number }; 
+    const err = error as Error & {
+      response?: { data?: unknown; status?: number };
       config?: { params?: unknown };
       stack?: string;
     };
-    
+   
     console.error("Order API Error:", {
       message: err.message || 'An error occurred',
       stack: err.stack,
@@ -201,23 +209,23 @@ export async function GET(
       status: err.response?.status,
       params: err.config?.params,
     });
-    
+   
     if (err.response?.status === 404) {
       return NextResponse.json(
         { error: "Order not found" },
         { status: 404 }
       );
     }
-
+ 
     if (err.response?.status === 401 || err.response?.status === 403) {
       return NextResponse.json(
         { error: "Authentication required to view this order" },
         { status: 401 }
       );
     }
-
+ 
     return NextResponse.json(
-      { 
+      {
         error: err.message || "Failed to fetch order details",
         details: process.env.NODE_ENV === 'development' ? err.stack : undefined
       },

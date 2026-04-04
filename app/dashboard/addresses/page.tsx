@@ -20,9 +20,7 @@ function hasNdisOrSupportCoordinatorRole(roles: string[] | undefined): boolean {
   return roles.some((r) => {
     const lower = String(r).toLowerCase();
     return (
-      NDIS_HCP_ROLES_EXACT.includes(r) ||
-      lower.includes("ndis") ||
-      lower.includes("support co")
+      NDIS_HCP_ROLES_EXACT.includes(r) || lower.includes("ndis") || lower.includes("support co")
     );
   });
 }
@@ -131,7 +129,8 @@ export default function DashboardAddresses() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Addresses</h1>
           <p className="mt-1 text-gray-600">
-            Manage multiple billing and shipping addresses. You can add as many addresses as you need.
+            Manage multiple billing and shipping addresses. You can add as many addresses as you
+            need.
           </p>
         </div>
         {!showAddForm && !editingAddress && (
@@ -202,20 +201,28 @@ export default function DashboardAddresses() {
       {addresses.length === 0 && !showAddForm && !editingAddress && (
         <div className="rounded-xl border border-gray-200 bg-white px-6 py-12 shadow-sm">
           <div className="flex flex-col items-center text-center">
-            <span className="mb-4 text-5xl" aria-hidden>📍</span>
+            <span className="mb-4 text-5xl" aria-hidden>
+              📍
+            </span>
             <h3 className="text-lg font-semibold text-gray-900">No addresses yet</h3>
             <p className="mt-2 text-gray-600">Add your first address to get started.</p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <button
                 type="button"
-                onClick={() => { setAddType("billing"); setShowAddForm(true); }}
+                onClick={() => {
+                  setAddType("billing");
+                  setShowAddForm(true);
+                }}
                 className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Add Billing Address
               </button>
               <button
                 type="button"
-                onClick={() => { setAddType("shipping"); setShowAddForm(true); }}
+                onClick={() => {
+                  setAddType("shipping");
+                  setShowAddForm(true);
+                }}
                 className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700"
               >
                 Add Shipping Address
@@ -239,7 +246,9 @@ export default function DashboardAddresses() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                        address.type === "billing" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
+                        address.type === "billing"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
                       }`}
                     >
                       {address.type === "billing" ? "Billing" : "Shipping"}
@@ -275,7 +284,9 @@ export default function DashboardAddresses() {
                     {address.first_name} {address.last_name}
                   </p>
                   {address.company != null && String(address.company).trim() !== "" && (
-                    <p className="text-gray-600"><span className="text-gray-500">Company:</span> {address.company}</p>
+                    <p className="text-gray-600">
+                      <span className="text-gray-500">Company:</span> {address.company}
+                    </p>
                   )}
                   <p className="text-gray-600">{address.address_1}</p>
                   {address.address_2 && <p className="text-gray-600">{address.address_2}</p>}

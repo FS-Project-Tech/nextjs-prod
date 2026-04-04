@@ -44,15 +44,10 @@ export default function NDISRegisterForm() {
         <h3 className="text-xl font-bold text-gray-900">Upload Your Form</h3>
         <CloudUpload className="w-5 h-5 text-violet-600" />
       </div>
-      <p className="text-gray-600 mb-4">
-        Submit your service agreement via email.
-      </p>
+      <p className="text-gray-600 mb-4">Submit your service agreement via email.</p>
       <p className="text-gray-600 mb-6">
         Send your completed form to{" "}
-        <Link
-          href={`mailto:${NDIS_EMAIL}`}
-          className="text-violet-600 font-medium hover:underline"
-        >
+        <Link href={`mailto:${NDIS_EMAIL}`} className="text-violet-600 font-medium hover:underline">
           {NDIS_EMAIL}
         </Link>
       </p>
@@ -61,13 +56,9 @@ export default function NDISRegisterForm() {
         <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 text-violet-800">
           <p className="font-medium">Thank you for your submission.</p>
           <p className="text-sm mt-1">
-            We will respond to{" "}
-            <span className="font-medium">{email || "your email"}</span>. You can
+            We will respond to <span className="font-medium">{email || "your email"}</span>. You can
             also email us directly at{" "}
-            <Link
-              href={`mailto:${NDIS_EMAIL}`}
-              className="text-violet-600 underline"
-            >
+            <Link href={`mailto:${NDIS_EMAIL}`} className="text-violet-600 underline">
               {NDIS_EMAIL}
             </Link>
             .
@@ -120,15 +111,11 @@ export default function NDISRegisterForm() {
               >
                 Choose a file
               </button>
-              <span className="text-sm text-gray-500">
-                {file ? file.name : "No file chosen"}
-              </span>
+              <span className="text-sm text-gray-500">{file ? file.name : "No file chosen"}</span>
             </div>
           </div>
 
-          {error && (
-            <p className="text-sm text-red-600">{error}</p>
-          )}
+          {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button

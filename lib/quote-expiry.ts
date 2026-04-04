@@ -3,11 +3,11 @@
  * Handles checking, updating, and managing quote expiration
  */
 
-import { getWpBaseUrl } from './auth';
-import { getAuthToken } from './auth-server';
-import { fetchUserQuotes, updateQuoteStatus, getQuoteById } from './quote-storage';
-import { sendQuoteExpiredEmail } from './quote-email';
-import type { Quote } from './types/quote';
+import { getWpBaseUrl } from "./auth";
+import { getAuthToken } from "./auth-server";
+import { fetchUserQuotes, updateQuoteStatus, getQuoteById } from "./quote-storage";
+import { sendQuoteExpiredEmail } from "./quote-email";
+import type { Quote } from "./types/quote";
 
 /**
  * Check if a quote has expired
@@ -48,39 +48,39 @@ export function isExpiringSoon(quote: Quote, days: number = 7): boolean {
  * Get expiry status for a quote
  */
 export function getExpiryStatus(quote: Quote): {
-  status: 'valid' | 'expiring_soon' | 'expired';
+  status: "valid" | "expiring_soon" | "expired";
   daysUntil: number | null;
   message: string;
 } {
   if (isQuoteExpired(quote)) {
     return {
-      status: 'expired',
+      status: "expired",
       daysUntil: 0,
-      message: 'This quote has expired',
+      message: "This quote has expired",
     };
   }
 
   const daysUntil = getDaysUntilExpiry(quote);
   if (daysUntil === null) {
     return {
-      status: 'valid',
+      status: "valid",
       daysUntil: null,
-      message: 'No expiry date set',
+      message: "No expiry date set",
     };
   }
 
   if (isExpiringSoon(quote, 7)) {
     return {
-      status: 'expiring_soon',
+      status: "expiring_soon",
       daysUntil,
-      message: `Expires in ${daysUntil} ${daysUntil === 1 ? 'day' : 'days'}`,
+      message: `Expires in ${daysUntil} ${daysUntil === 1 ? "day" : "days"}`,
     };
   }
 
   return {
-    status: 'valid',
+    status: "valid",
     daysUntil,
-    message: `Valid for ${daysUntil} more ${daysUntil === 1 ? 'day' : 'days'}`,
+    message: `Valid for ${daysUntil} more ${daysUntil === 1 ? "day" : "days"}`,
   };
 }
 
@@ -95,12 +95,12 @@ export async function checkAndUpdateExpiredQuotes(userEmail: string): Promise<{
 }> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   let checked = 0;
@@ -116,7 +116,7 @@ export async function checkAndUpdateExpiredQuotes(userEmail: string): Promise<{
       checked++;
 
       // Skip if already expired
-      if (quote.status === 'expired') {
+      if (quote.status === "expired") {
         continue;
       }
 
@@ -128,10 +128,10 @@ export async function checkAndUpdateExpiredQuotes(userEmail: string): Promise<{
           // Update quote status to expired
           const updatedQuote = await updateQuoteStatus(
             quote.id,
-            'expired',
-            'System',
+            "expired",
+            "System",
             undefined,
-            'Quote expired automatically'
+            "Quote expired automatically"
           );
 
           if (updatedQuote) {
@@ -152,7 +152,7 @@ export async function checkAndUpdateExpiredQuotes(userEmail: string): Promise<{
       }
     }
   } catch (error) {
-    console.error('Error checking expired quotes:', error);
+    console.error("Error checking expired quotes:", error);
     throw error;
   }
 
@@ -171,18 +171,18 @@ export async function checkAllExpiredQuotes(): Promise<{
 }> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
-  let totalChecked = 0;
-  let totalExpired = 0;
-  let totalUpdated = 0;
-  let totalErrors = 0;
+  const totalChecked = 0;
+  const totalExpired = 0;
+  const totalUpdated = 0;
+  const totalErrors = 0;
   const userEmails: string[] = [];
 
   try {
@@ -193,7 +193,7 @@ export async function checkAllExpiredQuotes(): Promise<{
 
     // This is a placeholder - in production, implement a proper endpoint
     // that returns all quotes or all user emails with quotes
-    console.warn('checkAllExpiredQuotes: Full quote checking requires a custom WordPress endpoint');
+    console.warn("checkAllExpiredQuotes: Full quote checking requires a custom WordPress endpoint");
 
     // For now, return empty results
     // The individual user checking can be done via checkAndUpdateExpiredQuotes
@@ -205,7 +205,7 @@ export async function checkAllExpiredQuotes(): Promise<{
       userEmails: [],
     };
   } catch (error) {
-    console.error('Error checking all expired quotes:', error);
+    console.error("Error checking all expired quotes:", error);
     throw error;
   }
 }
@@ -219,18 +219,18 @@ export async function renewQuote(
 ): Promise<Quote | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) {
-    throw new Error('WordPress URL not configured');
+    throw new Error("WordPress URL not configured");
   }
 
   const token = await getAuthToken();
   if (!token) {
-    throw new Error('Authentication required');
+    throw new Error("Authentication required");
   }
 
   // Get current quote
   const quote = await getQuoteById(quoteId);
   if (!quote) {
-    throw new Error('Quote not found');
+    throw new Error("Quote not found");
   }
 
   // Calculate new expiry date
@@ -241,10 +241,10 @@ export async function renewQuote(
   // Update quote with new expiry date
   try {
     const response = await fetch(`${wpBase}/wp-json/wp/v2/quotes/${quoteId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         meta: {
@@ -269,8 +269,7 @@ export async function renewQuote(
 
     return null;
   } catch (error) {
-    console.error('Error renewing quote:', error);
+    console.error("Error renewing quote:", error);
     throw error;
   }
 }
-

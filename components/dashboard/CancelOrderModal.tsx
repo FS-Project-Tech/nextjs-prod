@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from 'react';
-import { useToast } from '@/components/ToastProvider';
+import { useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 
 interface CancelOrderModalProps {
   orderId: number;
@@ -32,17 +32,17 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
 
   const handleCancel = async () => {
     if (!agreed) {
-      showError('Please agree to the cancellation policy');
+      showError("Please agree to the cancellation policy");
       return;
     }
 
     setIsCancelling(true);
     try {
       const response = await fetch(`/api/dashboard/orders/${orderId}/cancel`, {
-        method: 'POST',
-        credentials: 'include',
+        method: "POST",
+        credentials: "include",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
@@ -50,10 +50,10 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
         onSuccess();
       } else {
         const errorData = await response.json();
-        showError(errorData.error || 'Failed to cancel order');
+        showError(errorData.error || "Failed to cancel order");
       }
     } catch (err: any) {
-      showError('Failed to cancel order. Please try again.');
+      showError("Failed to cancel order. Please try again.");
     } finally {
       setIsCancelling(false);
     }
@@ -71,13 +71,20 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
               disabled={isCancelling}
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
 
           <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Cancellation Policy & Terms</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">
+              Cancellation Policy & Terms
+            </h3>
             <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
               <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans">
                 {CANCELLATION_POLICY}
@@ -95,7 +102,8 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
                 className="mt-1 h-4 w-4 text-teal-600 focus:ring-teal-500 border-gray-300 rounded"
               />
               <span className="text-sm text-gray-700">
-                I have read and agree to the cancellation policy and terms and conditions stated above.
+                I have read and agree to the cancellation policy and terms and conditions stated
+                above.
               </span>
             </label>
           </div>
@@ -113,7 +121,7 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
               disabled={!agreed || isCancelling}
               className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isCancelling ? 'Cancelling...' : 'Confirm Cancel'}
+              {isCancelling ? "Cancelling..." : "Confirm Cancel"}
             </button>
           </div>
         </div>
@@ -121,4 +129,3 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
     </div>
   );
 }
-

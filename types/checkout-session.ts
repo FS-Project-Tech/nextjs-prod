@@ -1,4 +1,10 @@
-import type { CheckoutAddress, CheckoutCartItem, CheckoutInitiatePayload, CheckoutTotals, PaymentMethod } from "@/types/checkout";
+import type {
+  CheckoutAddress,
+  CheckoutCartItem,
+  CheckoutInitiatePayload,
+  CheckoutTotals,
+  PaymentMethod,
+} from "@/types/checkout";
 
 /**
  * Persisted checkout session for token-based headless → Woo handoff.

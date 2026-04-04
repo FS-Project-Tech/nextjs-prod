@@ -75,6 +75,5 @@ export interface WishlistContextType extends WishlistState, WishlistActions {}
 /**
  * Wishlist storage key
  */
-export const WISHLIST_STORAGE_KEY = 'user_wishlist';
-export const WISHLIST_COOKIE_NAME = 'wishlist_items';
-
+export const WISHLIST_STORAGE_KEY = "user_wishlist";
+export const WISHLIST_COOKIE_NAME = "wishlist_items";

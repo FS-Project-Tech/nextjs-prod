@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthToken, getUserData } from '@/lib/auth-server';
-import { fetchUserQuotes } from '@/lib/quote-storage';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthToken, getUserData } from "@/lib/auth-server";
+import { fetchUserQuotes } from "@/lib/quote-storage";
 
 /**
  * GET /api/dashboard/quotes
@@ -10,18 +10,12 @@ export async function GET(req: NextRequest) {
   try {
     const token = await getAuthToken();
     if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
     const user = await getUserData(token);
     if (!user || !user.email) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Fetch quotes from database
@@ -36,14 +30,11 @@ export async function GET(req: NextRequest) {
       quotes,
       total: quotes.length,
     });
-
   } catch (error) {
-    console.error('Quotes API Error:', error);
+    console.error("Quotes API Error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch quotes', quotes: [], total: 0 },
+      { error: "Failed to fetch quotes", quotes: [], total: 0 },
       { status: 500 }
     );
   }
 }
-
-

@@ -13,16 +13,17 @@ export type NursingServiceItem = {
  * Load nursing service page by URL slug. WordPress `slug` is the source of truth
  * (add new service pages in WP — no hardcoded title → slug map).
  */
-export async function fetchNursingServicePageForUrl(
-  urlSlug: string
-): Promise<WpPage | null> {
+export async function fetchNursingServicePageForUrl(urlSlug: string): Promise<WpPage | null> {
   return fetchPageBySlug(urlSlug);
 }
 
 function stripHtml(html: string | undefined): string {
   if (!html) return "";
   return decodeHTMLEntities(
-    html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
   );
 }
 
@@ -42,8 +43,7 @@ function wpPageToCardItem(page: WpPage): NursingServiceItem {
     description = full.slice(0, 280);
     if (full.length > 280) description += "…";
   }
-  let image =
-    page._embedded?.["wp:featuredmedia"]?.[0]?.source_url?.trim() || "";
+  let image = page._embedded?.["wp:featuredmedia"]?.[0]?.source_url?.trim() || "";
   if (!image) {
     image = firstImageFromContent(page.content?.rendered);
   }

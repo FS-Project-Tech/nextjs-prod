@@ -57,7 +57,10 @@ export async function computeShippingRates(
           if (loc.type === "postcode") {
             if (!postcode) return false;
             if (code.includes(",")) {
-              return code.split(",").map((s) => s.trim()).includes(postcode);
+              return code
+                .split(",")
+                .map((s) => s.trim())
+                .includes(postcode);
             }
             if (code.includes("...")) {
               const [min, max] = code.split("...").map((s) => s.trim());

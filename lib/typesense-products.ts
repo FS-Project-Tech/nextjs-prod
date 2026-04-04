@@ -10,8 +10,7 @@
  */
 
 export const TS_FIELDS = {
-  categorySlug:
-    process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
+  categorySlug: process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
   brandSlug: process.env.TYPESENSE_FIELD_BRAND_SLUG || "brand",
   price: process.env.TYPESENSE_FIELD_PRICE || "price",
   /** Empty = do not apply on_sale filter (collection has no such field). */
@@ -54,9 +53,7 @@ export function buildTypesenseFilterParts(opts: {
   }
 
   if (opts.brandSlugSingle?.trim()) {
-    f.push(
-      `${TS_FIELDS.brandSlug}:=${tsEscapeFilterValue(opts.brandSlugSingle.trim())}`
-    );
+    f.push(`${TS_FIELDS.brandSlug}:=${tsEscapeFilterValue(opts.brandSlugSingle.trim())}`);
   } else if (opts.brandSlugs && opts.brandSlugs.length > 0) {
     const parts = opts.brandSlugs
       .map((s) => s.trim())
@@ -123,23 +120,15 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   const name = String(doc.name ?? "");
   const slug = String(doc.slug ?? "");
   const sku = firstStringish(doc.sku);
-  const img =
-    (doc.image as string) ||
-    (doc.image_url as string) ||
-    (doc.thumbnail as string) ||
-    "";
+  const img = (doc.image as string) || (doc.image_url as string) || (doc.thumbnail as string) || "";
   const imgAlt = String(doc.image_alt ?? doc.name ?? name);
 
   let sale_percentage: number | null = null;
   if (regular && sale && Number(regular) > 0) {
-    sale_percentage = Math.round(
-      ((Number(regular) - Number(sale)) / Number(regular)) * 100
-    );
+    sale_percentage = Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100);
   }
 
-  const brandName = firstStringish(
-    doc.brand_name ?? doc.brand ?? doc.brand_title
-  );
+  const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);
 
   return {
     id,

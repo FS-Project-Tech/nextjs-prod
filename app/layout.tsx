@@ -1,40 +1,37 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import Script from "next/script";
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import PWARegister from "@/components/PWARegister";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import NavigationProgress from "@/components/NavigationProgress";
 import MainContent from "@/components/MainContent";
 import CoreProviders from "@/components/CoreProviders";
 import CommerceProviders from "@/components/CommerceProviders";
-import { Poppins } from 'next/font/google'
+import { Poppins } from "next/font/google";
 const poppins = Poppins({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-})
-import { Analytics } from "@vercel/analytics/next"
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import TawkToWidget from "@/components/TawkToWidget";
 
 // Validate environment variables at startup (server-side only)
-if (typeof window === 'undefined') {
+if (typeof window === "undefined") {
   try {
-    const { validateStartup } = require('@/lib/startup-validation');
+    const { validateStartup } = require("@/lib/startup-validation");
     validateStartup();
   } catch (error) {
     // In production, this will prevent startup
     // In development, it will log a warning
-    console.error('Startup validation failed:', error);
+    console.error("Startup validation failed:", error);
   }
 }
 const Header = dynamic(() => import("@/components/Header"));
-const Footer = dynamic(
-  () => import("@/components/Footer"),
-  {
-    loading: () => <div className="h-40" />,
-  }
-);
+const Footer = dynamic(() => import("@/components/Footer"), {
+  loading: () => <div className="h-40" />,
+});
 const BottomNav = dynamic(() => import("@/components/BottomNav"));
 const CategoriesNav = dynamic(() => import("@/components/CategoriesNav"));
 // const AnalyticsInitializer = dynamic(
@@ -49,7 +46,7 @@ const MiniCartDrawer = dynamic(() => import("@/components/MiniCartDrawer"), {
   // No ssr: false needed - component will render empty on server and hydrate on client
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://example.com';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -57,7 +54,8 @@ export const metadata: Metadata = {
     default: "WooCommerce Headless Store",
     template: "%s | WooCommerce Store",
   },
-  description: "A modern headless e-commerce solution with Next.js and WooCommerce. Shop the latest products with fast, secure checkout.",
+  description:
+    "A modern headless e-commerce solution with Next.js and WooCommerce. Shop the latest products with fast, secure checkout.",
   keywords: ["e-commerce", "woocommerce", "online store", "shopping", "headless commerce"],
   authors: [{ name: "WooCommerce Store" }],
   creator: "WooCommerce Store",
@@ -119,23 +117,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className="color-scheme-light">
-      <body 
-        suppressHydrationWarning
-        className={`antialiased ${poppins.className}`}
-      >
+      <body suppressHydrationWarning className={`antialiased ${poppins.className}`}>
         {/* Remove browser extension attributes before React hydrates */}
-        <Script
-          src="/remove-extension-attributes.js"
-          strategy="beforeInteractive"
-        />
+        <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" />
 
         <NavigationProgress />
-        <SpeedInsights/>
+        <SpeedInsights />
         <Analytics />
         <ErrorBoundary>
           <CoreProviders>
             <CommerceProviders>
-
               {/* <AnalyticsInitializer /> */}
 
               <div className="app-shell">
@@ -147,7 +138,7 @@ export default function RootLayout({
                 <main className="flex-1 pb-20 md:pb-24 lg:pb-0" suppressHydrationWarning>
                   <MainContent>{children}</MainContent>
                 </main>
-                
+
                 <Footer />
                 <MiniCartDrawer />
                 <BottomNav />

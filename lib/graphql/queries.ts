@@ -1,10 +1,10 @@
 /**
  * Common GraphQL Queries for WooCommerce
- * 
+ *
  * These queries use WPGraphQL + WooGraphQL schema
  */
 
-import { graphqlQuery, isGraphQLAvailable } from './client';
+import { graphqlQuery, isGraphQLAvailable } from "./client";
 
 /**
  * Product fields fragment
@@ -59,13 +59,13 @@ export async function getProductsGraphQL(params: {
   category?: string;
   search?: string;
   orderBy?: string;
-  order?: 'ASC' | 'DESC';
+  order?: "ASC" | "DESC";
 }): Promise<any> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL not available');
+    throw new Error("GraphQL not available");
   }
 
-  const { first = 24, after, category, search, orderBy = 'DATE', order = 'DESC' } = params;
+  const { first = 24, after, category, search, orderBy = "DATE", order = "DESC" } = params;
 
   const query = `
     query GetProducts($first: Int, $after: String, $category: String, $search: String, $orderBy: ProductsOrderbyEnum, $order: OrderEnum) {
@@ -73,8 +73,8 @@ export async function getProductsGraphQL(params: {
         first: $first
         after: $after
         where: {
-          ${category ? `category: $category` : ''}
-          ${search ? `search: $search` : ''}
+          ${category ? `category: $category` : ""}
+          ${search ? `search: $search` : ""}
           orderby: { field: $orderBy, order: $order }
         }
       ) {
@@ -106,7 +106,7 @@ export async function getProductsGraphQL(params: {
  */
 export async function getProductBySlugGraphQL(slug: string): Promise<any> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL not available');
+    throw new Error("GraphQL not available");
   }
 
   const query = `
@@ -144,7 +144,7 @@ export async function getCategoriesGraphQL(params: {
   parent?: number;
 }): Promise<any> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL not available');
+    throw new Error("GraphQL not available");
   }
 
   const { first = 100, parent } = params;
@@ -153,7 +153,7 @@ export async function getCategoriesGraphQL(params: {
     query GetCategories($first: Int, $parent: Int) {
       productCategories(
         first: $first
-        where: { ${parent ? `parent: $parent` : ''} }
+        where: { ${parent ? `parent: $parent` : ""} }
       ) {
         nodes {
           id
@@ -194,7 +194,7 @@ export async function getProductsByCategoryGraphQL(
   } = {}
 ): Promise<any> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL not available');
+    throw new Error("GraphQL not available");
   }
 
   const { first = 24, after } = params;
@@ -239,7 +239,7 @@ export async function searchProductsGraphQL(
   } = {}
 ): Promise<any> {
   if (!isGraphQLAvailable()) {
-    throw new Error('GraphQL not available');
+    throw new Error("GraphQL not available");
   }
 
   const { first = 24, after } = params;
@@ -272,4 +272,3 @@ export async function searchProductsGraphQL(
     },
   });
 }
-

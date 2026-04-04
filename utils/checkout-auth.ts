@@ -5,12 +5,17 @@ import { userCanUsePayOnAccount } from "@/lib/checkout-payment-roles";
 import type { CheckoutActor } from "@/types/checkout";
 
 function norm(input: unknown): string {
-  return String(input || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 }
 
 function parseBooleanish(value: unknown): boolean {
   if (value === true) return true;
-  const v = String(value || "").trim().toLowerCase();
+  const v = String(value || "")
+    .trim()
+    .toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
@@ -78,4 +83,3 @@ export async function resolveCheckoutActor(
 export function canUseOnAccount(actor: CheckoutActor): boolean {
   return userCanUsePayOnAccount(actor.roles) || actor.ndisApproved === true;
 }
-

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath, revalidateTag } from 'next/cache';
-import { invalidateProducts, invalidateCategories, invalidateAll } from '@/lib/cache';
-import { checkRateLimitSafe } from '@/lib/rate-limit';
-import crypto from 'crypto';
+import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { invalidateProducts, invalidateCategories, invalidateAll } from "@/lib/cache";
+import { checkRateLimitSafe } from "@/lib/rate-limit";
+import crypto from "crypto";
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -19,29 +19,29 @@ function getClientIp(request: NextRequest): string {
 
 /**
  * POST /api/revalidate
- * 
+ *
  * On-demand ISR revalidation endpoint
  * Allows manual cache purging when products/categories are updated
- * 
+ *
  * Body:
  * - type: 'path' | 'tag' | 'all'
  * - path?: string (required if type is 'path')
  * - tag?: string (required if type is 'tag')
  * - secret?: string (optional webhook secret)
- * 
+ *
  * Headers:
  * - x-revalidate-secret: webhook secret for external calls
- * 
+ *
  * @example
  * // Revalidate a specific product page
  * POST /api/revalidate
  * { "type": "path", "path": "/products/my-product-slug" }
- * 
+ *
  * @example
  * // Revalidate all product pages
  * POST /api/revalidate
  * { "type": "tag", "tag": "products" }
- * 
+ *
  * @example
  * // Revalidate everything
  * POST /api/revalidate
@@ -50,26 +50,20 @@ function getClientIp(request: NextRequest): string {
 export async function POST(request: NextRequest) {
   try {
     // Strictly require shared secret for revalidation calls.
-    const webhookSecret = request.headers.get('x-revalidate-secret');
+    const webhookSecret = request.headers.get("x-revalidate-secret");
     const expectedSecret = process.env.REVALIDATE_SECRET;
     if (!expectedSecret) {
-      return NextResponse.json(
-        { error: 'Revalidation is not configured' },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Revalidation is not configured" }, { status: 503 });
     }
     if (!webhookSecret || !safeEqual(webhookSecret, expectedSecret)) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const identifier = `revalidate:${getClientIp(request)}`;
     const rl = await checkRateLimitSafe(identifier, { windowMs: 60_000, maxRequests: 10 });
     if (!rl.ok) {
       return NextResponse.json(
-        { error: 'Too many requests' },
+        { error: "Too many requests" },
         {
           status: 429,
           headers: {
@@ -85,10 +79,10 @@ export async function POST(request: NextRequest) {
     const { type, path, tag, paths, tags } = body;
 
     let revalidated: string[] = [];
-    let message = '';
+    let message = "";
 
     switch (type) {
-      case 'path':
+      case "path":
         // Revalidate single path
         if (path && typeof path === "string" && path.startsWith("/")) {
           revalidatePath(path);
@@ -106,63 +100,63 @@ export async function POST(request: NextRequest) {
         message = `Revalidated ${revalidated.length} path(s)`;
         break;
 
-      case 'tag':
+      case "tag":
         // Revalidate single tag
         if (tag && typeof tag === "string") {
-          revalidateTag(tag, 'page');
+          revalidateTag(tag, "page");
           revalidated.push(tag);
         }
         // Revalidate multiple tags
         if (tags && Array.isArray(tags)) {
           for (const t of tags) {
             if (typeof t === "string") {
-              revalidateTag(t, 'page');
+              revalidateTag(t, "page");
               revalidated.push(t);
             }
           }
         }
-        message = `Revalidated tag(s): ${revalidated.join(', ')}`;
+        message = `Revalidated tag(s): ${revalidated.join(", ")}`;
         break;
 
-      case 'products':
+      case "products":
         // Revalidate all product-related caches
-        revalidateTag('products', 'page');
-        revalidatePath('/shop');
-        revalidatePath('/products/[slug]', 'page');
+        revalidateTag("products", "page");
+        revalidatePath("/shop");
+        revalidatePath("/products/[slug]", "page");
         invalidateProducts(); // Also clear API cache
-        revalidated = ['products', '/shop', '/products/*'];
-        message = 'Revalidated all product pages and caches';
+        revalidated = ["products", "/shop", "/products/*"];
+        message = "Revalidated all product pages and caches";
         break;
 
-      case 'categories':
+      case "categories":
         // Revalidate all category-related caches
-        revalidateTag('categories', 'page');
-        revalidatePath('/product-category/[slug]', 'page');
+        revalidateTag("categories", "page");
+        revalidatePath("/product-category/[slug]", "page");
         invalidateCategories(); // Also clear API cache
-        revalidated = ['categories', '/product-category/*'];
-        message = 'Revalidated all category pages and caches';
+        revalidated = ["categories", "/product-category/*"];
+        message = "Revalidated all category pages and caches";
         break;
 
-      case 'homepage':
+      case "homepage":
         // Revalidate homepage
-        revalidatePath('/');
-        revalidated = ['/'];
-        message = 'Revalidated homepage';
+        revalidatePath("/");
+        revalidated = ["/"];
+        message = "Revalidated homepage";
         break;
 
-      case 'all':
+      case "all":
         // Revalidate everything
-        revalidatePath('/', 'layout'); // Revalidate entire site
+        revalidatePath("/", "layout"); // Revalidate entire site
         invalidateAll(); // Clear all API caches
-        revalidated = ['/*'];
-        message = 'Revalidated entire site';
+        revalidated = ["/*"];
+        message = "Revalidated entire site";
         break;
 
       default:
         return NextResponse.json(
-          { 
-            error: 'Invalid type. Use: path, tag, products, categories, homepage, or all',
-            validTypes: ['path', 'tag', 'products', 'categories', 'homepage', 'all'],
+          {
+            error: "Invalid type. Use: path, tag, products, categories, homepage, or all",
+            validTypes: ["path", "tag", "products", "categories", "homepage", "all"],
           },
           { status: 400 }
         );
@@ -175,19 +169,16 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Revalidation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to revalidate' },
-      { status: 500 }
-    );
+    console.error("Revalidation error:", error);
+    return NextResponse.json({ error: "Failed to revalidate" }, { status: 500 });
   }
 }
 
 /**
  * GET /api/revalidate
- * 
+ *
  * Quick revalidation via URL params (for webhooks that only support GET)
- * 
+ *
  * @example
  * GET /api/revalidate?secret=xxx&type=products
  * GET /api/revalidate?secret=xxx&path=/products/my-product
@@ -195,46 +186,40 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const secret = searchParams.get('secret');
-    const type = searchParams.get('type');
-    const path = searchParams.get('path');
-    const tag = searchParams.get('tag');
+    const secret = searchParams.get("secret");
+    const type = searchParams.get("type");
+    const path = searchParams.get("path");
+    const tag = searchParams.get("tag");
 
     const expectedSecret = process.env.REVALIDATE_SECRET;
 
     // Verify secret
     if (!expectedSecret || !secret || !safeEqual(secret, expectedSecret)) {
-      return NextResponse.json(
-        { error: 'Invalid secret' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid secret" }, { status: 401 });
     }
 
-    let message = '';
+    let message = "";
 
     if (path) {
       revalidatePath(path);
       message = `Revalidated path: ${path}`;
     } else if (tag) {
-      revalidateTag(tag, 'page');
+      revalidateTag(tag, "page");
       message = `Revalidated tag: ${tag}`;
-    } else if (type === 'products') {
-      revalidateTag('products', 'page');
+    } else if (type === "products") {
+      revalidateTag("products", "page");
       invalidateProducts();
-      message = 'Revalidated all products';
-    } else if (type === 'categories') {
-      revalidateTag('categories', 'page');
+      message = "Revalidated all products";
+    } else if (type === "categories") {
+      revalidateTag("categories", "page");
       invalidateCategories();
-      message = 'Revalidated all categories';
-    } else if (type === 'all') {
-      revalidatePath('/', 'layout');
+      message = "Revalidated all categories";
+    } else if (type === "all") {
+      revalidatePath("/", "layout");
       invalidateAll();
-      message = 'Revalidated entire site';
+      message = "Revalidated entire site";
     } else {
-      return NextResponse.json(
-        { error: 'Missing path, tag, or type parameter' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing path, tag, or type parameter" }, { status: 400 });
     }
 
     return NextResponse.json({
@@ -243,11 +228,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Revalidation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to revalidate' },
-      { status: 500 }
-    );
+    console.error("Revalidation error:", error);
+    return NextResponse.json({ error: "Failed to revalidate" }, { status: 500 });
   }
 }
-

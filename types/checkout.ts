@@ -71,4 +71,3 @@ export type CheckoutErrorCode =
   | "SERVER_ERROR"
   | "NOT_FOUND"
   | "CONFLICT";
-

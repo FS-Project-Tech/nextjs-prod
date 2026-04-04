@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 
 export interface Order {
   id: number;
@@ -57,17 +57,12 @@ interface UseOrdersResult {
 }
 
 export function useOrders(page: number = 1): UseOrdersResult {
-  const {
-    data,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: ['orders', page],
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["orders", page],
     queryFn: async () => {
       const response = await fetch(`/api/dashboard/orders?page=${page}`, {
-        credentials: 'include',
-        cache: 'no-store',
+        credentials: "include",
+        cache: "no-store",
       });
 
       const raw = await response.text();
@@ -83,19 +78,19 @@ export function useOrders(page: number = 1): UseOrdersResult {
       if (!response.ok) {
         throw new Error(result?.error || `Failed to fetch orders: ${response.status}`);
       }
-      
+
       // Log if there's an error in the response
       if (result.error) {
-        console.error('Orders API error:', result.error, result.debug);
+        console.error("Orders API error:", result.error, result.debug);
       }
-      
+
       return {
         orders: result.orders || [],
         pagination: result.pagination || null,
       };
     },
     staleTime: 60 * 1000, // 1 minute
-    retry: process.env.NODE_ENV === 'production' ? 1 : 0, // avoid duplicate fetches in dev
+    retry: process.env.NODE_ENV === "production" ? 1 : 0, // avoid duplicate fetches in dev
   });
 
   return {
@@ -108,4 +103,3 @@ export function useOrders(page: number = 1): UseOrdersResult {
     },
   };
 }
-

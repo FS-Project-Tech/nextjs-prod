@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { HandlePaymentResult } from "@/lib/services/paymentService";
-import { parseCheckoutPayload } from "@/utils/checkout-validation";
+import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { canUseOnAccount, resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
@@ -14,7 +14,9 @@ import { handlePayment } from "@/lib/services/paymentService";
 export const dynamic = "force-dynamic";
 
 function normalizeCountry(country: string | undefined): string {
-  const c = String(country || "").trim().toUpperCase();
+  const c = String(country || "")
+    .trim()
+    .toUpperCase();
   if (!c) return "AU";
   if (c === "AUSTRALIA") return "AU";
   return c;
@@ -73,23 +75,19 @@ function jsonSuccess(
       ? { url: paymentResult.url }
       : { redirect: paymentResult.redirect }),
   };
-  console.log("[checkout-create-order] complete", {
-    type: body.type,
-    orderId: body.orderId,
-  });
-  return NextResponse.json(body, {
-    status: 200,
-    headers: orderResponseHeaders(orderIdRaw),
-  });
+  return NextResponse.json(
+    { success: true, data: body },
+    {
+      status: 200,
+      headers: orderResponseHeaders(orderIdRaw),
+    }
+  );
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const rawBody = await readJsonBody(req);
     const payload = parseCheckoutPayload(rawBody);
-
-    console.log("Checkout request:", rawBody);
-    console.log("Payment method:", payload.payment_method);
 
     const actor = await resolveCheckoutActor({
       skipNdisCustomerLookup: payload.payment_method !== "cod",
@@ -106,26 +104,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return NextResponse.json(
           {
             success: false,
-            error:
-              "On Account is only available for approved administrator accounts.",
+            error: "On Account is only available for approved administrator accounts.",
           },
           { status: 403 }
         );
       }
     }
 
-    const { validatedLineItems, shippingLine } =
-      await validateAndRecalculateCheckout(payload);
+    const { validatedLineItems, shippingLine } = await validateAndRecalculateCheckout(payload);
 
-    console.log("[checkout-create-order] validated", {
-      payment_method: payload.payment_method,
-      lineItemCount: validatedLineItems.length,
-    });
-
-    const paymentTitle =
-      payload.payment_method === "eway"
-        ? "Credit Card (eWAY)"
-        : "On Account";
+    const paymentTitle = payload.payment_method === "eway" ? "Credit Card (eWAY)" : "On Account";
 
     let order: unknown;
     try {
@@ -135,9 +123,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         set_paid: false,
         status: "pending",
         customer_id:
-          typeof actor.userId === "number" && actor.userId > 0
-            ? actor.userId
-            : undefined,
+          typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
         line_items: validatedLineItems,
         billing: {
           ...payload.billing,
@@ -150,9 +136,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         shipping_line: shippingLine,
         coupon_code: payload.coupon_code,
         meta_data: [
-          ...(payload.ndis_type
-            ? [{ key: "ndis_type", value: payload.ndis_type }]
-            : []),
+          ...(payload.ndis_type ? [{ key: "ndis_type", value: payload.ndis_type }] : []),
           {
             key: INSURANCE_OPTION_META_KEY,
             value: payload.insurance_option === "yes" ? "yes" : "no",
@@ -169,7 +153,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         response?: { status?: number; data?: unknown };
       };
       const status = axiosLike.response?.status;
-      let rawData = axiosLike.response?.data;
+      const rawData = axiosLike.response?.data;
       let rawText: string | undefined;
       if (typeof rawData === "string") {
         rawText = rawData;
@@ -213,14 +197,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    console.log("Order created:", orderIdRaw);
-
     const postIdNum =
-      typeof orderIdRaw === "number"
-        ? orderIdRaw
-        : Number.parseInt(String(orderIdRaw), 10);
-    const postId =
-      Number.isFinite(postIdNum) && postIdNum > 0 ? postIdNum : null;
+      typeof orderIdRaw === "number" ? orderIdRaw : Number.parseInt(String(orderIdRaw), 10);
+    const postId = Number.isFinite(postIdNum) && postIdNum > 0 ? postIdNum : null;
 
     if (postId != null && payload.insurance_option === "yes") {
       try {
@@ -244,10 +223,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ...paymentCtx,
       });
       if (paymentResult.type === "error") {
-        return NextResponse.json(
-          { success: false, error: paymentResult.message },
-          { status: 502 }
-        );
+        return NextResponse.json({ success: false, error: paymentResult.message }, { status: 502 });
       }
       return jsonSuccess(paymentResult, orderIdRaw);
     }
@@ -259,18 +235,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ...paymentCtx,
       });
       if (paymentResult.type === "error") {
-        return NextResponse.json(
-          { success: false, error: paymentResult.message },
-          { status: 502 }
-        );
+        return NextResponse.json({ success: false, error: paymentResult.message }, { status: 502 });
       }
       return jsonSuccess(paymentResult, orderIdRaw);
     }
 
-    return NextResponse.json(
-      { success: false, error: "Invalid payment method." },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: "Invalid payment method." }, { status: 400 });
   } catch (error: unknown) {
     console.error("Checkout API error:", error);
 
@@ -279,14 +249,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(zod, { status: 400 });
     }
 
-    const cartErrData = (error as { data?: { type?: string; missing?: unknown[] } })
-      ?.data;
+    const cartErrData = (error as { data?: { type?: string; missing?: unknown[] } })?.data;
     if (cartErrData?.type === "cart_items_unavailable") {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Some items in your cart are no longer available. Please review your cart.",
+          error: "Some items in your cart are no longer available. Please review your cart.",
           code: "CART_ITEMS_UNAVAILABLE",
           missingItems: cartErrData.missing ?? [],
         },
@@ -297,16 +265,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid product mapping from WooCommerce. Likely product type or plugin issue.",
+          error: "Invalid product mapping from WooCommerce. Likely product type or plugin issue.",
           code: "WOO_INVALID_PRODUCT_MAPPING",
         },
         { status: 502 }
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : "Checkout failed";
+    const message = error instanceof Error ? error.message : "Checkout failed";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

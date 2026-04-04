@@ -1,10 +1,10 @@
 /**
  * API Route Caching Utilities
- * 
+ *
  * Provides easy-to-use wrappers for caching API responses in Next.js routes.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import {
   cached,
   responseCache,
@@ -13,7 +13,7 @@ import {
   CACHE_TAGS,
   type CacheOptions,
   type CacheHeaders,
-} from './index';
+} from "./index";
 
 // ============================================================================
 // Types
@@ -46,7 +46,7 @@ export interface CachedApiResponse<T = any> {
 
 /**
  * Wrap an API route handler with caching
- * 
+ *
  * @example
  * ```ts
  * export const GET = withApiCache(
@@ -80,7 +80,7 @@ export function withApiCache<T>(
     if (shouldCache && !shouldCache(request)) {
       const data = await handler(request);
       return createResponse(data, false, {
-        'Cache-Control': 'no-store',
+        "Cache-Control": "no-store",
       });
     }
 
@@ -90,13 +90,13 @@ export function withApiCache<T>(
       : `api:${request.nextUrl.pathname}${request.nextUrl.search}`;
 
     // Check if client wants fresh data
-    const noCache = request.headers.get('cache-control')?.includes('no-cache');
+    const noCache = request.headers.get("cache-control")?.includes("no-cache");
     const forceRefresh = noCache || cacheOptions.forceRefresh;
 
     try {
       // Attempt to get cached response
       let wasCached = false;
-      
+
       const data = await cached<T>(
         cacheKey,
         async () => {
@@ -135,11 +135,7 @@ export function withApiCache<T>(
 /**
  * Create a NextResponse with caching metadata
  */
-function createResponse<T>(
-  data: T,
-  cached: boolean,
-  headers: CacheHeaders
-): NextResponse {
+function createResponse<T>(data: T, cached: boolean, headers: CacheHeaders): NextResponse {
   const response: CachedApiResponse<T> = {
     data,
     cached,
@@ -147,15 +143,16 @@ function createResponse<T>(
   };
 
   // If data already has a specific structure, preserve it
-  const body = typeof data === 'object' && data !== null && !Array.isArray(data)
-    ? { ...data as object, _cached: cached, _timestamp: Date.now() }
-    : data;
+  const body =
+    typeof data === "object" && data !== null && !Array.isArray(data)
+      ? { ...(data as object), _cached: cached, _timestamp: Date.now() }
+      : data;
 
   return NextResponse.json(body, {
     headers: {
       ...headers,
-      'X-Cache': cached ? 'HIT' : 'MISS',
-      'X-Cache-Timestamp': String(Date.now()),
+      "X-Cache": cached ? "HIT" : "MISS",
+      "X-Cache-Timestamp": String(Date.now()),
     },
   });
 }
@@ -229,8 +226,8 @@ export function getSearchParamsKey(request: NextRequest): string {
   const params = Object.fromEntries(request.nextUrl.searchParams.entries());
   return Object.keys(params)
     .sort()
-    .map(k => `${k}=${params[k]}`)
-    .join('&');
+    .map((k) => `${k}=${params[k]}`)
+    .join("&");
 }
 
 /**
@@ -238,18 +235,18 @@ export function getSearchParamsKey(request: NextRequest): string {
  */
 export function shouldBypassCache(request: NextRequest): boolean {
   // Check Cache-Control header
-  const cacheControl = request.headers.get('cache-control');
-  if (cacheControl?.includes('no-cache') || cacheControl?.includes('no-store')) {
+  const cacheControl = request.headers.get("cache-control");
+  if (cacheControl?.includes("no-cache") || cacheControl?.includes("no-store")) {
     return true;
   }
 
   // Check custom header
-  if (request.headers.get('x-bypass-cache') === 'true') {
+  if (request.headers.get("x-bypass-cache") === "true") {
     return true;
   }
 
   // POST, PUT, DELETE should not use cached responses
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)) {
     return true;
   }
 
@@ -291,8 +288,8 @@ export function noCacheResponse<T>(data: T, status: number = 200): NextResponse 
   return NextResponse.json(data, {
     status,
     headers: {
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Pragma': 'no-cache',
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
     },
   });
 }
@@ -301,10 +298,4 @@ export function noCacheResponse<T>(data: T, status: number = 200): NextResponse 
 // Exports
 // ============================================================================
 
-export {
-  CACHE_TTL,
-  CACHE_TAGS,
-  getCacheHeaders,
-  responseCache,
-};
-
+export { CACHE_TTL, CACHE_TAGS, getCacheHeaders, responseCache };

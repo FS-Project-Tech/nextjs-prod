@@ -11,22 +11,22 @@ import {
   SessionErrorCode,
   SessionStatus,
   DEFAULT_SESSION_CONFIG,
-} from './types';
-import {
-  validateSession,
-  createSessionError,
-} from './manager';
-import { normalizeError, isAbortError, isTimeoutError, getErrorMessage } from '@/lib/utils/errors';
+} from "./types";
+import { validateSession, createSessionError } from "./manager";
+import { normalizeError, isAbortError, isTimeoutError, getErrorMessage } from "@/lib/utils/errors";
 
 /**
  * Request cache for deduplication - stores resolved data instead of promises
  * to avoid Response stream cloning issues in Node.js
  */
-const requestCache = new Map<string, {
-  data: unknown;
-  status: number;
-  timestamp: number;
-}>();
+const requestCache = new Map<
+  string,
+  {
+    data: unknown;
+    status: number;
+    timestamp: number;
+  }
+>();
 
 const CACHE_DEDUP_WINDOW = 100; // 100ms window for request deduplication
 
@@ -39,8 +39,8 @@ const pendingRequests = new Map<string, Promise<{ data: unknown; status: number 
  * Generate cache key for request
  */
 function generateCacheKey(url: string, options: RequestInit): string {
-  const method = options.method || 'GET';
-  const body = options.body ? String(options.body) : '';
+  const method = options.method || "GET";
+  const body = options.body ? String(options.body) : "";
   return `${method}:${url}:${body}`;
 }
 
@@ -48,7 +48,7 @@ function generateCacheKey(url: string, options: RequestInit): string {
  * Sleep utility for retry delays
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -65,26 +65,26 @@ function isRetryableError(error: unknown, status?: number): boolean {
   // Network errors are retryable
   if (error instanceof TypeError) {
     const message = getErrorMessage(error);
-    if (message.includes('fetch')) {
+    if (message.includes("fetch")) {
       return true;
     }
   }
-  
+
   // Timeout errors are retryable
   if (isAbortError(error) || isTimeoutError(error)) {
     return true;
   }
-  
+
   // Server errors (5xx) are retryable
   if (status && status >= 500 && status < 600) {
     return true;
   }
-  
+
   // Rate limiting (429) is retryable
   if (status === 429) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -96,28 +96,20 @@ function statusToSessionError(status: number, message?: string): SessionError {
     case 401:
       return createSessionError(
         SessionErrorCode.TOKEN_INVALID,
-        message || 'Authentication required',
+        message || "Authentication required",
         false
       );
     case 403:
-      return createSessionError(
-        SessionErrorCode.TOKEN_REVOKED,
-        message || 'Access denied',
-        false
-      );
+      return createSessionError(SessionErrorCode.TOKEN_REVOKED, message || "Access denied", false);
     case 429:
       return createSessionError(
         SessionErrorCode.RATE_LIMITED,
-        message || 'Too many requests',
+        message || "Too many requests",
         true
       );
     default:
       if (status >= 500) {
-        return createSessionError(
-          SessionErrorCode.SERVER_ERROR,
-          message || 'Server error',
-          true
-        );
+        return createSessionError(SessionErrorCode.SERVER_ERROR, message || "Server error", true);
       }
       return createSessionError(
         SessionErrorCode.VALIDATION_FAILED,
@@ -137,7 +129,7 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -166,58 +158,56 @@ export async function secureFetch<T = unknown>(
     retries = DEFAULT_SESSION_CONFIG.maxRetries,
     ...fetchOptions
   } = options;
-  
+
   // Validate session if auth is required
   if (requireAuth) {
     const validation = validateSession(session);
     if (!validation.isValid) {
       return {
         data: null,
-        error: validation.error || createSessionError(
-          SessionErrorCode.TOKEN_INVALID,
-          'Invalid session',
-          false
-        ),
+        error:
+          validation.error ||
+          createSessionError(SessionErrorCode.TOKEN_INVALID, "Invalid session", false),
         status: 401,
         cached: false,
         sessionValid: false,
       };
     }
   }
-  
+
   // Build headers
   const headers = new Headers(fetchOptions.headers);
-  
+
   // Add auth header if session has token
   if (session?.token) {
-    headers.set('Authorization', `Bearer ${session.token}`);
+    headers.set("Authorization", `Bearer ${session.token}`);
   }
-  
+
   // Add CSRF token
   if (session?.csrfToken) {
-    headers.set('X-CSRF-Token', session.csrfToken);
+    headers.set("X-CSRF-Token", session.csrfToken);
   }
-  
+
   // Add cart session header if needed
   if (includeCart && session?.cart?.cartKey) {
-    headers.set('X-WC-Session', session.cart.cartKey);
+    headers.set("X-WC-Session", session.cart.cartKey);
   }
-  
+
   // Standard headers
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
-  headers.set('Accept', 'application/json');
-  
+  headers.set("Accept", "application/json");
+
   const requestOptions: RequestInit = {
     ...fetchOptions,
     headers,
-    credentials: 'include',
+    credentials: "include",
   };
-  
+
   // Check for duplicate request (deduplication)
   const cacheKey = generateCacheKey(url, requestOptions);
-  
+
   // Check if we have cached data from a recent identical request
   const cachedData = requestCache.get(cacheKey);
   if (!skipCache && cachedData) {
@@ -234,7 +224,7 @@ export async function secureFetch<T = unknown>(
       requestCache.delete(cacheKey);
     }
   }
-  
+
   // Check if there's a pending request for the same resource
   const pendingRequest = pendingRequests.get(cacheKey);
   if (!skipCache && pendingRequest) {
@@ -253,19 +243,19 @@ export async function secureFetch<T = unknown>(
       // Pending request failed, continue with new request
     }
   }
-  
+
   // Retry loop
   let lastError: SessionError | null = null;
   let lastStatus = 0;
-  
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       // Create the fetch promise
       const fetchPromise = fetchWithTimeout(url, requestOptions, timeout);
-      
+
       const response = await fetchPromise;
       lastStatus = response.status;
-      
+
       // Handle auth errors
       if (response.status === 401 || response.status === 403) {
         return {
@@ -276,19 +266,23 @@ export async function secureFetch<T = unknown>(
           sessionValid: false,
         };
       }
-      
+
       // Handle rate limiting
       if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After');
-        const delay = retryAfter 
-          ? parseInt(retryAfter, 10) * 1000 
-          : getRetryDelay(attempt, DEFAULT_SESSION_CONFIG.retryDelay, DEFAULT_SESSION_CONFIG.retryBackoff);
-        
+        const retryAfter = response.headers.get("Retry-After");
+        const delay = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : getRetryDelay(
+              attempt,
+              DEFAULT_SESSION_CONFIG.retryDelay,
+              DEFAULT_SESSION_CONFIG.retryBackoff
+            );
+
         if (attempt < retries) {
           await sleep(delay);
           continue;
         }
-        
+
         return {
           data: null,
           error: statusToSessionError(429),
@@ -297,14 +291,18 @@ export async function secureFetch<T = unknown>(
           sessionValid: true,
         };
       }
-      
+
       // Handle server errors with retry
       if (response.status >= 500 && attempt < retries) {
-        const delay = getRetryDelay(attempt, DEFAULT_SESSION_CONFIG.retryDelay, DEFAULT_SESSION_CONFIG.retryBackoff);
+        const delay = getRetryDelay(
+          attempt,
+          DEFAULT_SESSION_CONFIG.retryDelay,
+          DEFAULT_SESSION_CONFIG.retryBackoff
+        );
         await sleep(delay);
         continue;
       }
-      
+
       // Handle non-OK responses
       if (!response.ok) {
         let errorMessage: string | undefined;
@@ -314,7 +312,7 @@ export async function secureFetch<T = unknown>(
         } catch {
           // Ignore JSON parse errors
         }
-        
+
         return {
           data: null,
           error: statusToSessionError(response.status, errorMessage),
@@ -323,12 +321,12 @@ export async function secureFetch<T = unknown>(
           sessionValid: true,
         };
       }
-      
+
       // Parse successful response
       let data: T | null = null;
-      const contentType = response.headers.get('Content-Type');
-      
-      if (contentType?.includes('application/json')) {
+      const contentType = response.headers.get("Content-Type");
+
+      if (contentType?.includes("application/json")) {
         const text = await response.text();
         if (text.trim()) {
           try {
@@ -336,12 +334,12 @@ export async function secureFetch<T = unknown>(
           } catch {
             // Clean up pending request tracker
             pendingRequests.delete(cacheKey);
-            
+
             return {
               data: null,
               error: createSessionError(
                 SessionErrorCode.VALIDATION_FAILED,
-                'Invalid JSON response',
+                "Invalid JSON response",
                 false
               ),
               status: response.status,
@@ -351,7 +349,7 @@ export async function secureFetch<T = unknown>(
           }
         }
       }
-      
+
       // Cache the successful response data for deduplication
       if (!skipCache && data !== null) {
         requestCache.set(cacheKey, {
@@ -360,10 +358,10 @@ export async function secureFetch<T = unknown>(
           timestamp: Date.now(),
         });
       }
-      
+
       // Clean up pending request tracker
       pendingRequests.delete(cacheKey);
-      
+
       return {
         data,
         error: null,
@@ -371,59 +369,60 @@ export async function secureFetch<T = unknown>(
         cached: false,
         sessionValid: true,
       };
-      
     } catch (error: unknown) {
       const normalized = normalizeError(error);
       const retryable = isRetryableError(error);
-      
+
       // Map AppError code to SessionErrorCode
       let sessionErrorCode: SessionErrorCode;
       switch (normalized.code) {
-        case 'NETWORK_ERROR':
+        case "NETWORK_ERROR":
           sessionErrorCode = SessionErrorCode.NETWORK_ERROR;
           break;
-        case 'TIMEOUT':
+        case "TIMEOUT":
           sessionErrorCode = SessionErrorCode.NETWORK_ERROR;
           break;
-        case 'AUTH_ERROR':
+        case "AUTH_ERROR":
           sessionErrorCode = SessionErrorCode.TOKEN_INVALID;
           break;
-        case 'RATE_LIMITED':
+        case "RATE_LIMITED":
           sessionErrorCode = SessionErrorCode.RATE_LIMITED;
           break;
-        case 'SERVER_ERROR':
+        case "SERVER_ERROR":
           sessionErrorCode = SessionErrorCode.SERVER_ERROR;
           break;
-        case 'VALIDATION_ERROR':
+        case "VALIDATION_ERROR":
           sessionErrorCode = SessionErrorCode.VALIDATION_FAILED;
           break;
         default:
           sessionErrorCode = SessionErrorCode.NETWORK_ERROR;
       }
-      
+
       lastError = createSessionError(sessionErrorCode, normalized.message, retryable);
       lastStatus = normalized.status || 0;
-      
+
       // Retry if possible
       if (isRetryableError(error, lastStatus) && attempt < retries) {
-        const delay = getRetryDelay(attempt, DEFAULT_SESSION_CONFIG.retryDelay, DEFAULT_SESSION_CONFIG.retryBackoff);
+        const delay = getRetryDelay(
+          attempt,
+          DEFAULT_SESSION_CONFIG.retryDelay,
+          DEFAULT_SESSION_CONFIG.retryBackoff
+        );
         await sleep(delay);
         continue;
       }
     }
   }
-  
+
   // Clean up pending request tracker
   pendingRequests.delete(cacheKey);
-  
+
   // All retries exhausted
   return {
     data: null,
-    error: lastError || createSessionError(
-      SessionErrorCode.NETWORK_ERROR,
-      'Request failed after retries',
-      false
-    ),
+    error:
+      lastError ||
+      createSessionError(SessionErrorCode.NETWORK_ERROR, "Request failed after retries", false),
     status: lastStatus,
     cached: false,
     sessionValid: session?.status === SessionStatus.VALID,
@@ -436,9 +435,9 @@ export async function secureFetch<T = unknown>(
 export async function sessionGet<T = unknown>(
   url: string,
   session: SessionData | null,
-  options: Omit<SessionFetchOptions, 'method' | 'body'> = {}
+  options: Omit<SessionFetchOptions, "method" | "body"> = {}
 ): Promise<SessionFetchResult<T>> {
-  return secureFetch<T>(url, session, { ...options, method: 'GET' });
+  return secureFetch<T>(url, session, { ...options, method: "GET" });
 }
 
 /**
@@ -448,11 +447,11 @@ export async function sessionPost<T = unknown>(
   url: string,
   session: SessionData | null,
   body: unknown,
-  options: Omit<SessionFetchOptions, 'method' | 'body'> = {}
+  options: Omit<SessionFetchOptions, "method" | "body"> = {}
 ): Promise<SessionFetchResult<T>> {
   return secureFetch<T>(url, session, {
     ...options,
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(body),
   });
 }
@@ -464,11 +463,11 @@ export async function sessionPut<T = unknown>(
   url: string,
   session: SessionData | null,
   body: unknown,
-  options: Omit<SessionFetchOptions, 'method' | 'body'> = {}
+  options: Omit<SessionFetchOptions, "method" | "body"> = {}
 ): Promise<SessionFetchResult<T>> {
   return secureFetch<T>(url, session, {
     ...options,
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify(body),
   });
 }
@@ -479,9 +478,9 @@ export async function sessionPut<T = unknown>(
 export async function sessionDelete<T = unknown>(
   url: string,
   session: SessionData | null,
-  options: Omit<SessionFetchOptions, 'method'> = {}
+  options: Omit<SessionFetchOptions, "method"> = {}
 ): Promise<SessionFetchResult<T>> {
-  return secureFetch<T>(url, session, { ...options, method: 'DELETE' });
+  return secureFetch<T>(url, session, { ...options, method: "DELETE" });
 }
 
 /**
@@ -491,12 +490,11 @@ export async function sessionPatch<T = unknown>(
   url: string,
   session: SessionData | null,
   body: unknown,
-  options: Omit<SessionFetchOptions, 'method' | 'body'> = {}
+  options: Omit<SessionFetchOptions, "method" | "body"> = {}
 ): Promise<SessionFetchResult<T>> {
   return secureFetch<T>(url, session, {
     ...options,
-    method: 'PATCH',
+    method: "PATCH",
     body: JSON.stringify(body),
   });
 }
-

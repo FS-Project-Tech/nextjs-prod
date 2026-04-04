@@ -111,4 +111,3 @@ export default function ProductGallery({ images }: ProductGalleryProps) {
     </div>
   );
 }
-
