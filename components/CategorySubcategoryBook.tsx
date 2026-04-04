@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import SubcategoryDigitalCatalogue from "./SubcategoryDigitalCatalogue";
+import { generateCataloguePDF } from "@/lib/catalogue-pdf";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 
 const HTMLFlipBook = dynamic(() => import("react-pageflip"), { ssr: false });
