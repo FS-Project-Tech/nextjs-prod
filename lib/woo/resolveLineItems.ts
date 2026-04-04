@@ -1,6 +1,15 @@
 import wcAPI from "@/lib/woocommerce";
 import { validateProduct, validateVariation } from "@/lib/woo/validateProduct";
-import { resolveProductRefBySku } from "@/lib/woo/resolveSku";
+import {
+  resolveProductRefBySku,
+  type SkuResolveResult,
+} from "@/lib/woo/resolveSku";
+
+function isSkuResolveFailure(
+  result: SkuResolveResult
+): result is { ok: false; message: string } {
+  return result.ok === false;
+}
 
 export type RequestedLineItem = {
   product_id?: number;
@@ -65,19 +74,21 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
         skuTrim,
         productId > 0 ? productId : undefined
       );
-      if (fromSku.ok) {
+      if (isSkuResolveFailure(fromSku)) {
+        if (productId <= 0) {
+          unavailable.push({
+            product_id: 0,
+            variation_id: null,
+            sku: skuTrim,
+            reason: fromSku.message,
+          });
+          continue;
+        }
+      } else {
         productId = fromSku.product_id;
         if (fromSku.variation_id && fromSku.variation_id > 0) {
           requestedVariationId = fromSku.variation_id;
         }
-      } else if (productId <= 0) {
-        unavailable.push({
-          product_id: 0,
-          variation_id: null,
-          sku: skuTrim,
-          reason: fromSku.message,
-        });
-        continue;
       }
     }
 
