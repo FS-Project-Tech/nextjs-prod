@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/wp-utils";
-import { verifyEwayAccessCode } from "@/lib/eway-responsive-shared";
+import { verifyEwayPayment } from "@/lib/services/ewayService";
 
 /**
  * GET - Fetch order details by ID (post ID) or order number
@@ -45,7 +45,7 @@ export async function GET(
           String(order.status || "").toLowerCase() === "pending" &&
           String(order.payment_method || "").toLowerCase() === "eway"
         ) {
-          const verification = await verifyEwayAccessCode(accessCode);
+          const verification = await verifyEwayPayment(accessCode);
           if (verification.ok && verification.success) {
             try {
               const patch: Record<string, unknown> = {
@@ -55,8 +55,17 @@ export async function GET(
               if (verification.transactionId) {
                 patch.transaction_id = verification.transactionId;
               }
-              const updated = await wcAPI.put(`/orders/${order.id}`, patch);
-              const updatedOrder = updated.data;
+              await wcAPI.put(`/orders/${order.id}`, patch);
+              // Woo PUT sometimes returns an empty body; always GET so the client never receives 200 + empty JSON.
+              const { data: refreshed } = await wcAPI.get(`/orders/${order.id}`);
+              if (!refreshed || typeof refreshed !== "object") {
+                console.error("Order API: eWAY verified but refetch returned no order body");
+                return NextResponse.json(
+                  { error: "Order was updated but details could not be loaded. Please refresh." },
+                  { status: 502 }
+                );
+              }
+              const updatedOrder = refreshed;
               // Best-effort: add payment verification audit trail in Woo order notes.
               try {
                 const note = [

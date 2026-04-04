@@ -34,7 +34,7 @@ export const checkoutInitiateSchema = z.object({
   shipping: addressSchema,
   line_items: z.array(cartItemSchema).min(1),
   shipping_method_id: z.string().trim().min(1),
-  payment_method: z.enum(["eway", "on_account"]),
+  payment_method: z.enum(["eway", "cod"]),
   coupon_code: z.string().trim().optional(),
   insurance_option: z.enum(["yes", "no"]).optional(),
   ndis_type: z.string().trim().optional(),

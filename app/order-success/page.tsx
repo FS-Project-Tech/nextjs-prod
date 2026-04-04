@@ -1,17 +1,55 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCart } from "@/components/CartProvider";
 
 function OrderSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { clear } = useCart();
+  const clearedRef = useRef(false);
 
   useEffect(() => {
     const run = async () => {
-      const orderRef = searchParams.get("order_id") || searchParams.get("order");
+      const orderRef =
+        searchParams.get("order_id") ||
+        searchParams.get("order") ||
+        searchParams.get("orderId");
       const accessCode =
         searchParams.get("AccessCode") || searchParams.get("accessCode");
+
+      // Clear cart once after returning from payment (checkout no longer clears before eWAY).
+      if (!clearedRef.current) {
+        clearedRef.current = true;
+        try {
+          clear();
+          if (typeof window !== "undefined") {
+            if (orderRef) {
+              try {
+                sessionStorage.removeItem(
+                  `headless_clear_cart_for_order_${String(orderRef)}`
+                );
+              } catch {
+                /* ignore */
+              }
+            }
+            try {
+              sessionStorage.removeItem("headless_clear_cart_after_woo_token_checkout");
+            } catch {
+              /* ignore */
+            }
+            fetch("/api/dashboard/cart/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ items: [] }),
+            }).catch(() => {});
+          }
+        } catch {
+          /* ignore */
+        }
+      }
 
       if (accessCode) {
         try {
@@ -39,7 +77,7 @@ function OrderSuccessContent() {
     };
 
     run();
-  }, [router, searchParams]);
+  }, [router, searchParams, clear]);
 
   return (
     <div className="container flex min-h-screen items-center justify-center py-16">

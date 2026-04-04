@@ -1,4 +1,5 @@
-export type PaymentMethod = "eway" | "on_account";
+/** Woo REST `payment_method`: `cod` = On Account (headless), `eway` = card. */
+export type PaymentMethod = "eway" | "cod";
 
 export type CheckoutCartItem = {
   /** Resolved from SKU server-side when possible; optional if `sku` is sent. */

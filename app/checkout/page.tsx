@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense, useMemo } from "react";
+import { useEffect, useState, Suspense, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useForm, Controller } from "react-hook-form";
@@ -109,63 +109,40 @@ const ON_ACCOUNT_BANK_LINES = [
   { label: "BSB number", value: "084-004" },
 ] as const;
 
-/**
- * Some proxies wrap JSON as `{ data: { ... }`.
- * Merge with **outer raw winning** so nested `data` cannot clobber top-level fields with
- * `undefined` (e.g. `{ orderId: 123, data: { orderId: undefined } }` would otherwise drop id).
- */
-function flattenCreateOrderResponse(raw: Record<string, unknown>): Record<string, unknown> {
-  let out: Record<string, unknown> = { ...raw };
-  const mergeInner = (inner: Record<string, unknown>) => {
-    out = { ...inner, ...out };
-  };
-  const d = raw.data;
-  if (d != null && typeof d === "object" && !Array.isArray(d)) {
-    mergeInner(d as Record<string, unknown>);
-  }
-  const r = raw.result;
-  if (r != null && typeof r === "object" && !Array.isArray(r)) {
-    mergeInner(r as Record<string, unknown>);
-  }
-  return out;
+/** Decode body as UTF-8 from bytes (avoids rare empty `text()` with some proxies/encodings). */
+async function readResponseBodyText(res: Response): Promise<string> {
+  const buf = await res.arrayBuffer();
+  return new TextDecoder("utf-8", { fatal: false }).decode(buf);
 }
 
-/** Parse order ref from create-order JSON (handles extra key aliases and nesting). */
-function extractOrderIdFromCreateOrderJson(apiJson: Record<string, unknown>): string | number | undefined {
-  const nestedOrder =
-    typeof apiJson.order === "object" && apiJson.order != null
-      ? (apiJson.order as Record<string, unknown>)
-      : null;
-  const nestedResult =
-    typeof apiJson.result === "object" && apiJson.result != null
-      ? (apiJson.result as Record<string, unknown>)
-      : null;
-  const candidates: unknown[] = [
-    apiJson.orderId,
-    apiJson.order_id,
-    apiJson.wooOrderId,
-    apiJson.orderRef,
-    apiJson.id,
-    apiJson.number,
-    apiJson.orderNumber,
-    nestedOrder?.id,
-    nestedOrder?.order_id,
-    nestedOrder?.ID,
-    nestedResult?.id,
-    nestedResult?.order_id,
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
-    if (typeof c === "string") {
-      const t = c.trim();
-      if (!t) continue;
-      const n = Number.parseInt(t, 10);
-      if (Number.isFinite(n) && n > 0) return n;
+function getResponseHeaderInsensitive(
+  res: Response,
+  headerName: string
+): string | null {
+  const want = headerName.toLowerCase();
+  for (const [k, v] of res.headers.entries()) {
+    if (k.toLowerCase() === want) return v;
+  }
+  return null;
+}
+
+/** Woo order id from create-order response headers (fallback when body is empty/stripped). */
+function pickCreateOrderIdFromHeaders(res: Response): string | null {
+  const encoded = getResponseHeaderInsensitive(res, "X-Create-Order-Id");
+  if (encoded) {
+    const t = encoded.trim();
+    if (t) {
+      try {
+        const d = decodeURIComponent(t);
+        if (d) return d;
+      } catch {
+        /* ignore */
+      }
       return t;
     }
   }
-  return undefined;
+  const plain = getResponseHeaderInsensitive(res, "X-Order-Id")?.trim();
+  return plain || null;
 }
 
 function messageFromCreateOrderError(apiJson: Record<string, unknown>): string | null {
@@ -214,12 +191,17 @@ function CheckoutPageContent() {
   
   const [isMounted, setIsMounted] = useState(false);
   const [placing, setPlacing] = useState(false);
+  /** Synchronous guard — `placing` state updates too late to stop double-clicks (two POSTs; first aborted → "empty response"). */
+  const checkoutSubmitInFlightRef = useRef(false);
   const [selectedBillingAddress, setSelectedBillingAddress] = useState<string>("");
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<string>("");
   const [openNdisSection, setOpenNdisSection] = useState(false);
   const [openHcpSection, setOpenHcpSection] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "on_account">("eway");
+  /** After submit: avoid showing empty-cart UI while navigating to payment or order review. */
+  const [postSubmitNavigation, setPostSubmitNavigation] = useState<
+    null | "secure_payment" | "order_confirmation"
+  >(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod">("eway");
 
   /** When true, eWAY uses token handoff to Woo (create-session → ?checkout_token=). Requires WP mu-plugin + server secret. */
   const ewayTokenFlowEnabled =
@@ -341,8 +323,8 @@ function CheckoutPageContent() {
   const isNdisApprovedMeta = (session?.user as any)?.meta?.ndis_approved === true;
   const canUseOnAccount = hasOnAccountRole || isNdisApprovedMeta;
   const paymentMethods = canUseOnAccount
-  ? (["on_account", "eway"] as const)
-  : (["eway"] as const);
+    ? (["cod", "eway"] as const)
+    : (["eway"] as const);
 
   const billingFirst = watchedBilling?.first_name ?? "";
   const billingLast = watchedBilling?.last_name ?? "";
@@ -386,7 +368,7 @@ function CheckoutPageContent() {
   }, [isMounted, insuranceOptionResolved]);
 
   useEffect(() => {
-    if (!canUseOnAccount && selectedPaymentMethod === "on_account") {
+    if (!canUseOnAccount && selectedPaymentMethod === "cod") {
       setSelectedPaymentMethod("eway");
     }
   }, [canUseOnAccount, selectedPaymentMethod]);
@@ -452,15 +434,24 @@ function CheckoutPageContent() {
   );
 
   const onSubmit = async (data: CheckoutFormData): Promise<void> => {
-    if (items.length === 0) {
-      showError("Your cart is empty");
+    if (checkoutSubmitInFlightRef.current) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[checkout] duplicate submit ignored (already in flight)");
+      }
       return;
     }
-    if (placing) {
+    checkoutSubmitInFlightRef.current = true;
+
+    if (items.length === 0) {
+      checkoutSubmitInFlightRef.current = false;
+      showError("Your cart is empty");
       return;
     }
 
     setPlacing(true);
+    console.log("[checkout] Submitting checkout…", {
+      paymentMethod: selectedPaymentMethod,
+    });
 
     const billing = {
       first_name: data.billing_first_name || "",
@@ -552,40 +543,129 @@ function CheckoutPageContent() {
         credentials: "same-origin",
       });
 
-      const responseText = (await res.text()).replace(/^\uFEFF/, "");
-      let apiJson: Record<string, unknown> = {};
-      if (responseText?.trim()) {
-        try {
-          apiJson = flattenCreateOrderResponse(
-            JSON.parse(responseText) as Record<string, unknown>
+      let responseText = "";
+      try {
+        responseText = (await readResponseBodyText(res)).replace(/^\uFEFF/, "");
+      } catch (readErr) {
+        console.error("[checkout] failed to read response body", readErr);
+        const recoveredId = pickCreateOrderIdFromHeaders(res);
+        if (recoveredId) {
+          if (selectedPaymentMethod === "cod") {
+            setPostSubmitNavigation("order_confirmation");
+            try {
+              clear();
+              if (user?.id) {
+                fetch("/api/dashboard/cart/save", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ items: [] }),
+                }).catch(() => {});
+              }
+            } catch {
+              /* ignore */
+            }
+            success("Order placed successfully.");
+          } else {
+            setPostSubmitNavigation("order_confirmation");
+          }
+          window.location.assign(
+            `/order-review?order_id=${encodeURIComponent(recoveredId)}`
           );
-        } catch {
-          apiJson = {};
+          return;
         }
+        showError(
+          "Could not read the checkout response. Check your connection and try again once."
+        );
+        return;
       }
-
-      const explicitlyFailed =
-        apiJson.success === false ||
-        apiJson.success === "false" ||
-        (Array.isArray(apiJson.issues) &&
-          apiJson.issues.length > 0 &&
-          apiJson.success !== true);
-      if (!res.ok || explicitlyFailed) {
-        const detail = messageFromCreateOrderError(apiJson);
-        if (process.env.NODE_ENV === "development" && !detail) {
-          console.error("[checkout] create-order failed", {
+      const trimmed = responseText.trim();
+      let apiJson: Record<string, unknown> = {};
+      if (trimmed) {
+        try {
+          apiJson = JSON.parse(trimmed) as Record<string, unknown>;
+        } catch {
+          if (process.env.NODE_ENV === "development") {
+            console.error("[checkout] non-JSON response", {
+              endpoint,
+              status: res.status,
+              contentType: res.headers.get("content-type"),
+              preview: responseText.slice(0, 600),
+            });
+          }
+          showError(
+            !res.ok
+              ? `Checkout service error (HTTP ${res.status}). Please try again.`
+              : "Checkout returned an unexpected response. Please try again or contact support."
+          );
+          return;
+        }
+      } else if (!res.ok) {
+        showError(`Checkout service error (HTTP ${res.status}). Please try again.`);
+        return;
+      } else {
+        // Proxies / aborted reads can yield empty body with 200; recover from order id headers.
+        const recoveredId = pickCreateOrderIdFromHeaders(res);
+        if (recoveredId) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn(
+              "[checkout] empty body but order id headers present — recovering",
+              { recoveredId, paymentMethod: selectedPaymentMethod }
+            );
+          }
+          if (selectedPaymentMethod === "cod") {
+            setPostSubmitNavigation("order_confirmation");
+            try {
+              clear();
+              if (user?.id) {
+                fetch("/api/dashboard/cart/save", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ items: [] }),
+                }).catch(() => {});
+              }
+            } catch {
+              /* ignore */
+            }
+            success("Order placed successfully.");
+            window.location.assign(
+              `/order-review?order_id=${encodeURIComponent(recoveredId)}`
+            );
+            return;
+          }
+          // eWAY: order exists but JSON was lost — send user to order review to pay / see status (cart kept until paid).
+          setPostSubmitNavigation("order_confirmation");
+          window.location.assign(
+            `/order-review?order_id=${encodeURIComponent(recoveredId)}`
+          );
+          return;
+        }
+        if (process.env.NODE_ENV === "development") {
+          const headerDump: string[] = [];
+          res.headers.forEach((v, k) => headerDump.push(`${k}: ${v.slice(0, 80)}`));
+          console.error("[checkout] empty OK response", {
+            endpoint,
             status: res.status,
-            bodyPreview: responseText.slice(0, 800),
+            headerKeys: [...res.headers.keys()],
+            headerDump: headerDump.slice(0, 20),
           });
         }
         showError(
-          detail ||
-            `Unable to place order${!res.ok ? ` (HTTP ${res.status})` : ""}. Please try again or contact support.`
+          "Empty response from checkout server. If this persists, check the Network tab for the create-order request."
         );
         return;
       }
 
       if (useTokenHandoff) {
+        if (!res.ok || apiJson.success === false || apiJson.success === "false") {
+          const detail = messageFromCreateOrderError(apiJson);
+          showError(
+            detail ||
+              `Unable to start secure checkout${!res.ok ? ` (HTTP ${res.status})` : ""}.`
+          );
+          return;
+        }
         const redirectUrl =
           typeof apiJson.redirectUrl === "string" ? apiJson.redirectUrl.trim() : "";
         if (!redirectUrl) {
@@ -595,6 +675,75 @@ function CheckoutPageContent() {
           );
           return;
         }
+        console.log("[checkout] Redirecting to store (token checkout):", redirectUrl);
+        // Do not clear cart here — empty cart flashes on Woo/Next before payment completes.
+        try {
+          sessionStorage.setItem("headless_clear_cart_after_woo_token_checkout", "1");
+        } catch {
+          /* ignore */
+        }
+        setPostSubmitNavigation("secure_payment");
+        window.location.assign(redirectUrl);
+        return;
+      }
+
+      if (!res.ok || apiJson.success === false || apiJson.success === "false") {
+        const detail = messageFromCreateOrderError(apiJson);
+        if (process.env.NODE_ENV === "development" && !detail) {
+          console.error("[checkout] create-order failed", { status: res.status, apiJson });
+        }
+        showError(
+          detail ||
+            `Unable to place order${!res.ok ? ` (HTTP ${res.status})` : ""}. Please try again or contact support.`
+        );
+        return;
+      }
+
+      if (apiJson.success !== true && apiJson.success !== "true") {
+        showError("Checkout did not complete successfully.");
+        return;
+      }
+
+      const outcomeType = apiJson.type;
+      const isSuccessType =
+        String(outcomeType || "").toLowerCase() === "success";
+
+      if (
+        outcomeType === "redirect" &&
+        typeof apiJson.url === "string" &&
+        apiJson.url.trim()
+      ) {
+        const payUrl = apiJson.url.trim();
+        console.log("[checkout] Redirecting to hosted payment:", payUrl);
+        // Do not clear cart before leaving — that re-renders this page as "empty cart" until
+        // navigation. Clear when order confirmation loads (order-review / order-success).
+        try {
+          const oid = apiJson.orderId ?? apiJson.order_ref;
+          if (oid != null && String(oid).trim() !== "") {
+            sessionStorage.setItem(
+              `headless_clear_cart_for_order_${String(oid)}`,
+              "1"
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        setPostSubmitNavigation("secure_payment");
+        window.location.assign(payUrl);
+        return;
+      }
+
+      const redirectFromApi =
+        typeof apiJson.redirect === "string" ? apiJson.redirect.trim() : "";
+      const orderIdForReview = apiJson.orderId ?? apiJson.order_ref;
+      const reviewPath =
+        redirectFromApi ||
+        (orderIdForReview != null && String(orderIdForReview).trim() !== ""
+          ? `/order-review?order_id=${encodeURIComponent(String(orderIdForReview))}`
+          : "");
+
+      if (isSuccessType && reviewPath) {
+        setPostSubmitNavigation("order_confirmation");
         try {
           clear();
           if (user?.id) {
@@ -608,102 +757,22 @@ function CheckoutPageContent() {
         } catch {
           /* ignore */
         }
-        window.location.assign(redirectUrl);
-        return;
-      }
-
-      let orderId = extractOrderIdFromCreateOrderJson(apiJson);
-      if (orderId == null && typeof res.headers?.get === "function") {
-        const hdr = res.headers.get("X-Create-Order-Id");
-        if (hdr) {
-          try {
-            const decoded = decodeURIComponent(hdr).trim();
-            if (decoded) {
-              const n = Number.parseInt(decoded, 10);
-              orderId = Number.isFinite(n) && n > 0 ? n : decoded;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-      if (selectedPaymentMethod === "on_account") {
-        setIsRedirecting(true);
-      }
-      try {
-        clear();
-        if (user?.id) {
-          fetch("/api/dashboard/cart/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ items: [] }),
-          }).catch(() => {});
-        }
-      } catch {
-        /* ignore */
-      }
-
-      if (selectedPaymentMethod === "on_account") {
-        console.log("[checkout] create-order response", apiJson);
+        console.log("[checkout] On Account (cod) → order review", {
+          path: reviewPath,
+          hadRedirectField: Boolean(redirectFromApi),
+        });
         success("Order placed successfully.");
-        const redirectFromApi =
-          typeof apiJson.redirect === "string" ? apiJson.redirect.trim() : "";
-        const target =
-          redirectFromApi && redirectFromApi.startsWith("/")
-            ? redirectFromApi
-            : orderId != null && String(orderId).trim() !== ""
-              ? `/order-review?order_id=${encodeURIComponent(String(orderId))}`
-              : "";
-        if (!target) {
-          showError(
-            (typeof apiJson.error === "string" && apiJson.error) ||
-              "Order was created but redirect URL is missing."
-          );
-          return;
-        }
-        window.location.href = target;
+        // Hard navigation: router.push after clear() / state updates is easy to lose in App Router.
+        window.location.assign(reviewPath);
         return;
       }
 
-      if (orderId === undefined || orderId === null || String(orderId).trim() === "") {
-        if (process.env.NODE_ENV === "development") {
-          console.error("[checkout] create-order success but no order id", {
-            keys: Object.keys(apiJson),
-            sample: JSON.stringify(apiJson).slice(0, 500),
-          });
-        }
-        showError(
-          (typeof apiJson.error === "string" && apiJson.error) ||
-            "Order ID was not returned. The order may still have been created — check your email or order history."
-        );
-        return;
-      }
-
-      const paymentUrlRaw =
-        typeof apiJson.paymentUrl === "string" ? apiJson.paymentUrl : "";
-      const paymentUrl = paymentUrlRaw.trim();
-      if (!paymentUrl) {
-        showError("Payment URL was not returned.");
-        return;
-      }
-      // Safety: only allow redirects to eWAY hosted payment pages
-      try {
-        const u = new URL(paymentUrl);
-        const host = u.hostname.toLowerCase();
-        if (!host.includes("ewaypayments.com")) {
-          showError("Unexpected payment URL returned. Please contact support.");
-          return;
-        }
-      } catch {
-        showError("Invalid payment URL returned. Please contact support.");
-        return;
-      }
-      window.location.assign(paymentUrl);
+      showError("Unexpected checkout response. Please contact support.");
     } catch (error: any) {
       console.error("Checkout error:", error);
       showError(error?.message || "An error occurred while placing your order");
     } finally {
+      checkoutSubmitInFlightRef.current = false;
       setPlacing(false);
     }
   };
@@ -723,7 +792,7 @@ function CheckoutPageContent() {
   }
 
   if (items.length === 0) {
-    if (isRedirecting) {
+    if (postSubmitNavigation === "secure_payment") {
       return (
         <div className="container min-h-screen py-10">
           <div className="text-center py-20" role="status" aria-live="polite">
@@ -731,7 +800,24 @@ function CheckoutPageContent() {
               className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent mb-4"
               aria-hidden="true"
             />
-            <h1 className="text-2xl font-semibold mb-4 text-gray-900">Redirecting to order confirmation…</h1>
+            <h1 className="text-2xl font-semibold mb-4 text-gray-900">
+              Redirecting to secure payment…
+            </h1>
+          </div>
+        </div>
+      );
+    }
+    if (postSubmitNavigation === "order_confirmation") {
+      return (
+        <div className="container min-h-screen py-10">
+          <div className="text-center py-20" role="status" aria-live="polite">
+            <div
+              className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent mb-4"
+              aria-hidden="true"
+            />
+            <h1 className="text-2xl font-semibold mb-4 text-gray-900">
+              Redirecting to order confirmation…
+            </h1>
           </div>
         </div>
       );
@@ -772,7 +858,11 @@ function CheckoutPageContent() {
 
         <form
           id="checkout-main"
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void handleSubmit(onSubmit)(e);
+          }}
           className="grid gap-6 lg:grid-cols-3"
           noValidate
           aria-label="Checkout and place order"
@@ -1808,9 +1898,11 @@ function CheckoutPageContent() {
                   <legend className="sr-only">Choose how you will pay</legend>
                   <div className="space-y-2">
                     {paymentMethods.map((method) => {
-                      const id = method === "on_account" ? "on_account" : "eway";
+                      const id = method;
                       const title =
-                        id === "on_account" ? "On account (manual payment)" : "Credit card (eWAY)";
+                        id === "cod"
+                          ? "On account (manual payment)"
+                          : "Credit card (eWAY)";
                       const radioId = `checkout-payment-${id}`;
                       return (
                         <label
@@ -1825,13 +1917,13 @@ function CheckoutPageContent() {
                             value={id}
                             checked={selectedPaymentMethod === id}
                             onChange={() =>
-                              setSelectedPaymentMethod(id as "eway" | "on_account")
+                              setSelectedPaymentMethod(id as "eway" | "cod")
                             }
                             className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
                           />
                           <div className="flex-1">
                             <div className="font-medium text-gray-900">{title}</div>
-                            {id === "on_account" ? (
+                            {id === "cod" ? (
                               <div className="mt-1 space-y-0.5 text-xs text-gray-700">
                                 {ON_ACCOUNT_BANK_LINES.map((line) => (
                                   <div key={line.label}>

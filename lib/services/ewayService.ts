@@ -1,6 +1,6 @@
 /**
- * eWAY Rapid API — Responsive Shared Page (AccessCodesShared).
- * @see https://eway.io/api-v3/
+ * eWAY Rapid API — hosted Shared Page (AccessCodesShared) + AccessCode verification.
+ * Single module for all eWAY server calls. @see https://eway.io/api-v3/
  */
 
 function ewayApiRoot(): string {
@@ -28,15 +28,25 @@ function countryLower(iso: string | undefined): string {
   return c.length === 2 ? c : "au";
 }
 
-export function isEwayRapidConfigured(): boolean {
+function formatEwayErrors(errors: unknown): string {
+  if (errors == null) return "Unknown eWAY error";
+  if (typeof errors === "string") return errors;
+  if (Array.isArray(errors)) return errors.map(String).join("; ");
+  if (typeof errors === "object") return JSON.stringify(errors);
+  return String(errors);
+}
+
+export function isEwayConfigured(): boolean {
   return Boolean(
     process.env.EWAY_API_KEY?.trim() && process.env.EWAY_PASSWORD?.trim()
   );
 }
 
-export type EwaySharedPaymentInput = {
+/** @deprecated use isEwayConfigured */
+export const isEwayRapidConfigured = isEwayConfigured;
+
+export type EwayHostedPaymentInput = {
   wooOrderId: string | number;
-  /** Woo order total as returned by REST, e.g. "123.45" — must match the order. */
   orderTotal: string;
   currencyCode?: string;
   billing: {
@@ -64,16 +74,8 @@ export type EwaySharedPaymentInput = {
   customerIp?: string;
 };
 
-function formatEwayErrors(errors: unknown): string {
-  if (errors == null) return "Unknown eWAY error";
-  if (typeof errors === "string") return errors;
-  if (Array.isArray(errors)) return errors.map(String).join("; ");
-  if (typeof errors === "object") return JSON.stringify(errors);
-  return String(errors);
-}
-
-export async function createEwaySharedPaymentUrl(
-  input: EwaySharedPaymentInput
+export async function createEwayHostedPayment(
+  input: EwayHostedPaymentInput
 ): Promise<
   | { ok: true; sharedPaymentUrl: string; accessCode: string }
   | { ok: false; error: string }
@@ -81,6 +83,7 @@ export async function createEwaySharedPaymentUrl(
   const apiKey = process.env.EWAY_API_KEY?.trim();
   const apiPassword = process.env.EWAY_PASSWORD?.trim();
   if (!apiKey || !apiPassword) {
+    console.warn("[eway] createEwayHostedPayment: credentials missing");
     return { ok: false, error: "eWAY API credentials are not configured." };
   }
 
@@ -98,9 +101,8 @@ export async function createEwaySharedPaymentUrl(
     return { ok: false, error: "Invalid Woo order total for eWAY." };
   }
   const totalAmount = Math.round(total * 100);
-
-  const oid = encodeURIComponent(String(input.wooOrderId));
-  const redirectUrl = `${base}/order-review?order_id=${oid}`;
+  const oid = String(input.wooOrderId);
+  const redirectUrl = `${base}/order-review?order_id=${encodeURIComponent(oid)}`;
   const cancelUrl = `${base}/checkout`;
 
   const body = {
@@ -130,9 +132,9 @@ export async function createEwaySharedPaymentUrl(
     },
     Payment: {
       TotalAmount: totalAmount,
-      InvoiceNumber: String(input.wooOrderId).slice(0, 64),
+      InvoiceNumber: oid.slice(0, 64),
       InvoiceDescription: "Order payment",
-      InvoiceReference: String(input.wooOrderId).slice(0, 50),
+      InvoiceReference: oid.slice(0, 50),
       CurrencyCode: (input.currencyCode || "AUD").toUpperCase(),
     },
     RedirectUrl: redirectUrl,
@@ -141,6 +143,12 @@ export async function createEwaySharedPaymentUrl(
     Method: "ProcessPayment",
     ...(input.customerIp ? { CustomerIP: input.customerIp } : {}),
   };
+
+  console.log("[eway] AccessCodesShared request", {
+    wooOrderId: input.wooOrderId,
+    totalCents: totalAmount,
+    currency: body.Payment.CurrencyCode,
+  });
 
   const auth = Buffer.from(`${apiKey}:${apiPassword}`).toString("base64");
   const endpoint = `${ewayApiRoot()}/AccessCodesShared`;
@@ -159,6 +167,7 @@ export async function createEwaySharedPaymentUrl(
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "eWAY request failed";
+    console.error("[eway] AccessCodesShared network error", msg);
     return { ok: false, error: msg };
   }
 
@@ -175,14 +184,15 @@ export async function createEwaySharedPaymentUrl(
     errField !== "" &&
     !(Array.isArray(errField) && errField.length === 0);
   if (hasErrors) {
+    console.error("[eway] AccessCodesShared errors", formatEwayErrors(errField));
     return { ok: false, error: formatEwayErrors(errField) };
   }
 
   if (!res.ok) {
-    return {
-      ok: false,
-      error: formatEwayErrors(json.Errors ?? json) || `eWAY HTTP ${res.status}`,
-    };
+    const err =
+      formatEwayErrors(json.Errors ?? json) || `eWAY HTTP ${res.status}`;
+    console.error("[eway] AccessCodesShared HTTP error", res.status, err);
+    return { ok: false, error: err };
   }
 
   const url = json.SharedPaymentUrl;
@@ -191,6 +201,10 @@ export async function createEwaySharedPaymentUrl(
     return { ok: false, error: "eWAY did not return SharedPaymentUrl." };
   }
 
+  console.log("[eway] AccessCodesShared ok", {
+    accessCodeLength: typeof accessCode === "string" ? accessCode.length : 0,
+  });
+
   return {
     ok: true,
     sharedPaymentUrl: url.trim(),
@@ -198,12 +212,45 @@ export async function createEwaySharedPaymentUrl(
   };
 }
 
-export async function verifyEwayAccessCode(
-  accessCode: string
-): Promise<
-  | { ok: true; success: boolean; transactionId?: string; responseCode?: string }
-  | { ok: false; error: string }
-> {
+/** @deprecated use createEwayHostedPayment */
+export const createEwaySharedPaymentUrl = createEwayHostedPayment;
+
+/** Alias — same as {@link createEwayHostedPayment}. */
+export const createEwayPayment = createEwayHostedPayment;
+
+function extractInvoiceReferenceFromEwayJson(
+  json: Record<string, unknown>,
+  txRaw?: Record<string, unknown>
+): string | undefined {
+  const fromPayment = (p: unknown): string | undefined => {
+    if (p == null || typeof p !== "object") return undefined;
+    const ref = (p as Record<string, unknown>).InvoiceReference;
+    return typeof ref === "string" && ref.trim() ? ref.trim() : undefined;
+  };
+  const top = json.InvoiceReference;
+  if (typeof top === "string" && top.trim()) return top.trim();
+  const payRoot = fromPayment(json.Payment);
+  if (payRoot) return payRoot;
+  if (txRaw) {
+    const tr = txRaw.InvoiceReference;
+    if (typeof tr === "string" && tr.trim()) return tr.trim();
+    const tp = fromPayment(txRaw.Payment);
+    if (tp) return tp;
+  }
+  return undefined;
+}
+
+export type EwayVerifyResult =
+  | {
+      ok: true;
+      success: boolean;
+      transactionId?: string;
+      responseCode?: string;
+      invoiceReference?: string;
+    }
+  | { ok: false; error: string };
+
+export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyResult> {
   const apiKey = process.env.EWAY_API_KEY?.trim();
   const apiPassword = process.env.EWAY_PASSWORD?.trim();
   if (!apiKey || !apiPassword) {
@@ -244,14 +291,10 @@ export async function verifyEwayAccessCode(
       typeof json.Errors === "string"
         ? json.Errors
         : `eWAY verify HTTP ${res.status}`;
+    console.warn("[eway] verify HTTP", res.status, err);
     return { ok: false, error: String(err) };
   }
 
-  /**
-   * GetAccessCodeResult (GET /AccessCode/{code}) returns TransactionStatus,
-   * ResponseCode, and TransactionID at the **root** of the JSON. Some flows
-   * nest the same fields under Transactions[0] or Transaction instead.
-   */
   const txRaw: Record<string, unknown> | undefined = (() => {
     if (Array.isArray(json.Transactions) && json.Transactions.length > 0) {
       return json.Transactions[0] as Record<string, unknown>;
@@ -269,7 +312,7 @@ export async function verifyEwayAccessCode(
     return undefined;
   })();
 
-  const parseEwayTransactionStatus = (v: unknown): boolean => {
+  const parseTransactionStatus = (v: unknown): boolean => {
     if (v === true) return true;
     if (v === false) return false;
     if (typeof v === "string") {
@@ -287,7 +330,7 @@ export async function verifyEwayAccessCode(
     return /^\d+$/.test(s) ? s.padStart(2, "0") : s;
   };
 
-  const txStatus = parseEwayTransactionStatus(txRaw?.TransactionStatus);
+  const txStatus = parseTransactionStatus(txRaw?.TransactionStatus);
   const responseCode = normalizeResponseCode(txRaw?.ResponseCode);
   const transactionId = txRaw?.TransactionID
     ? String(txRaw.TransactionID)
@@ -296,10 +339,23 @@ export async function verifyEwayAccessCode(
   const approved =
     responseCode === undefined ? txStatus : responseCode === "00";
 
+  const invoiceReference = extractInvoiceReferenceFromEwayJson(json, txRaw);
+
+  console.log("[eway] verify AccessCode result", {
+    transactionStatus: txStatus,
+    responseCode: responseCode ?? null,
+    approved,
+    hasInvoiceRef: Boolean(invoiceReference),
+  });
+
   return {
     ok: true,
     success: txStatus && approved,
     transactionId,
     responseCode,
+    ...(invoiceReference ? { invoiceReference } : {}),
   };
 }
+
+/** @deprecated use verifyEwayPayment */
+export const verifyEwayAccessCode = verifyEwayPayment;

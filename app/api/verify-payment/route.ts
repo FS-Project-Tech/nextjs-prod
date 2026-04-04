@@ -1,32 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyEwayAccessCode } from "@/lib/eway-responsive-shared";
-import wcAPI from "@/lib/woocommerce";
+import { verifyEwayAndMarkWooPaid } from "@/lib/services/paymentService";
 
 export const dynamic = "force-dynamic";
-
-async function resolveOrderPostId(orderRef: string): Promise<number | null> {
-  // 1) Try direct order fetch first (post ID path)
-  try {
-    const { data } = await wcAPI.get(`/orders/${orderRef}`);
-    const id = Number((data as { id?: unknown })?.id);
-    if (Number.isFinite(id) && id > 0) return id;
-  } catch (err: any) {
-    if (Number(err?.response?.status || 0) !== 404) throw err;
-  }
-
-  // 2) Fallback by order number/search
-  const { data: orders } = await wcAPI.get("/orders", {
-    params: { search: orderRef, per_page: 20 },
-  });
-  const match = Array.isArray(orders)
-    ? orders.find(
-        (o: { id?: number; number?: string; order_number?: string }) =>
-          String(o.number ?? o.order_number ?? o.id) === orderRef
-      )
-    : null;
-  const id = Number(match?.id || 0);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,8 +15,16 @@ export async function POST(req: NextRequest) {
     const accessCode = String(
       body?.AccessCode ?? body?.accessCode ?? ""
     ).trim();
-    const orderIdRaw = body?.orderId ?? body?.order_id ?? "";
-    const orderId = String(orderIdRaw || "").trim() || undefined;
+    const orderRefRaw = body?.orderId ?? body?.order_id ?? "";
+    const orderRef =
+      orderRefRaw === "" || orderRefRaw == null
+        ? null
+        : String(orderRefRaw).trim();
+
+    console.log("[verify-payment] request", {
+      hasAccessCode: Boolean(accessCode),
+      hasOrderRef: Boolean(orderRef),
+    });
 
     if (!accessCode) {
       return NextResponse.json(
@@ -50,39 +33,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const verification = await verifyEwayAccessCode(accessCode);
-    if (verification.ok === false) {
+    const r = await verifyEwayAndMarkWooPaid({
+      accessCode,
+      orderRef,
+    });
+
+    if (!r.ok) {
       return NextResponse.json(
-        { success: false, error: verification.error, orderId: orderId ?? null },
+        {
+          success: false,
+          error: r.error ?? "Verification failed.",
+          orderId: null,
+        },
         { status: 502 }
       );
     }
 
-    let updatedOrderId: string | number | null = orderId ?? null;
-    if (verification.success && orderId) {
-      try {
-        const postId = await resolveOrderPostId(orderId);
-        if (postId) {
-          const patch: Record<string, unknown> = {
-            status: "processing",
-            set_paid: true,
-          };
-          if (verification.transactionId) {
-            patch.transaction_id = verification.transactionId;
-          }
-          await wcAPI.put(`/orders/${postId}`, patch);
-          updatedOrderId = postId;
-        }
-      } catch (updateErr) {
-        console.warn("[verify-payment] order status update failed", updateErr);
-      }
-    }
-
     return NextResponse.json({
-      success: verification.success,
-      transactionId: verification.transactionId ?? null,
-      orderId: updatedOrderId,
-      responseCode: verification.responseCode ?? null,
+      success: r.paid,
+      paid: r.paid,
+      transactionId: r.transactionId ?? null,
+      orderId: r.orderPostId ?? orderRef,
+      responseCode: r.responseCode ?? null,
     });
   } catch (error) {
     const message =
@@ -93,4 +65,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

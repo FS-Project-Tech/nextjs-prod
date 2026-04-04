@@ -56,29 +56,12 @@ export async function GET() {
     }
     const privileged = userCanUsePayOnAccount(roles);
 
-    if (wcEnabledIds.has("paypal")) {
-      methods.push({
-        id: "paypal",
-        title: "PayPal",
-        description: "Pay with PayPal.",
-        enabled: true,
-      });
-    }
-
     if (privileged) {
       if (wcEnabledIds.has("cod")) {
         methods.push({
           id: "cod",
           title: "Pay on Account (COD)",
           description: "Cash on delivery — invoiced / pay on account.",
-          enabled: true,
-        });
-      }
-      if (wcEnabledIds.has("bacs")) {
-        methods.push({
-          id: "bacs",
-          title: "On account (bank transfer)",
-          description: "Direct bank deposit.",
           enabled: true,
         });
       }

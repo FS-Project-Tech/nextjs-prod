@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { useCart } from "@/components/CartProvider";
  
 interface OrderItem {
   id: number;
@@ -61,6 +62,7 @@ interface Order {
 function OrderReviewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { clear } = useCart();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +116,16 @@ function OrderReviewContent() {
             { cache: "no-store", credentials: "same-origin" }
           );
           if (r.ok) {
-            const data = await r.json();
+            const raw = (await r.text()).replace(/^\uFEFF/, "").trim();
+            let data: { order?: { number?: string; order_number?: string; id?: number } } =
+              {};
+            if (raw) {
+              try {
+                data = JSON.parse(raw) as typeof data;
+              } catch {
+                /* continue retry */
+              }
+            }
             const oid =
               data.order?.number ??
               data.order?.order_number ??
@@ -176,12 +187,75 @@ function OrderReviewContent() {
           cache: "no-store",
           credentials: "same-origin",
         });
+        const responseText = (await res.text()).replace(/^\uFEFF/, "");
+        const trimmed = responseText.trim();
+
         if (!res.ok) {
-          throw new Error("Failed to fetch order");
+          let msg = `Unable to load order (HTTP ${res.status}).`;
+          if (trimmed) {
+            try {
+              const errBody = JSON.parse(trimmed) as { error?: string; message?: string };
+              if (typeof errBody.error === "string" && errBody.error.trim()) {
+                msg = errBody.error.trim();
+              } else if (typeof errBody.message === "string" && errBody.message.trim()) {
+                msg = errBody.message.trim();
+              }
+            } catch {
+              /* keep msg */
+            }
+          }
+          throw new Error(msg);
         }
-        const data = await res.json();
+
+        if (!trimmed) {
+          throw new Error(
+            "Order service returned an empty response. Try refreshing the page."
+          );
+        }
+
+        let data: { order?: Order };
+        try {
+          data = JSON.parse(trimmed) as { order?: Order };
+        } catch (e) {
+          const hint =
+            e instanceof SyntaxError ? e.message : "Invalid JSON from order service";
+          throw new Error(hint);
+        }
+
+        if (!data.order || typeof data.order !== "object") {
+          throw new Error("Order details were missing from the server response.");
+        }
+
         if (!cancelled) {
           setOrder(data.order);
+          try {
+            if (typeof window !== "undefined" && data.order) {
+              const oid = String(data.order.id ?? "");
+              let shouldClear = false;
+              if (
+                oid &&
+                sessionStorage.getItem(`headless_clear_cart_for_order_${oid}`)
+              ) {
+                sessionStorage.removeItem(`headless_clear_cart_for_order_${oid}`);
+                shouldClear = true;
+              }
+              if (sessionStorage.getItem("headless_clear_cart_after_woo_token_checkout")) {
+                sessionStorage.removeItem("headless_clear_cart_after_woo_token_checkout");
+                shouldClear = true;
+              }
+              if (shouldClear) {
+                clear();
+                fetch("/api/dashboard/cart/save", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ items: [] }),
+                }).catch(() => {});
+              }
+            }
+          } catch {
+            /* ignore */
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
@@ -198,7 +272,7 @@ function OrderReviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [orderIdFromUrl, recoverKey, router, accessCodeFromUrl]);
+  }, [orderIdFromUrl, recoverKey, router, accessCodeFromUrl, clear]);
  
   const handleDownloadPDF = useCallback(async () => {
     if (!order || typeof window === "undefined") return;
@@ -341,10 +415,18 @@ function OrderReviewContent() {
   };
  
   const isPaid = order.status === "processing" || order.status === "completed";
-  const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque", "on_account"];
+  const offlinePaymentMethods = [
+    "cod",
+    "bacs",
+    "bank_transfer",
+    "cheque",
+    "on_account", // legacy orders only
+  ];
 
   const isOnAccountFlow =
+    paymentMethodHint === "cod" ||
     paymentMethodHint === "on_account" ||
+    String(order.payment_method || "").toLowerCase() === "cod" ||
     String(order.payment_method || "").toLowerCase() === "on_account";
 
   const paymentMethodDisplay = isOnAccountFlow

@@ -19,6 +19,7 @@ export type WooCreateOrderInput = {
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
   shipping_line?: { method_id: string; method_title: string; total: string };
+  coupon_code?: string;
   meta_data?: Array<{ key: string; value: unknown }>;
 };
 
@@ -78,6 +79,9 @@ export async function createWooOrder(input: WooCreateOrderInput): Promise<any> {
   };
   if (input.shipping_line) {
     payload.shipping_lines = [input.shipping_line];
+  }
+  if (input.coupon_code?.trim()) {
+    payload.coupon_lines = [{ code: input.coupon_code.trim() }];
   }
   const res = await wcAPI.post("/orders", payload);
   return res.data;
