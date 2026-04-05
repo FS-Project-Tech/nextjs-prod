@@ -54,8 +54,11 @@ export default function ProductInfoAccordion({ product, variations }: ProductInf
       title: "Description",
       content: (
         <div
-          className="product-description-content text-gray-700 text-[15px] leading-relaxed max-w-none
-            [&_strong]:font-semibold [&_strong]:text-gray-900 [&_strong]:block [&_strong]:mt-5 [&_strong]:mb-1.5 [&_strong]:first:mt-0 [&_strong]:text-base
+        className="product-description-content text-gray-700 text-[15px] leading-relaxed max-w-none
+            [&_strong]:font-semibold [&_strong]:text-gray-900
+            [&_p>strong]:block [&_p>strong]:mt-5 [&_p>strong]:mb-1.5 [&_p>strong]:text-base [&_p:first-child>strong]:mt-0
+            [&_table_strong]:inline [&_table_strong]:my-0 [&_table_th_strong]:inline [&_table_td_strong]:inline
+            [&_table_a]:text-teal-600 [&_table_a]:font-semibold [&_table_a]:underline
             [&_p]:mb-4 [&_p]:leading-relaxed
             [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-4 [&_ul]:space-y-2 [&_ul]:marker:text-teal-600
             [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-4 [&_ol]:space-y-2

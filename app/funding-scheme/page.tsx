@@ -145,7 +145,7 @@ export default async function FundingSchemePage() {
                   </div>
                 ) : (
                   <div className="aspect-[4/3] bg-gray-100 flex items-center justify-center">
-                    <span className="text-gray-400 text-sm">Featured image</span>
+                    <span className="text-gray-600 text-sm">Featured image</span>
                   </div>
                 )}
               </div>

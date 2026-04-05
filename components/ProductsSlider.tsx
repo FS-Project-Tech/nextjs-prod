@@ -52,7 +52,7 @@ export default function ProductsSlider({
     gridCols === 6
       ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6 items-stretch w-full"
       : gridCols === 5
-        ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5 items-stretch w-full"
+        ? "grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-5 items-stretch w-full"
         : "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 items-stretch w-full";
 
   return (

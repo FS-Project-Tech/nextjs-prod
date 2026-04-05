@@ -41,7 +41,7 @@ const CategoryList = memo(function CategoryList({
               <span className="font-medium text-left">{cat.name}</span>
               {hasSubcategories && (
                 <svg
-                  className="h-4 w-4 text-gray-400 group-hover:text-teal-600 transition-colors flex-shrink-0"
+                  className="h-4 w-4 text-gray-600 group-hover:text-teal-600 transition-colors flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"

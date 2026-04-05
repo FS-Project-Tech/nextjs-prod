@@ -44,20 +44,24 @@ export function useInsurancePersistence(
   }, [isMounted, insuranceResolved]);
 }
 
-export function useRestrictCodWhenUnauthorized(
-  canOnAccount: boolean,
-  selectedPayment: "eway" | "cod",
-  setPayment: (m: "eway" | "cod") => void
-): void {
-  useEffect(() => {
-    if (!canOnAccount && selectedPayment === "cod") setPayment("eway");
-  }, [canOnAccount, selectedPayment, setPayment]);
+function stripCheckoutErrorQueryParamsFromAddressBar(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("cancelled") && !u.searchParams.has("error")) return;
+    u.searchParams.delete("cancelled");
+    u.searchParams.delete("error");
+    const q = u.searchParams.toString();
+    const next = u.pathname + (q ? `?${q}` : "");
+    window.history.replaceState(window.history.state, "", next);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function useCheckoutQueryToasts(
   isMounted: boolean,
   searchParams: URLSearchParams,
-  router: { replace: (path: string, o?: { scroll?: boolean }) => void },
   showError: (m: string) => void
 ): void {
   useEffect(() => {
@@ -66,7 +70,7 @@ export function useCheckoutQueryToasts(
     const errCode = searchParams.get("error");
     if (cancelled === "true") {
       showError("Payment was cancelled.");
-      router.replace("/checkout", { scroll: false });
+      stripCheckoutErrorQueryParamsFromAddressBar();
       return;
     }
     if (errCode) {
@@ -78,9 +82,9 @@ export function useCheckoutQueryToasts(
         payment_pending: "Payment is still processing. Check your email or try again shortly.",
       };
       showError(messages[errCode] || "Something went wrong. Please try again.");
-      router.replace("/checkout", { scroll: false });
+      stripCheckoutErrorQueryParamsFromAddressBar();
     }
-  }, [isMounted, searchParams, router, showError]);
+  }, [isMounted, searchParams, showError]);
 }
 
 export function useMirrorBillingToShipping(

@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { useForm, useWatch } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useCart } from "@/components/CartProvider";
@@ -16,15 +15,14 @@ import { parseCartTotal } from "@/lib/cart/parseCartTotal";
 import { submitCheckoutOrder } from "@/lib/payment/submitCheckoutOrder";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
-import { checkoutPaymentMethodOptions, canUseOnAccountPayment } from "./paymentMethodsFromSession";
 import {
   useInsuranceHydration,
   useInsurancePersistence,
   useMountFlag,
   useCheckoutQueryToasts,
   useRecalculateCouponWhenCartChanges,
-  useRestrictCodWhenUnauthorized,
 } from "./useCheckoutSideEffects";
+import { applySavedBillingAddress, applySavedShippingAddress } from "./savedAddressPatch";
 
 export function useCheckoutPageState() {
   const router = useRouter();
@@ -33,12 +31,12 @@ export function useCheckoutPageState() {
   const { success, error: showError } = useToast();
   const { appliedCoupon, discount: couponDiscountAmount, calculateDiscount } = useCoupon();
   const { user } = useUser();
-  const { data: session } = useSession();
   const { addresses } = useAddresses();
 
   const [isMounted, setIsMounted] = useState(false);
   const [placing, setPlacing] = useState(false);
   const submitGuardRef = useRef(false);
+  const redirectPendingRef = useRef(false);
   const [selectedBillingAddressId, setSelectedBillingAddressId] = useState("");
   const [selectedShippingAddressId, setSelectedShippingAddressId] = useState("");
   const [openNdisSection, setOpenNdisSection] = useState(false);
@@ -70,10 +68,64 @@ export function useCheckoutPageState() {
   // Scoped useWatch fields only — avoids subscribing to the entire form (no watch() snapshot).
   const watchedShippingMethod = useWatch({ control, name: "shippingMethod" });
   const watchedInsurance = useWatch({ control, name: "insurance_option", defaultValue: "no" });
+  const shipToDifferentAddress = useWatch({
+    control,
+    name: "shipToDifferentAddress",
+    defaultValue: false,
+  });
   const insuranceResolved: InsuranceOption = watchedInsurance === "yes" ? "yes" : "no";
 
-  const canUseOnAccount = canUseOnAccountPayment(session);
-  const paymentMethods = checkoutPaymentMethodOptions(session);
+  /** One-shot apply of first saved address per section (returning customers). */
+  const savedAddressHydrationRef = useRef({ billing: false, shipping: false });
+
+  useEffect(() => {
+    if (!shipToDifferentAddress) {
+      savedAddressHydrationRef.current.shipping = false;
+    }
+  }, [shipToDifferentAddress]);
+
+  const firstBillingId = billingAddresses[0]?.id;
+  useEffect(() => {
+    if (!isMounted || !user?.id) return;
+    if (savedAddressHydrationRef.current.billing) return;
+    if (selectedBillingAddressId) return;
+    if (!firstBillingId) return;
+    const addr = billingAddresses.find((a) => String(a.id) === String(firstBillingId));
+    if (!addr) return;
+    applySavedBillingAddress(setValue, addr);
+    setSelectedBillingAddressId(String(addr.id));
+    savedAddressHydrationRef.current.billing = true;
+  }, [
+    isMounted,
+    user?.id,
+    firstBillingId,
+    billingAddresses,
+    selectedBillingAddressId,
+    setValue,
+    setSelectedBillingAddressId,
+  ]);
+
+  const firstShippingId = shippingAddresses[0]?.id;
+  useEffect(() => {
+    if (!isMounted || !user?.id || !shipToDifferentAddress) return;
+    if (savedAddressHydrationRef.current.shipping) return;
+    if (selectedShippingAddressId) return;
+    if (!firstShippingId) return;
+    const addr = shippingAddresses.find((a) => String(a.id) === String(firstShippingId));
+    if (!addr) return;
+    applySavedShippingAddress(setValue, addr);
+    setSelectedShippingAddressId(String(addr.id));
+    savedAddressHydrationRef.current.shipping = true;
+  }, [
+    isMounted,
+    user?.id,
+    shipToDifferentAddress,
+    firstShippingId,
+    shippingAddresses,
+    selectedShippingAddressId,
+    setValue,
+    setSelectedShippingAddressId,
+  ]);
 
   const cartSubtotal = useMemo(() => parseCartTotal(cartTotalString), [cartTotalString]);
   const subtotal = parseCartTotal(cartTotalString);
@@ -91,13 +143,19 @@ export function useCheckoutPageState() {
   useMountFlag(setIsMounted);
   useInsuranceHydration(isMounted, setValue);
   useInsurancePersistence(isMounted, insuranceResolved);
-  useRestrictCodWhenUnauthorized(canUseOnAccount, selectedPaymentMethod, setSelectedPaymentMethod);
-  useCheckoutQueryToasts(isMounted, searchParams, router, showError);
+  useCheckoutQueryToasts(isMounted, searchParams, showError);
   useRecalculateCouponWhenCartChanges(
     appliedCoupon,
     cartLines,
     cartTotalString,
     calculateDiscount
+  );
+
+  const replaceInternalCheckoutPath = useCallback(
+    (path: string) => {
+      router.replace(path, { scroll: false });
+    },
+    [router]
   );
 
   const onSubmit = useCallback(
@@ -115,6 +173,8 @@ export function useCheckoutPageState() {
         userId: user?.id,
         setPostSubmitNavigation,
         submitGuardRef,
+        redirectPendingRef,
+        replaceInternalPath: replaceInternalCheckoutPath,
         setPlacing,
       });
     },
@@ -128,6 +188,7 @@ export function useCheckoutPageState() {
       success,
       clearLocalCart,
       user?.id,
+      replaceInternalCheckoutPath,
     ]
   );
 
@@ -155,7 +216,6 @@ export function useCheckoutPageState() {
     placing,
     selectedPaymentMethod,
     setSelectedPaymentMethod,
-    paymentMethods,
     user,
     billingAddresses,
     shippingAddresses,

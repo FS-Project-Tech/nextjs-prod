@@ -29,12 +29,19 @@ const cartLineSchema = z
     { message: "Each line item must include a SKU or a positive product_id." }
   );
 
+const paymentMethodSchema = z.preprocess((v) => {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  // Legacy clients sent on-account as `cod`; keep accepting the string but treat as card checkout.
+  if (s === "on_account") return "eway";
+  return v;
+}, z.enum(["eway", "cod"]));
+
 export const checkoutInitiateSchema = z.object({
   billing: addressSchema,
   shipping: addressSchema,
   line_items: z.array(cartLineSchema).min(1),
   shipping_method_id: z.string().trim().min(1),
-  payment_method: z.enum(["eway", "cod"]),
+  payment_method: paymentMethodSchema,
   coupon_code: z.string().trim().optional(),
   insurance_option: z.enum(["yes", "no"]).optional(),
   ndis_type: z.string().trim().optional(),

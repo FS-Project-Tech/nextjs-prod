@@ -11,7 +11,6 @@ export type PaymentStatusProps = {
   discount: number;
   total: number;
   paymentMethodDisplay: string;
-  isOnAccountFlow: boolean;
   isPaid: boolean;
   offlinePaymentMethods: string[];
   orderStatusLabel: string;
@@ -33,7 +32,6 @@ function PaymentStatusInner({
   discount,
   total,
   paymentMethodDisplay,
-  isOnAccountFlow,
   isPaid,
   offlinePaymentMethods,
   orderStatusLabel,
@@ -57,93 +55,63 @@ function PaymentStatusInner({
 
   return (
     <>
-      <div className="mb-8 flex justify-end">
-        <div className="w-full md:w-80">
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between py-2">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium text-gray-900">${subtotal.toFixed(2)}</span>
-            </div>
-            {shipping > 0 && (
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Shipping:</span>
-                <span className="font-medium text-gray-900">${shipping.toFixed(2)}</span>
+      <div className="mb-8 flex justify-end border-t border-gray-200 pt-6">
+        <div className="w-full md:max-w-sm">
+          <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-4 shadow-sm sm:p-5">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-500">Totals</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between gap-4 py-1.5">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="tabular-nums font-medium text-gray-900">${subtotal.toFixed(2)}</span>
               </div>
-            )}
-            <div className="flex justify-between py-2">
-              <span className="text-gray-600">GST:</span>
-              <span className="font-medium text-gray-900">${tax.toFixed(2)}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex justify-between py-2 text-emerald-600">
-                <span>Discount:</span>
-                <span className="font-medium">-${discount.toFixed(2)}</span>
+              {shipping > 0 && (
+                <div className="flex justify-between gap-4 py-1.5">
+                  <span className="text-gray-600">Shipping</span>
+                  <span className="tabular-nums font-medium text-gray-900">${shipping.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-4 py-1.5">
+                <span className="text-gray-600">GST</span>
+                <span className="tabular-nums font-medium text-gray-900">${tax.toFixed(2)}</span>
               </div>
-            )}
-            <div className="mt-2 border-t-2 border-gray-900 pt-3">
-              <div className="flex justify-between">
-                <span className="text-lg font-bold text-gray-900">Total:</span>
-                <span className="text-xl font-bold text-gray-900">${total.toFixed(2)}</span>
+              {discount > 0 && (
+                <div className="flex justify-between gap-4 py-1.5 text-emerald-700">
+                  <span>Discount</span>
+                  <span className="tabular-nums font-medium">-${discount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="mt-3 border-t-2 border-gray-800 pt-3">
+                <div className="flex justify-between gap-4">
+                  <span className="text-base font-bold text-gray-900">Total</span>
+                  <span className="text-xl font-bold tabular-nums text-gray-900">${total.toFixed(2)}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-6 border-b pb-8 md:grid-cols-2">
+      <div className="mb-8 grid grid-cols-1 gap-6 border-b border-gray-200 pb-8 md:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-900">
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-500">
             Payment Method
           </h3>
           <p className="text-sm text-gray-700">{paymentMethodDisplay}</p>
-          {!isOnAccountFlow &&
-            !isPaid &&
-            offlinePaymentMethods.includes(order.payment_method) && (
-              <p className="mt-1 text-xs text-amber-800">Payment pending</p>
-            )}
-          {isOnAccountFlow && (
-            <p className="mt-1 text-xs text-gray-600">
-              Pay on account — your order has been submitted.
-            </p>
+          {!isPaid && offlinePaymentMethods.includes(order.payment_method) && (
+            <p className="mt-1 text-xs text-amber-800">Payment pending</p>
           )}
         </div>
         <div>
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-900">
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-500">
             Order status
           </h3>
           <p className={`text-sm font-medium ${orderStatusToneClass}`}>{orderStatusLabel}</p>
         </div>
       </div>
 
-      {isOnAccountFlow && (
-        <div className="mb-8 rounded-lg border border-slate-200 bg-slate-50 p-6 pb-8 border-b">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-900">
-            Bank transfer details
-          </h3>
-          <ul className="space-y-1 text-sm text-gray-700">
-            <li>
-              <span className="font-medium text-gray-800">Bank name:</span> National Australia Bank
-            </li>
-            <li>
-              <span className="font-medium text-gray-800">Account name:</span> Joya Medical Australia
-              Pty Ltd
-            </li>
-            <li>
-              <span className="font-medium text-gray-800">Account number:</span> 852237649
-            </li>
-            <li>
-              <span className="font-medium text-gray-800">BSB:</span> 084-004
-            </li>
-          </ul>
-          <p className="mt-4 text-sm font-medium text-gray-900">
-            Please transfer the total amount and include your order number as reference.
-          </p>
-        </div>
-      )}
-
       {showAdditional && (
         <div className="mb-8 border-b pb-8">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-900">
+          <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
             Additional Information
           </h3>
           <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">

@@ -52,6 +52,8 @@ export const isEwayRapidConfigured = isEwayConfigured;
 
 export type EwayHostedPaymentInput = {
   wooOrderId: string | number;
+  /** WooCommerce REST `order_key` — required for secure return to order review. */
+  orderKey: string;
   orderTotal: string;
   currencyCode?: string;
   billing: {
@@ -106,9 +108,10 @@ export async function createEwayHostedPayment(
   }
   const totalAmount = Math.round(total * 100);
   const oid = String(input.wooOrderId);
+  const keyEnc = encodeURIComponent(input.orderKey.trim());
   const vpSig = paymentReturnVpSig(oid);
   const redirectUrl =
-    `${base}/order-review?order_id=${encodeURIComponent(oid)}` +
+    `${base}/checkout/order-review?orderId=${encodeURIComponent(oid)}&key=${keyEnc}` +
     (vpSig ? `&vp_sig=${encodeURIComponent(vpSig)}` : "");
   const cancelUrl = `${base}/checkout`;
 

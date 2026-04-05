@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import Script from "next/script";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -8,14 +9,13 @@ import NavigationProgress from "@/components/NavigationProgress";
 import MainContent from "@/components/MainContent";
 import CoreProviders from "@/components/CoreProviders";
 import CommerceProviders from "@/components/CommerceProviders";
-import { Poppins } from "next/font/google";
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+import { grift } from "@/lib/fonts";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import TawkToWidget from "@/components/TawkToWidget";
+import AnalyticsInitializer from "@/components/AnalyticsInitializer";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
+
 
 // Validate environment variables at startup (server-side only)
 if (typeof window === "undefined") {
@@ -47,6 +47,7 @@ const MiniCartDrawer = dynamic(() => import("@/components/MiniCartDrawer"), {
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
+const ga4MeasurementId = process.env.NEXT_PUBLIC_GA4_ID?.trim() || "";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -116,18 +117,41 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="color-scheme-light">
-      <body suppressHydrationWarning className={`antialiased ${poppins.className}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${grift.variable} color-scheme-light`}
+    >
+      <body
+        suppressHydrationWarning
+        className={`${grift.className} min-h-screen antialiased text-base font-normal leading-normal text-gray-900`}
+      >
         {/* Remove browser extension attributes before React hydrates */}
         <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" />
+
+        {ga4MeasurementId ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga4MeasurementId)}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.gtag=gtag;gtag('js',new Date());gtag('config',${JSON.stringify(ga4MeasurementId)},{send_page_view:false});`}
+            </Script>
+          </>
+        ) : null}
 
         <NavigationProgress />
         <SpeedInsights />
         <Analytics />
         <ErrorBoundary>
           <CoreProviders>
+            <AnalyticsInitializer />
+            <Suspense fallback={null}>
+              <AnalyticsTracker />
+            </Suspense>
             <CommerceProviders>
-              {/* <AnalyticsInitializer /> */}
+              
 
               <div className="app-shell">
                 <div className="sticky top-0 z-50 bg-white shadow-sm">

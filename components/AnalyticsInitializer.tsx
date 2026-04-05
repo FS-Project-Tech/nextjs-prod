@@ -4,14 +4,14 @@ import { useEffect } from "react";
 import { initGA4, initMetaPixel } from "@/lib/analytics";
 
 /**
- * Analytics Initializer Component
- * Initializes Google Analytics 4 and Meta Pixel on client-side
+ * GA4 loads via `next/script` in root layout when NEXT_PUBLIC_GA4_ID is set.
+ * initGA4 here is only a fallback if gtag is missing (e.g. env added client-only).
  */
 export default function AnalyticsInitializer() {
   useEffect(() => {
-    // Initialize Google Analytics 4
-    if (process.env.NEXT_PUBLIC_GA4_ID) {
-      initGA4(process.env.NEXT_PUBLIC_GA4_ID);
+    const gaId = process.env.NEXT_PUBLIC_GA4_ID?.trim();
+    if (gaId && typeof window !== "undefined" && !window.gtag) {
+      initGA4(gaId);
     }
 
     // Initialize Meta Pixel

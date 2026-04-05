@@ -246,7 +246,7 @@ function QuoteComparisonContent() {
 
                   if (!hasItem) {
                     return (
-                      <td key={quote.id} className="px-4 py-3 text-sm text-gray-400 text-center">
+                      <td key={quote.id} className="px-4 py-3 text-sm text-gray-600 text-center">
                         —
                       </td>
                     );

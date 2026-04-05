@@ -45,13 +45,13 @@ export default function CheckoutForm({
   setValue,
 }: CheckoutFormProps) {
   return (
-    <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6">
       <BillingSection
         user={user}
         billingAddresses={billingAddresses}
         selectedBillingAddressId={selectedBillingAddressId}
         setSelectedBillingAddressId={setSelectedBillingAddressId}
-        control={control}
+                    control={control}
         register={register}
         errors={errors}
         setValue={setValue}
@@ -61,7 +61,7 @@ export default function CheckoutForm({
         setOpenNdisSection={setOpenNdisSection}
         openHcpSection={openHcpSection}
         setOpenHcpSection={setOpenHcpSection}
-        control={control}
+                    control={control}
         selectedBillingAddressId={selectedBillingAddressId}
       />
       <ShippingSection
@@ -69,10 +69,10 @@ export default function CheckoutForm({
         shippingAddresses={shippingAddresses}
         selectedShippingAddressId={selectedShippingAddressId}
         setSelectedShippingAddressId={setSelectedShippingAddressId}
-        control={control}
+                    control={control}
         setValue={setValue}
       />
       <AdditionalSection control={control} />
-    </div>
+          </div>
   );
 }

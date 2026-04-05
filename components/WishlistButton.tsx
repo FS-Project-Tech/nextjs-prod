@@ -150,7 +150,7 @@ function WishlistButtonComponent({
           hover:scale-110
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500
           disabled:opacity-50 disabled:cursor-not-allowed
-          ${wishlisted ? "text-rose-500" : "text-gray-400 hover:text-rose-500"}
+          ${wishlisted ? "text-rose-500" : "text-gray-600 hover:text-rose-500"}
           ${className}
         `}
         aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}

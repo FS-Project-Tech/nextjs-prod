@@ -118,7 +118,7 @@ function CartPageContent() {
                             className="object-cover"
                           />
                         ) : (
-                          <div className="grid h-full w-full place-items-center text-xs text-gray-400">
+                          <div className="grid h-full w-full place-items-center text-xs text-gray-600">
                             No Image
                           </div>
                         )}
@@ -194,7 +194,7 @@ function CartPageContent() {
                                     each
                                   </div>
                                   {totalInfo.exclPrice && (
-                                    <div className="text-xs text-gray-400">
+                                    <div className="text-xs text-gray-600">
                                       Excl. GST: {totalInfo.exclPrice} total
                                     </div>
                                   )}

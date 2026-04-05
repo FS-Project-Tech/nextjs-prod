@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { HandlePaymentResult } from "@/lib/services/paymentService";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
-import { canUseOnAccount, resolveCheckoutActor } from "@/utils/checkout-auth";
+import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { INSURANCE_OPTION_META_KEY } from "@/lib/checkout-parcel-protection";
@@ -9,8 +9,11 @@ import {
   appendParcelProtectionFee,
   createValidatedCheckoutOrder,
   extractWooOrderId,
+  extractWooOrderKey,
+  getWooOrder,
 } from "@/lib/services/wooService";
 import { handlePayment } from "@/lib/services/paymentService";
+
 export const dynamic = "force-dynamic";
 
 function normalizeCountry(country: string | undefined): string {
@@ -36,23 +39,45 @@ function clientIpFromRequest(req: NextRequest): string {
 export type CreateOrderResponseBody =
   | {
       success: true;
-      type: "redirect" | "success";
-      url?: string;
-      redirect?: string;
+      type: "redirect";
+      url: string;
       orderId: number | string;
       order_ref: string;
+      order_key: string;
     }
   | { success: false; error: string; code?: string; missingItems?: unknown[] };
 
-function orderResponseHeaders(orderIdRaw: string | number | bigint): Record<string, string> {
+function orderResponseHeaders(
+  orderIdRaw: string | number | bigint,
+  orderKey: string
+): Record<string, string> {
   const orderHeader = encodeURIComponent(String(orderIdRaw));
   const orderIdPlain = String(orderIdRaw);
+  const keyHeader = encodeURIComponent(orderKey);
   return {
     "Cache-Control": "no-store, no-cache, must-revalidate",
     "X-Create-Order-Id": orderHeader,
     "X-Order-Id": orderIdPlain,
-    "Access-Control-Expose-Headers": "X-Create-Order-Id, X-Order-Id",
+    "X-Checkout-Order-Id": orderIdPlain,
+    "X-Order-Key": keyHeader,
+    "Access-Control-Expose-Headers":
+      "X-Create-Order-Id, X-Order-Id, X-Checkout-Order-Id, X-Order-Key",
   };
+}
+
+/** Plain UTF-8 JSON body — avoids rare cases where streamed JSON bodies arrive empty to the client. */
+function checkoutJsonResponse(
+  payload: Record<string, unknown>,
+  orderIdRaw: string | number | bigint,
+  orderKey: string
+): NextResponse {
+  const body = JSON.stringify(payload);
+  const res = new NextResponse(body, { status: 200 });
+  res.headers.set("Content-Type", "application/json; charset=utf-8");
+  for (const [key, value] of Object.entries(orderResponseHeaders(orderIdRaw, orderKey))) {
+    res.headers.set(key, value);
+  }
+  return res;
 }
 
 function serializeOrderId(orderIdRaw: string | number | bigint): number | string {
@@ -61,26 +86,59 @@ function serializeOrderId(orderIdRaw: string | number | bigint): number | string
   return String(orderIdRaw);
 }
 
+/** COD: order is final — client clears cart and opens order review (no gateway redirect). */
+function jsonCodOrderPlaced(
+  orderIdRaw: string | number | bigint,
+  orderKey: string
+): NextResponse {
+  const oid = serializeOrderId(orderIdRaw);
+  const data = {
+    success: true as const,
+    type: "order_placed" as const,
+    payment_method: "cod" as const,
+    orderId: oid,
+    order_ref: String(orderIdRaw),
+    order_key: orderKey,
+  };
+  return checkoutJsonResponse(
+    {
+      success: true,
+      data,
+      order_id: oid,
+      order_key: orderKey,
+    },
+    orderIdRaw,
+    orderKey
+  );
+}
+
 /** Always returns JSON — never an undefined body. */
 function jsonSuccess(
-  paymentResult: Extract<HandlePaymentResult, { type: "success" } | { type: "redirect" }>,
-  orderIdRaw: string | number | bigint
+  paymentResult: Extract<HandlePaymentResult, { type: "redirect" }>,
+  orderIdRaw: string | number | bigint,
+  orderKey: string
 ): NextResponse {
+  const oid = serializeOrderId(orderIdRaw);
   const body: CreateOrderResponseBody = {
     success: true,
-    type: paymentResult.type,
-    orderId: serializeOrderId(orderIdRaw),
+    type: "redirect",
+    orderId: oid,
     order_ref: String(orderIdRaw),
-    ...(paymentResult.type === "redirect"
-      ? { url: paymentResult.url }
-      : { redirect: paymentResult.redirect }),
+    order_key: orderKey,
+    url: paymentResult.url,
   };
-  return NextResponse.json(
-    { success: true, data: body },
+  const order_id = oid;
+  const redirect_url = paymentResult.url;
+  return checkoutJsonResponse(
     {
-      status: 200,
-      headers: orderResponseHeaders(orderIdRaw),
-    }
+      success: true,
+      data: body,
+      order_id,
+      order_key: orderKey,
+      redirect_url,
+    },
+    orderIdRaw,
+    orderKey
   );
 }
 
@@ -90,30 +148,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const payload = parseCheckoutPayload(rawBody);
 
     const actor = await resolveCheckoutActor({
-      skipNdisCustomerLookup: payload.payment_method !== "cod",
+      skipNdisCustomerLookup: true,
     });
-
-    if (payload.payment_method === "cod") {
-      if (!actor.authenticated) {
-        return NextResponse.json(
-          { success: false, error: "Authentication required for On Account." },
-          { status: 401 }
-        );
-      }
-      if (!canUseOnAccount(actor)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "On Account is only available for approved administrator accounts.",
-          },
-          { status: 403 }
-        );
-      }
-    }
 
     const { validatedLineItems, shippingLine } = await validateAndRecalculateCheckout(payload);
 
-    const paymentTitle = payload.payment_method === "eway" ? "Credit Card (eWAY)" : "On Account";
+    const isCod = payload.payment_method === "cod";
+    const paymentTitle = isCod ? "On Account" : "Credit Card (eWAY)";
+    const orderStatus = isCod ? "processing" : "pending";
 
     let order: unknown;
     try {
@@ -121,7 +163,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         payment_method: payload.payment_method,
         payment_method_title: paymentTitle,
         set_paid: false,
-        status: "pending",
+        status: orderStatus,
         customer_id:
           typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
         line_items: validatedLineItems,
@@ -209,38 +251,58 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    /**
+     * Woo totals can change after create (e.g. parcel protection fee lines, tax recalculation).
+     * eWAY must use the latest order.total — never the stale POST /orders response.
+     */
+    let orderForPayment: unknown = order;
+    if (postId != null) {
+      try {
+        orderForPayment = await getWooOrder(String(postId));
+        const o = orderForPayment as { total?: string | number };
+        console.log("[checkout-create-order] refreshed order before payment", {
+          postId,
+          total: o?.total,
+        });
+      } catch (refetchErr) {
+        console.warn(
+          "[checkout-create-order] pre-payment order refetch failed; using create response",
+          refetchErr
+        );
+      }
+    }
+
     const paymentCtx = {
-      order,
+      order: orderForPayment,
       payload,
       customerIp: clientIpFromRequest(req) || undefined,
       actorUserId: typeof actor.userId === "number" ? actor.userId : undefined,
     };
 
-    // --- On Account (Woo gateway id `cod`) ---
-    if (payload.payment_method === "cod") {
-      const paymentResult = await handlePayment({
-        method: "cod",
-        ...paymentCtx,
-      });
-      if (paymentResult.type === "error") {
-        return NextResponse.json({ success: false, error: paymentResult.message }, { status: 502 });
-      }
-      return jsonSuccess(paymentResult, orderIdRaw);
+    const orderKey = extractWooOrderKey(orderForPayment);
+    if (!orderKey) {
+      return NextResponse.json(
+        { success: false, error: "WooCommerce did not return order_key for this order." },
+        { status: 502 }
+      );
     }
 
-    // --- eWAY hosted card ---
-    if (payload.payment_method === "eway") {
-      const paymentResult = await handlePayment({
-        method: "eway",
-        ...paymentCtx,
-      });
-      if (paymentResult.type === "error") {
-        return NextResponse.json({ success: false, error: paymentResult.message }, { status: 502 });
-      }
-      return jsonSuccess(paymentResult, orderIdRaw);
+    if (isCod) {
+      return jsonCodOrderPlaced(orderIdRaw, orderKey);
     }
 
-    return NextResponse.json({ success: false, error: "Invalid payment method." }, { status: 400 });
+    if (payload.payment_method !== "eway") {
+      return NextResponse.json({ success: false, error: "Invalid payment method." }, { status: 400 });
+    }
+
+    const paymentResult = await handlePayment({
+      method: "eway",
+      ...paymentCtx,
+    });
+    if (paymentResult.type === "error") {
+      return NextResponse.json({ success: false, error: paymentResult.message }, { status: 502 });
+    }
+    return jsonSuccess(paymentResult, orderIdRaw, orderKey);
   } catch (error: unknown) {
     console.error("Checkout API error:", error);
 
@@ -272,7 +334,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const message = error instanceof Error ? error.message : "Checkout failed";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Order creation failed",
+        error: "Order creation failed",
+      },
+      { status: 500 }
+    );
   }
 }

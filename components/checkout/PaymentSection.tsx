@@ -8,12 +8,7 @@ import ShippingOptions from "@/components/ShippingOptions";
 import ParcelProtection from "@/components/ParcelProtection";
 import type { CheckoutFormData, ShippingMethodType } from "@/lib/checkout/schema";
 import { normalizeCountryCode } from "@/lib/checkout/normalizeCountry";
-import {
-  FOCUS_RING,
-  FOCUS_RING_BTN,
-  FOCUS_RING_LINK,
-  ON_ACCOUNT_BANK_LINES,
-} from "@/lib/checkout/uiConstants";
+import { FOCUS_RING, FOCUS_RING_BTN, FOCUS_RING_LINK } from "@/lib/checkout/uiConstants";
 import RequiredMark from "./RequiredMark";
 
 export type PaymentSectionProps = {
@@ -21,7 +16,6 @@ export type PaymentSectionProps = {
   cartSubtotal: number;
   control: Control<CheckoutFormData>;
   errors: FieldErrors<CheckoutFormData>;
-  paymentMethods: readonly ("cod" | "eway")[];
   selectedPaymentMethod: "eway" | "cod";
   onPaymentMethodChange: (method: "eway" | "cod") => void;
   placing: boolean;
@@ -121,7 +115,6 @@ function PaymentSectionInner({
   cartSubtotal,
   control,
   errors,
-  paymentMethods,
   selectedPaymentMethod,
   onPaymentMethodChange,
   placing,
@@ -158,43 +151,42 @@ function PaymentSectionInner({
         <fieldset className="min-w-0 border-0 p-0" aria-labelledby="checkout-payment-heading">
           <legend className="sr-only">Choose how you will pay</legend>
           <div className="space-y-2">
-            {paymentMethods.map((method) => {
-              const radioId = `checkout-payment-${method}`;
-              const title =
-                method === "cod" ? "On account (manual payment)" : "Credit card (eWAY)";
-              return (
-                <label
-                  key={method}
-                  htmlFor={radioId}
-                  className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
-                >
-                  <input
-                    id={radioId}
-                    type="radio"
-                    name="checkout_payment_method"
-                    value={method}
-                    checked={selectedPaymentMethod === method}
-                    onChange={() => onPaymentMethodChange(method)}
-                    className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{title}</div>
-                    {method === "cod" ? (
-                      <div className="mt-1 space-y-0.5 text-xs text-gray-700">
-                        {ON_ACCOUNT_BANK_LINES.map((row) => (
-                          <div key={row.label}>
-                            <span className="font-medium text-gray-800">{row.label}:</span>{" "}
-                            {row.value}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-xs text-gray-700">Secure hosted payment via eWAY.</div>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
+            <label
+              htmlFor="checkout-payment-eway"
+              className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
+            >
+              <input
+                id="checkout-payment-eway"
+                type="radio"
+                name="checkout_payment_method"
+                value="eway"
+                checked={selectedPaymentMethod === "eway"}
+                onChange={() => onPaymentMethodChange("eway")}
+                className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">Credit card (eWAY)</div>
+                <p className="mt-1 text-xs text-gray-700">Secure hosted payment via eWAY.</p>
+              </div>
+            </label>
+            <label
+              htmlFor="checkout-payment-cod"
+              className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
+            >
+              <input
+                id="checkout-payment-cod"
+                type="radio"
+                name="checkout_payment_method"
+                value="cod"
+                checked={selectedPaymentMethod === "cod"}
+                onChange={() => onPaymentMethodChange("cod")}
+                className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+              />
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">On Account</div>
+                <p className="mt-1 text-xs text-gray-700">Order placed on your account; payment per your agreement.</p>
+              </div>
+            </label>
           </div>
         </fieldset>
       </div>
@@ -252,12 +244,12 @@ function PaymentSectionInner({
         {placing
           ? selectedPaymentMethod === "eway"
             ? "Redirecting to secure payment…"
-            : "Placing on-account order…"
-          : selectedPaymentMethod === "eway"
-            ? ewayTokenFlowEnabled
+            : "Placing your order…"
+          : selectedPaymentMethod === "cod"
+            ? "Place order on account"
+            : ewayTokenFlowEnabled
               ? "Verify & pay"
-              : "Pay securely with card"
-            : "Place on account order"}
+              : "Pay securely with card"}
       </button>
     </>
   );

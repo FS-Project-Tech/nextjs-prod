@@ -67,7 +67,7 @@ export default function CancelOrderModal({ orderId, onClose, onSuccess }: Cancel
             <h2 className="text-xl font-bold text-gray-900">Cancel Order #{orderId}</h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-gray-600 hover:text-gray-600 transition-colors"
               disabled={isCancelling}
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

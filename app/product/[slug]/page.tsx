@@ -8,6 +8,7 @@ import {
 
 import ProductGallery from "@/components/ProductGallery";
 import ProductDetailPanel from "@/components/ProductDetailPanel";
+import { ProductVariationGalleryProvider } from "@/components/product/ProductVariationGalleryProvider";
 import ProductInfoAccordion from "@/components/ProductInfoAccordion";
 import ProductReviews from "@/app/product/[slug]/ProductReviews";
 import Breadcrumbs from "@/components/Breadcrumbs";
@@ -314,20 +315,22 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
 
         {/* Product header */}
         <Container className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
-          <section className="lg:col-span-2">
-            <ProductGallery
-              images={product.images.map((img) => ({
-                id: img.id,
-                src: img.src,
-                alt: img.alt || product.name,
-                name: img.name,
-              }))}
-            />
-          </section>
+          <ProductVariationGalleryProvider
+            baseImages={product.images.map((img) => ({
+              id: img.id,
+              src: img.src,
+              alt: img.alt || product.name,
+              name: img.name,
+            }))}
+          >
+            <section className="lg:col-span-2">
+              <ProductGallery />
+            </section>
 
-          <section className="lg:col-span-2">
-            <ProductDetailPanel product={product} variations={variations} />
-          </section>
+            <section className="lg:col-span-2">
+              <ProductDetailPanel product={product} variations={variations} />
+            </section>
+          </ProductVariationGalleryProvider>
 
           <aside className="flex flex-col lg:col-span-1 gap-6">
             {visibleSidebarBanners.map(({ key, link, imgUrl }) => (

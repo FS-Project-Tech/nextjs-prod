@@ -1,6 +1,6 @@
 export async function readResponseBodyText(res: Response): Promise<string> {
-  const buf = await res.arrayBuffer();
-  return new TextDecoder("utf-8", { fatal: false }).decode(buf);
+  // Prefer .text() — matches browser JSON responses and avoids rare empty reads with arrayBuffer + decode.
+  return (await res.text()).replace(/^\uFEFF/, "");
 }
 
 function headerValueInsensitive(res: Response, name: string): string | null {
@@ -9,6 +9,17 @@ function headerValueInsensitive(res: Response, name: string): string | null {
     if (key.toLowerCase() === want) return value;
   }
   return null;
+}
+
+export function pickCreateOrderKeyFromHeaders(res: Response): string | null {
+  const encoded = headerValueInsensitive(res, "X-Order-Key");
+  if (!encoded?.trim()) return null;
+  try {
+    const decoded = decodeURIComponent(encoded.trim());
+    return decoded.trim() || null;
+  } catch {
+    return encoded.trim() || null;
+  }
 }
 
 export function pickCreateOrderIdFromHeaders(res: Response): string | null {
@@ -25,7 +36,9 @@ export function pickCreateOrderIdFromHeaders(res: Response): string | null {
       return token;
     }
   }
-  const plain = headerValueInsensitive(res, "X-Order-Id")?.trim();
+  const plain =
+    headerValueInsensitive(res, "X-Order-Id")?.trim() ||
+    headerValueInsensitive(res, "X-Checkout-Order-Id")?.trim();
   return plain || null;
 }
 

@@ -3,12 +3,17 @@
  * Use {@link createWooOrder} / {@link updateWooOrder} from `@/services/woocommerce` (re-exported here).
  */
 import wcAPI from "@/lib/woocommerce";
-import { createWooOrder, updateWooOrder, type WooCreateOrderInput } from "@/services/woocommerce";
+import {
+  addWooOrderNote,
+  createWooOrder,
+  updateWooOrder,
+  type WooCreateOrderInput,
+} from "@/services/woocommerce";
 import { logWooOrderLineItems, logValidatedItems } from "@/lib/woo/debugLogger";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 
 export type { WooCreateOrderInput };
-export { createWooOrder, updateWooOrder };
+export { addWooOrderNote, createWooOrder, updateWooOrder };
 
 export async function getWooOrder(orderRef: string): Promise<unknown> {
   const ref = String(orderRef || "").trim();
@@ -66,6 +71,13 @@ function firstResolvedId(candidates: unknown[]): number | string | null {
       return t;
     }
   }
+  return null;
+}
+
+export function extractWooOrderKey(order: unknown): string | null {
+  if (order == null || typeof order !== "object") return null;
+  const k = (order as { order_key?: unknown }).order_key;
+  if (typeof k === "string" && k.trim()) return k.trim();
   return null;
 }
 

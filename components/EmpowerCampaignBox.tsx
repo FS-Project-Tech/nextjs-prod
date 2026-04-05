@@ -134,7 +134,7 @@ export default function EmpowerCampaignBox({
             {/* Price */}
             {rawPrice > 0 && discountedPrice > 0 && (
               <div className="flex items-baseline justify-center gap-2">
-                <span className="text-gray-300 line-through text-sm">
+                <span className="text-gray-500 line-through text-sm">
                   {priceInfo?.price ?? `$${rawPrice.toFixed(2)}`}
                 </span>
 

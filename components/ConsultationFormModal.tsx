@@ -140,7 +140,7 @@ export default function ConsultationFormModal({
           <h2 className="text-xl font-semibold text-gray-900">Need Consultation</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-600 hover:text-gray-600 transition-colors"
             aria-label="Close"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

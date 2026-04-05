@@ -1,6 +1,8 @@
+import type { MutableRefObject } from "react";
 import {
   readResponseBodyText,
   pickCreateOrderIdFromHeaders,
+  pickCreateOrderKeyFromHeaders,
   messageFromCreateOrderError,
 } from "./createOrderHttp";
 
@@ -11,34 +13,65 @@ export type CheckoutOutcomeDeps = {
   clearLocalCart: () => void;
   userId?: string;
   setPostSubmitNavigation: (phase: "secure_payment" | "order_confirmation") => void;
+  /** Set when a full-page redirect is scheduled so the submit handler can keep "placing" until unload. */
+  redirectPendingRef: MutableRefObject<boolean>;
+  /** Client-side navigation for same-origin checkout paths (e.g. order review). */
+  replaceInternalPath: (path: string) => void;
 };
 
-function persistEmptyServerCart(userId?: string): void {
-  if (!userId) return;
-  fetch("/api/dashboard/cart/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ items: [] }),
-  }).catch(() => {});
+/**
+ * External payment / gateway URLs must use full navigation.
+ * Deferred one microtask so the fetch response can finalize (DevTools / network).
+ */
+function assignExternalUrl(
+  href: string,
+  redirectPendingRef: MutableRefObject<boolean>
+): void {
+  redirectPendingRef.current = true;
+  queueMicrotask(() => {
+    window.location.assign(href);
+  });
 }
 
-export function goToOrderReview(orderId: string): void {
-  window.location.assign(`/order-review?order_id=${encodeURIComponent(orderId)}`);
+function replaceInternalCheckoutPath(path: string, deps: CheckoutOutcomeDeps): void {
+  deps.redirectPendingRef.current = true;
+  queueMicrotask(() => {
+    deps.replaceInternalPath(path);
+  });
+}
+
+export function goToOrderReview(
+  orderId: string,
+  paymentHint: string | undefined,
+  deps: CheckoutOutcomeDeps,
+  orderKey?: string | null
+): void {
+  const hint =
+    paymentHint && paymentHint.trim() !== ""
+      ? `&pm=${encodeURIComponent(paymentHint.trim())}`
+      : "";
+  const keyQs =
+    orderKey && orderKey.trim() !== ""
+      ? `&key=${encodeURIComponent(orderKey.trim())}`
+      : "";
+  replaceInternalCheckoutPath(
+    `/checkout/order-review?orderId=${encodeURIComponent(orderId)}${keyQs}${hint}`,
+    deps
+  );
 }
 
 export async function readCheckoutJsonOrRecoverHeaders(
   res: Response,
-  deps: CheckoutOutcomeDeps,
-  paymentMethod: "eway" | "cod"
+  deps: CheckoutOutcomeDeps
 ): Promise<{ apiJson: Record<string, unknown>; recoveredEarly: boolean }> {
   let responseText = "";
   try {
-    responseText = (await readResponseBodyText(res)).replace(/^\uFEFF/, "");
+    responseText = await readResponseBodyText(res);
   } catch {
     const recoveredId = pickCreateOrderIdFromHeaders(res);
     if (recoveredId) {
-      finalizeRecoveredOrderId(deps, paymentMethod, recoveredId);
+      const recoveredKey = pickCreateOrderKeyFromHeaders(res);
+      finalizeRecoveredOrderId(deps, recoveredId, recoveredKey);
       return { apiJson: {}, recoveredEarly: true };
     }
     deps.toast.error(
@@ -55,8 +88,15 @@ export async function readCheckoutJsonOrRecoverHeaders(
     }
     const recoveredId = pickCreateOrderIdFromHeaders(res);
     if (recoveredId) {
-      finalizeRecoveredOrderId(deps, paymentMethod, recoveredId);
+      const recoveredKey = pickCreateOrderKeyFromHeaders(res);
+      finalizeRecoveredOrderId(deps, recoveredId, recoveredKey);
       return { apiJson: {}, recoveredEarly: true };
+    }
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[checkout] create-order returned OK but empty body", {
+        status: res.status,
+        url: res.url,
+      });
     }
     deps.toast.error(
       "Empty response from checkout server. If this persists, check the Network tab for the create-order request."
@@ -65,7 +105,8 @@ export async function readCheckoutJsonOrRecoverHeaders(
   }
 
   try {
-    return { apiJson: JSON.parse(trimmed) as Record<string, unknown>, recoveredEarly: false };
+    const apiJson = JSON.parse(trimmed) as Record<string, unknown>;
+    return { apiJson, recoveredEarly: false };
   } catch {
     deps.toast.error(
       !res.ok
@@ -78,22 +119,48 @@ export async function readCheckoutJsonOrRecoverHeaders(
 
 function finalizeRecoveredOrderId(
   deps: CheckoutOutcomeDeps,
-  paymentMethod: "eway" | "cod",
-  orderId: string
+  orderId: string,
+  orderKey: string | null
 ): void {
-  if (paymentMethod === "cod") {
-    deps.setPostSubmitNavigation("order_confirmation");
-    try {
-      deps.clearLocalCart();
-      persistEmptyServerCart(deps.userId);
-    } catch {
-      /* ignore */
-    }
-    deps.toast.success("Order placed successfully.");
-  } else {
-    deps.setPostSubmitNavigation("order_confirmation");
+  deps.setPostSubmitNavigation("order_confirmation");
+  goToOrderReview(orderId, undefined, deps, orderKey);
+}
+
+function persistEmptyServerCart(userId?: string): void {
+  if (!userId) return;
+  fetch("/api/dashboard/cart/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ items: [] }),
+  }).catch(() => {});
+}
+
+/** After `/api/checkout/create-order` with cash on delivery (no eWAY redirect). */
+export function handleCashOnDeliveryCompleteJson(
+  payload: Record<string, unknown>,
+  deps: CheckoutOutcomeDeps
+): boolean {
+  if (payload.type !== "order_placed" || payload.payment_method !== "cod") return false;
+
+  const orderIdRaw = payload.orderId ?? payload.order_ref ?? payload.order_id;
+  if (orderIdRaw == null || String(orderIdRaw).trim() === "") return false;
+
+  const orderKey =
+    typeof payload.order_key === "string" && payload.order_key.trim() !== ""
+      ? payload.order_key.trim()
+      : null;
+
+  deps.setPostSubmitNavigation("order_confirmation");
+  try {
+    deps.clearLocalCart();
+    persistEmptyServerCart(deps.userId);
+  } catch {
+    /* ignore */
   }
-  goToOrderReview(orderId);
+  deps.toast.success("Order placed successfully.");
+  goToOrderReview(String(orderIdRaw), undefined, deps, orderKey);
+  return true;
 }
 
 function unwrapSuccessData(apiJson: Record<string, unknown>): Record<string, unknown> {
@@ -112,7 +179,8 @@ export function handleTokenHandoffJson(
   res: Response,
   apiJson: Record<string, unknown>,
   toast: CheckoutToast,
-  setPostSubmitNavigation: (p: "secure_payment" | "order_confirmation") => void
+  setPostSubmitNavigation: (p: "secure_payment" | "order_confirmation") => void,
+  redirectPendingRef: MutableRefObject<boolean>
 ): boolean {
   if (!res.ok || apiJson.success === false || apiJson.success === "false") {
     const detail = messageFromCreateOrderError(apiJson);
@@ -137,13 +205,14 @@ export function handleTokenHandoffJson(
     /* ignore */
   }
   setPostSubmitNavigation("secure_payment");
-  window.location.assign(redirectUrl);
+  assignExternalUrl(redirectUrl, redirectPendingRef);
   return true;
 }
 
 export function handleHostedRedirectJson(
   apiJson: Record<string, unknown>,
-  setPostSubmitNavigation: (p: "secure_payment" | "order_confirmation") => void
+  setPostSubmitNavigation: (p: "secure_payment" | "order_confirmation") => void,
+  redirectPendingRef: MutableRefObject<boolean>
 ): boolean {
   if (apiJson.type !== "redirect" || typeof apiJson.url !== "string" || !apiJson.url.trim()) {
     return false;
@@ -158,40 +227,7 @@ export function handleHostedRedirectJson(
     /* ignore */
   }
   setPostSubmitNavigation("secure_payment");
-  window.location.assign(payUrl);
-  return true;
-}
-
-export function handleCodSuccessJson(
-  apiJson: Record<string, unknown>,
-  deps: CheckoutOutcomeDeps
-): boolean {
-  const outcomeType = apiJson.type;
-  const isSuccessType = String(outcomeType || "").toLowerCase() === "success";
-  const redirectFromApi = typeof apiJson.redirect === "string" ? apiJson.redirect.trim() : "";
-  const orderNumberRaw = apiJson.order_number;
-  const orderNumberPretty =
-    typeof orderNumberRaw === "string" && orderNumberRaw.trim()
-      ? orderNumberRaw.trim().replace(/^#/, "")
-      : null;
-  const orderIdForReview = orderNumberPretty ?? apiJson.orderId ?? apiJson.order_ref;
-  const reviewPath =
-    redirectFromApi ||
-    (orderIdForReview != null && String(orderIdForReview).trim() !== ""
-      ? `/order-review?order_id=${encodeURIComponent(String(orderIdForReview))}`
-      : "");
-
-  if (!isSuccessType || !reviewPath) return false;
-
-  deps.setPostSubmitNavigation("order_confirmation");
-  try {
-    deps.clearLocalCart();
-    persistEmptyServerCart(deps.userId);
-  } catch {
-    /* ignore */
-  }
-  deps.toast.success("Order placed successfully.");
-  window.location.assign(reviewPath);
+  assignExternalUrl(payUrl, redirectPendingRef);
   return true;
 }
 

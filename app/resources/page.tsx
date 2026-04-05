@@ -64,7 +64,7 @@ export default function ResourcesPage() {
                     {item.title}
                   </span>
                   <svg
-                    className="h-5 w-5 shrink-0 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-teal-500"
+                    className="h-5 w-5 shrink-0 text-gray-600 transition-transform group-hover:translate-x-1 group-hover:text-teal-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

@@ -6,7 +6,7 @@ import {
   readCheckoutJsonOrRecoverHeaders,
   handleTokenHandoffJson,
   handleHostedRedirectJson,
-  handleCodSuccessJson,
+  handleCashOnDeliveryCompleteJson,
   reportCreateOrderFailure,
   type CheckoutOutcomeDeps,
 } from "./checkoutOutcomeHandlers";
@@ -24,6 +24,8 @@ export type SubmitCheckoutOrderArgs = {
   userId?: string;
   setPostSubmitNavigation: (phase: "secure_payment" | "order_confirmation") => void;
   submitGuardRef: MutableRefObject<boolean>;
+  redirectPendingRef: MutableRefObject<boolean>;
+  replaceInternalPath: (path: string) => void;
   setPlacing: (busy: boolean) => void;
 };
 
@@ -49,6 +51,8 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     userId,
     setPostSubmitNavigation,
     submitGuardRef,
+    redirectPendingRef,
+    replaceInternalPath,
     setPlacing,
   } = args;
 
@@ -59,6 +63,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     return;
   }
   submitGuardRef.current = true;
+  redirectPendingRef.current = false;
 
   if (cartLines.length === 0) {
     submitGuardRef.current = false;
@@ -84,6 +89,8 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     clearLocalCart,
     userId,
     setPostSubmitNavigation,
+    redirectPendingRef,
+    replaceInternalPath,
   };
 
   try {
@@ -95,10 +102,14 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       couponFromUrl: couponSearchParam,
     });
 
-    const res = await fetch(endpoint, {
+    const requestUrl =
+      typeof window !== "undefined" ? new URL(endpoint, window.location.origin).href : endpoint;
+
+    const res = await fetch(requestUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
         ...(useTokenHandoff && typeof crypto !== "undefined" && "randomUUID" in crypto
           ? { "Idempotency-Key": crypto.randomUUID() }
           : {}),
@@ -108,15 +119,17 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       credentials: "same-origin",
     });
 
-    const { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(
-      res,
-      outcomeDeps,
-      selectedPaymentMethod
-    );
+    const { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps);
     if (recoveredEarly) return;
 
     if (useTokenHandoff) {
-      handleTokenHandoffJson(res, apiJson, outcomeDeps.toast, setPostSubmitNavigation);
+      handleTokenHandoffJson(
+        res,
+        apiJson,
+        outcomeDeps.toast,
+        setPostSubmitNavigation,
+        redirectPendingRef
+      );
       return;
     }
 
@@ -130,14 +143,29 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       return;
     }
 
-    const orderPayload =
+    const inner =
       apiJson.data !== null && typeof apiJson.data === "object" && !Array.isArray(apiJson.data)
         ? (apiJson.data as Record<string, unknown>)
-        : apiJson;
+        : null;
 
-    if (handleHostedRedirectJson(orderPayload, setPostSubmitNavigation)) return;
+    /** Merge root-level fields so eWAY redirect works even if `data` is partial or missing. */
+    const orderPayload: Record<string, unknown> = {
+      ...(inner ?? {}),
+      ...(typeof apiJson.redirect_url === "string" && apiJson.redirect_url.trim()
+        ? { redirect_url: apiJson.redirect_url.trim() }
+        : {}),
+      ...(apiJson.order_id != null && apiJson.order_id !== ""
+        ? { order_id: apiJson.order_id }
+        : {}),
+      ...(typeof apiJson.order_key === "string" && apiJson.order_key.trim()
+        ? { order_key: apiJson.order_key.trim() }
+        : {}),
+    };
 
-    if (handleCodSuccessJson(orderPayload, outcomeDeps)) return;
+    if (handleCashOnDeliveryCompleteJson(orderPayload, outcomeDeps)) return;
+
+    if (handleHostedRedirectJson(orderPayload, setPostSubmitNavigation, redirectPendingRef))
+      return;
 
     showError("Unexpected checkout response. Please contact support.");
   } catch (err: unknown) {
@@ -145,6 +173,8 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     showError(message);
   } finally {
     submitGuardRef.current = false;
-    setPlacing(false);
+    if (!redirectPendingRef.current) {
+      setPlacing(false);
+    }
   }
 }

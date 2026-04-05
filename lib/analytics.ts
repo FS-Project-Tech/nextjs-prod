@@ -1,6 +1,6 @@
 /**
- * Analytics & Tracking Integration
- * Google Analytics 4, Meta Pixel, and custom event tracking
+ * Production-Grade Analytics & Tracking
+ * Supports GA4 + Meta Pixel + Ecommerce Events
  */
 
 declare global {
@@ -11,32 +11,62 @@ declare global {
   }
 }
 
-// Google Analytics 4
+// 🔥 CONFIG
+const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || "INR";
+
+function isBrowser() {
+  return typeof window !== "undefined";
+}
+
+// ==============================
+// GOOGLE ANALYTICS 4
+// ==============================
+/**
+ * Fallback if GA was not bootstrapped via `next/script` in layout (e.g. older deployments).
+ */
 export function initGA4(measurementId: string) {
   if (typeof window === "undefined") return;
 
-  // Load GA4 script
+  if (window.gtag) return;
+
   const script = document.createElement("script");
   script.async = true;
   script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
   document.head.appendChild(script);
 
-  // Initialize dataLayer
   window.dataLayer = window.dataLayer || [];
   function gtag(...args: any[]) {
     window.dataLayer!.push(args);
   }
-  window.gtag = gtag;
 
+  window.gtag = gtag;
   gtag("js", new Date());
-  gtag("config", measurementId);
+  gtag("config", measurementId, {
+    send_page_view: false,
+  });
 }
 
-// Meta Pixel
+/** SPA / client navigations — layout uses send_page_view: false so this is the source of truth. */
+export function trackPageView(pagePath: string) {
+  if (!isBrowser()) return;
+  const gaId = process.env.NEXT_PUBLIC_GA4_ID?.trim();
+  if (!gaId || !window.gtag) return;
+  try {
+    window.gtag("config", gaId, { page_path: pagePath });
+  } catch (err) {
+    console.error("trackPageView error", err);
+  }
+}
+
+// ==============================
+// META PIXEL
+// ==============================
 export function initMetaPixel(pixelId: string) {
   if (typeof window === "undefined") return;
 
-  // Load Meta Pixel script
+  // جلوگیری duplicate load
+  if (window.fbq) return;
+
   (function (f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
     if (f.fbq) return;
     n = f.fbq = function (...args: any[]) {
@@ -44,27 +74,25 @@ export function initMetaPixel(pixelId: string) {
     };
     if (!f._fbq) f._fbq = n;
     n.push = n;
-    n.loaded = !0;
+    n.loaded = true;
     n.version = "2.0";
     n.queue = [];
     t = b.createElement(e);
-    t.async = !0;
+    t.async = true;
     t.src = v;
     s = b.getElementsByTagName(e)[0];
     s.parentNode!.insertBefore(t, s);
   })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
 
-  (window as any).fbq =
-    (window as any).fbq ||
-    function (...args: any[]) {
-      ((window as any).fbq.q = (window as any).fbq.q || []).push(args);
-    };
+  window.fbq("init", pixelId);
+  window.fbq("track", "PageView");
 
-  (window as any).fbq("init", pixelId);
-  (window as any).fbq("track", "PageView");
+  console.log("✅ Meta Pixel Initialized");
 }
 
-// E-commerce Events
+// ==============================
+// EVENTS
+// ==============================
 
 export function trackViewItem(product: {
   id: number;
@@ -73,12 +101,11 @@ export function trackViewItem(product: {
   category?: string;
   sku?: string;
 }) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "view_item", {
-      currency: "AUD",
+  try {
+    window.gtag?.("event", "view_item", {
+      currency: CURRENCY,
       value: product.price,
       items: [
         {
@@ -90,19 +117,20 @@ export function trackViewItem(product: {
         },
       ],
     });
-  }
 
-  // Meta Pixel
-  if (window.fbq) {
-    window.fbq("track", "ViewContent", {
+    window.fbq?.("track", "ViewContent", {
       content_name: product.name,
       content_ids: [product.id.toString()],
       content_type: "product",
       value: product.price,
-      currency: "AUD",
+      currency: CURRENCY,
     });
+  } catch (err) {
+    console.error("trackViewItem error", err);
   }
 }
+
+// ------------------------------
 
 export function trackAddToCart(item: {
   id: number;
@@ -112,13 +140,14 @@ export function trackAddToCart(item: {
   category?: string;
   sku?: string;
 }) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "add_to_cart", {
-      currency: "AUD",
-      value: item.price * item.quantity,
+  const value = item.price * item.quantity;
+
+  try {
+    window.gtag?.("event", "add_to_cart", {
+      currency: CURRENCY,
+      value,
       items: [
         {
           item_id: item.id.toString(),
@@ -130,19 +159,20 @@ export function trackAddToCart(item: {
         },
       ],
     });
-  }
 
-  // Meta Pixel
-  if (window.fbq) {
-    window.fbq("track", "AddToCart", {
+    window.fbq?.("track", "AddToCart", {
       content_name: item.name,
       content_ids: [item.id.toString()],
       content_type: "product",
-      value: item.price * item.quantity,
-      currency: "AUD",
+      value,
+      currency: CURRENCY,
     });
+  } catch (err) {
+    console.error("trackAddToCart error", err);
   }
 }
+
+// ------------------------------
 
 export function trackRemoveFromCart(item: {
   id: number;
@@ -150,13 +180,14 @@ export function trackRemoveFromCart(item: {
   price: number;
   quantity: number;
 }) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "remove_from_cart", {
-      currency: "AUD",
-      value: item.price * item.quantity,
+  const value = item.price * item.quantity;
+
+  try {
+    window.gtag?.("event", "remove_from_cart", {
+      currency: CURRENCY,
+      value,
       items: [
         {
           item_id: item.id.toString(),
@@ -166,8 +197,12 @@ export function trackRemoveFromCart(item: {
         },
       ],
     });
+  } catch (err) {
+    console.error("trackRemoveFromCart error", err);
   }
 }
+
+// ------------------------------
 
 export function trackBeginCheckout(
   items: Array<{
@@ -179,12 +214,11 @@ export function trackBeginCheckout(
   }>,
   value: number
 ) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "begin_checkout", {
-      currency: "AUD",
+  try {
+    window.gtag?.("event", "begin_checkout", {
+      currency: CURRENCY,
       value,
       items: items.map((item) => ({
         item_id: item.id.toString(),
@@ -194,19 +228,20 @@ export function trackBeginCheckout(
         item_category: item.category,
       })),
     });
-  }
 
-  // Meta Pixel
-  if (window.fbq) {
-    window.fbq("track", "InitiateCheckout", {
+    window.fbq?.("track", "InitiateCheckout", {
       content_ids: items.map((item) => item.id.toString()),
       content_type: "product",
       value,
-      currency: "AUD",
+      currency: CURRENCY,
       num_items: items.reduce((sum, item) => sum + item.quantity, 0),
     });
+  } catch (err) {
+    console.error("trackBeginCheckout error", err);
   }
 }
+
+// ------------------------------
 
 export function trackPurchase(order: {
   id: string | number;
@@ -223,14 +258,13 @@ export function trackPurchase(order: {
   }>;
   coupon?: string;
 }) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "purchase", {
+  try {
+    window.gtag?.("event", "purchase", {
       transaction_id: order.id.toString(),
       value: order.revenue,
-      currency: "AUD",
+      currency: CURRENCY,
       tax: order.tax || 0,
       shipping: order.shipping || 0,
       coupon: order.coupon,
@@ -243,41 +277,37 @@ export function trackPurchase(order: {
         item_sku: item.sku,
       })),
     });
-  }
 
-  // Meta Pixel
-  if (window.fbq) {
-    window.fbq("track", "Purchase", {
+    window.fbq?.("track", "Purchase", {
       content_ids: order.items.map((item) => item.id.toString()),
       content_type: "product",
       value: order.revenue,
-      currency: "AUD",
+      currency: CURRENCY,
       num_items: order.items.reduce((sum, item) => sum + item.quantity, 0),
     });
+  } catch (err) {
+    console.error("trackPurchase error", err);
   }
-
-  // Sync to WooCommerce analytics (if needed)
-  // This would typically be done server-side via API
 }
 
-export function trackApplyCoupon(coupon: string, discount: number) {
-  if (typeof window === "undefined") return;
+// ------------------------------
 
-  // GA4
-  if (window.gtag) {
-    window.gtag("event", "add_payment_info", {
+export function trackApplyCoupon(coupon: string, discount: number) {
+  if (!isBrowser()) return;
+
+  try {
+    window.gtag?.("event", "add_payment_info", {
       coupon,
       value: discount,
-      currency: "AUD",
+      currency: CURRENCY,
     });
-  }
 
-  // Meta Pixel
-  if (window.fbq) {
-    window.fbq("track", "AddPaymentInfo", {
+    window.fbq?.("track", "AddPaymentInfo", {
       content_type: "coupon",
       value: discount,
-      currency: "AUD",
+      currency: CURRENCY,
     });
+  } catch (err) {
+    console.error("trackApplyCoupon error", err);
   }
 }

@@ -154,7 +154,7 @@ export default function QuoteTemplatesPage() {
       {templates.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <svg
-            className="mx-auto h-12 w-12 text-gray-400"
+            className="mx-auto h-12 w-12 text-gray-600"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

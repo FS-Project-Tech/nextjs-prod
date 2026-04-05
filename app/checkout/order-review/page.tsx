@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, Suspense, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, Suspense, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
 import type { OrderReviewOrder } from "@/components/checkout/order-review/types";
@@ -9,25 +9,19 @@ import OrderReviewSummary from "@/components/checkout/order-review/OrderReviewSu
 import OrderItems from "@/components/checkout/order-review/OrderItems";
 import PaymentStatus from "@/components/checkout/order-review/PaymentStatus";
 import { downloadOrderInvoicePdf } from "@/lib/order-review-pdf";
+import { trackPurchase } from "@/lib/analytics";
 
 function OrderReviewContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { clear } = useCart();
   const [order, setOrder] = useState<OrderReviewOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const purchaseTrackedForOrderRef = useRef<string | null>(null);
   const orderIdFromUrl = searchParams.get("order_id") || searchParams.get("orderId");
+  const orderKeyFromUrl = searchParams.get("key");
   const accessCodeFromUrl = searchParams.get("AccessCode") || searchParams.get("accessCode");
-  const recoverKey = searchParams.get("recover");
-  /** Set by checkout when redirecting after Place on account order (Woo may still return another gateway id). */
-  const paymentMethodHint = (
-    searchParams.get("pm") ||
-    searchParams.get("payment_method") ||
-    ""
-  ).toLowerCase();
-
   useEffect(() => {
     // Suppress "lab" color function parsing errors from html2canvas/css parsing
     const originalError = console.error;
@@ -51,119 +45,97 @@ function OrderReviewContent() {
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    const resolveOrderIdFromRecover = async (): Promise<string | null> => {
-      const key =
-        recoverKey ||
-        (typeof window !== "undefined" ? sessionStorage.getItem("checkout_recover_ik") : null);
-      if (!key) return null;
-
-      for (let attempt = 0; attempt < 28 && !cancelled; attempt++) {
-        try {
-          const r = await fetch(`/api/checkout/result?key=${encodeURIComponent(key)}`, {
-            cache: "no-store",
-            credentials: "same-origin",
-          });
-          if (r.ok) {
-            const raw = (await r.text()).replace(/^\uFEFF/, "").trim();
-            let data: { order?: { number?: string; order_number?: string; id?: number } } = {};
-            if (raw) {
-              try {
-                data = JSON.parse(raw) as typeof data;
-              } catch {
-                /* continue retry */
-              }
-            }
-            const oid = data.order?.number ?? data.order?.order_number ?? data.order?.id;
-            if (oid != null && String(oid).trim() !== "") {
-              try {
-                sessionStorage.removeItem("checkout_recover_ik");
-              } catch {
-                /* ignore */
-              }
-              const idStr = String(oid);
-              router.replace(`/checkout/order-review?orderId=${encodeURIComponent(idStr)}`, {
-                scroll: false,
-              });
-              return idStr;
-            }
-          }
-        } catch {
-          /* retry */
-        }
-        await sleep(400);
-      }
-      return null;
-    };
-
     const run = async () => {
       setLoading(true);
       setError(null);
 
-      let orderId: string | null = orderIdFromUrl;
-
-      if (!orderId && recoverKey) {
-        orderId = await resolveOrderIdFromRecover();
-      } else if (!orderId && typeof window !== "undefined") {
-        const stored = sessionStorage.getItem("checkout_recover_ik");
-        if (stored) {
-          orderId = await resolveOrderIdFromRecover();
-        }
-      }
+      const orderId = orderIdFromUrl;
 
       if (cancelled) return;
 
       if (!orderId) {
-        setError(
-          recoverKey
-            ? "We couldn’t load your order confirmation yet. If you were charged, check your email or your account orders — do not pay again."
-            : "Order ID is required"
-        );
+        setError("Order ID is required");
         setLoading(false);
         return;
       }
 
       try {
-        const orderApiUrl = accessCodeFromUrl
-          ? `/api/orders/${orderId}?AccessCode=${encodeURIComponent(accessCodeFromUrl)}`
-          : `/api/orders/${orderId}`;
-        const res = await fetch(orderApiUrl, {
-          cache: "no-store",
-          credentials: "same-origin",
-        });
-        const responseText = (await res.text()).replace(/^\uFEFF/, "");
-        const trimmed = responseText.trim();
+        const hasKey = Boolean(orderKeyFromUrl?.trim());
+        const ac = accessCodeFromUrl?.trim()
+          ? `&AccessCode=${encodeURIComponent(accessCodeFromUrl.trim())}`
+          : "";
+        const orderApiUrl = hasKey
+          ? `/api/checkout/get-order?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKeyFromUrl!.trim())}${ac}`
+          : accessCodeFromUrl
+            ? `/api/orders/${encodeURIComponent(orderId)}?AccessCode=${encodeURIComponent(accessCodeFromUrl)}`
+            : `/api/orders/${encodeURIComponent(orderId)}`;
 
-        if (!res.ok) {
-          let msg = `Unable to load order (HTTP ${res.status}).`;
-          if (trimmed) {
-            try {
-              const errBody = JSON.parse(trimmed) as { error?: string; message?: string };
-              if (typeof errBody.error === "string" && errBody.error.trim()) {
-                msg = errBody.error.trim();
-              } else if (typeof errBody.message === "string" && errBody.message.trim()) {
-                msg = errBody.message.trim();
-              }
-            } catch {
-              /* keep msg */
-            }
+        const maxAttempts = accessCodeFromUrl ? 8 : hasKey ? 4 : 5;
+        let data: { order?: OrderReviewOrder } | null = null;
+        let lastError: Error | null = null;
+
+        for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt++) {
+          if (attempt > 0) {
+            await sleep(350 + attempt * 150);
           }
-          throw new Error(msg);
+
+          const res = await fetch(orderApiUrl, {
+            cache: "no-store",
+            credentials: "same-origin",
+          });
+          const responseText = (await res.text()).replace(/^\uFEFF/, "");
+          const trimmed = responseText.trim();
+
+          if (!res.ok) {
+            let msg = `Unable to load order (HTTP ${res.status}).`;
+            if (trimmed) {
+              try {
+                const errBody = JSON.parse(trimmed) as { error?: string; message?: string };
+                if (typeof errBody.error === "string" && errBody.error.trim()) {
+                  msg = errBody.error.trim();
+                } else if (typeof errBody.message === "string" && errBody.message.trim()) {
+                  msg = errBody.message.trim();
+                }
+              } catch {
+                /* keep msg */
+              }
+            }
+            const retryable =
+              res.status === 502 || res.status === 503 || res.status === 504 || res.status === 429;
+            if (retryable && attempt < maxAttempts - 1) {
+              lastError = new Error(msg);
+              continue;
+            }
+            throw new Error(msg);
+          }
+
+          if (!trimmed) {
+            lastError = new Error(
+              "Order service returned an empty response. Try refreshing the page."
+            );
+            continue;
+          }
+
+          let parsed: { order?: OrderReviewOrder };
+          try {
+            parsed = JSON.parse(trimmed) as { order?: OrderReviewOrder };
+          } catch (e) {
+            const hint = e instanceof SyntaxError ? e.message : "Invalid JSON from order service";
+            lastError = new Error(hint);
+            continue;
+          }
+
+          if (!parsed.order || typeof parsed.order !== "object") {
+            lastError = new Error("Order details were missing from the server response.");
+            continue;
+          }
+
+          data = parsed;
+          break;
         }
 
-        if (!trimmed) {
-          throw new Error("Order service returned an empty response. Try refreshing the page.");
-        }
-
-        let data: { order?: OrderReviewOrder };
-        try {
-          data = JSON.parse(trimmed) as { order?: OrderReviewOrder };
-        } catch (e) {
-          const hint = e instanceof SyntaxError ? e.message : "Invalid JSON from order service";
-          throw new Error(hint);
-        }
-
-        if (!data.order || typeof data.order !== "object") {
-          throw new Error("Order details were missing from the server response.");
+        if (!data?.order) {
+          throw lastError || new Error("Failed to load order after several attempts.");
         }
 
         if (!cancelled) {
@@ -209,7 +181,39 @@ function OrderReviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [orderIdFromUrl, recoverKey, router, accessCodeFromUrl, clear]);
+  }, [orderIdFromUrl, orderKeyFromUrl, accessCodeFromUrl, clear]);
+
+  useEffect(() => {
+    if (!order || loading || error) return;
+    const dedupeKey = String(order.id);
+    if (purchaseTrackedForOrderRef.current === dedupeKey) return;
+    purchaseTrackedForOrderRef.current = dedupeKey;
+
+    const revenue = parseFloat(String(order.total || "0")) || 0;
+    const tax = parseFloat(String(order.total_tax ?? order.tax_total ?? "0")) || 0;
+    const shipping =
+      parseFloat(String(order.shipping_total ?? order.total_shipping ?? "0")) || 0;
+
+    const items = order.line_items.map((li) => {
+      const ext = li as typeof li & { product_id?: number };
+      const unit = parseFloat(String(li.price ?? "0")) || 0;
+      return {
+        id: typeof ext.product_id === "number" && ext.product_id > 0 ? ext.product_id : li.id,
+        name: li.name,
+        price: unit,
+        quantity: Math.max(1, li.quantity || 1),
+        sku: li.sku,
+      };
+    });
+
+    trackPurchase({
+      id: order.number ?? order.order_number ?? order.id,
+      revenue,
+      tax,
+      shipping,
+      items,
+    });
+  }, [order, loading, error]);
 
   const handleDownloadPDF = useCallback(async () => {
     if (!order || typeof window === "undefined") return;
@@ -239,9 +243,7 @@ function OrderReviewContent() {
       <div className="min-h-screen bg-gray-50 py-10 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">
-            {recoverKey ? "Confirming your order…" : "Loading order details..."}
-          </p>
+          <p className="mt-4 text-gray-600">Loading order details…</p>
         </div>
       </div>
     );
@@ -312,32 +314,17 @@ function OrderReviewContent() {
   };
 
   const isPaid = order.status === "processing" || order.status === "completed";
-  const offlinePaymentMethods = [
-    "cod",
-    "bacs",
-    "bank_transfer",
-    "cheque",
-    "on_account", // legacy orders only
-  ];
+  const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque"];
 
-  const isOnAccountFlow =
-    paymentMethodHint === "cod" ||
-    paymentMethodHint === "on_account" ||
-    String(order.payment_method || "").toLowerCase() === "cod" ||
-    String(order.payment_method || "").toLowerCase() === "on_account";
-
-  const paymentMethodDisplay = isOnAccountFlow ? "On Account" : order.payment_method_title;
+  const paymentMethodDisplay =
+    order.payment_method_title ||
+    String(order.payment_method || "").replace(/_/g, " ") ||
+    "—";
 
   /** Receipt label: show Completed once payment is successful/processing */
   const orderStatusLabel = (() => {
     const s = String(order.status || "").toLowerCase();
     const pm = String(order.payment_method || "").toLowerCase();
-    if (isOnAccountFlow) {
-      if (s === "cancelled") return "Cancelled";
-      if (s === "refunded") return "Refunded";
-      if (s === "failed") return "Failed";
-      return "Order Placed";
-    }
     if (pm === "eway" && (s === "processing" || s === "completed")) {
       return "Payment Done";
     }
@@ -353,12 +340,6 @@ function OrderReviewContent() {
 
   const orderStatusToneClass = (() => {
     const s = String(order.status || "").toLowerCase();
-    if (isOnAccountFlow) {
-      if (s === "cancelled" || s === "refunded" || s === "failed") {
-        return s === "cancelled" ? "text-amber-800" : "text-red-700";
-      }
-      return "text-blue-700";
-    }
     if (s === "completed") return "text-green-700";
     if (s === "processing") return "text-blue-700";
     return "text-amber-800";
@@ -411,8 +392,8 @@ function OrderReviewContent() {
   const newsletterSubscription = getNewsletterSubscription();
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-8 sm:py-10">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <OrderReviewSummary order={order} orderIdFromUrl={orderIdFromUrl} orderDate={orderDate}>
           <OrderItems lineItems={order.line_items} />
           <PaymentStatus
@@ -423,7 +404,6 @@ function OrderReviewContent() {
             discount={discount}
             total={total}
             paymentMethodDisplay={paymentMethodDisplay}
-            isOnAccountFlow={isOnAccountFlow}
             isPaid={isPaid}
             offlinePaymentMethods={offlinePaymentMethods}
             orderStatusLabel={orderStatusLabel}
@@ -485,7 +465,7 @@ function OrderReviewContent() {
           </button>
           <Link
             href="/shop"
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-6 py-3 text-sm font-semibold text-white hover:bg-black transition-colors"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-800"
           >
             <span>Continue Shopping</span>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -115,13 +115,13 @@ export default function Header() {
           </button>
         </div>
 
-        {/* Desktop Search */}
-        <div className="hidden lg:flex lg:col-span-7 justify-center">
+        {/* Desktop Search — wide bar (~2/3 row); overflow-visible for dropdown */}
+        <div className="hidden min-w-0 overflow-visible lg:flex lg:col-span-8 justify-center px-1">
           <HeaderSearch />
         </div>
 
         {/* Right Icons */}
-        <div className="hidden lg:flex lg:col-span-3 items-center justify-end gap-3">
+        <div className="hidden lg:flex lg:col-span-2 items-center justify-end gap-2 xl:gap-3">
           <div className="hidden md:flex items-center gap-2">
             <svg
               viewBox="0 0 24 24"
@@ -132,8 +132,11 @@ export default function Header() {
             >
               <path d="M3 5a2 2 0 0 1 2-2h3.28l1.5 4.5-2.3 1.1a11 11 0 0 0 5.5 5.5l1.1-2.3 4.5 1.5V19a2 2 0 0 1-2 2h-1C9.7 21 3 14.3 3 6V5z" />
             </svg>
-            <a href="tel:+1234567890" className="text-sm text-gray-700 flex flex-col">
-              <span>07 2146 3568</span>
+            <a
+              href="tel:+1234567890"
+              className="whitespace-nowrap text-sm text-gray-700 hover:text-teal-800"
+            >
+              07 2146 3568
             </a>
           </div>
 
@@ -240,7 +243,7 @@ export default function Header() {
       </nav>
 
       {/* Mobile + Tablet Search (Amazon-style top full width) */}
-      <div className="lg:hidden container mx-auto px-3 sm:px-4 md:px-5 pb-3">
+      <div className="lg:hidden container mx-auto overflow-visible px-3 sm:px-4 md:px-5 pb-3">
         <HeaderSearch />
       </div>
 

@@ -2,6 +2,7 @@
 
 import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
 import { useMemo, useState, useEffect } from "react";
+import { useProductVariationGallery } from "@/components/product/ProductVariationGalleryProvider";
 import ProductVariations from "@/components/ProductVariations";
 import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
 import { useCart } from "@/components/CartProvider";
@@ -53,6 +54,31 @@ export default function ProductDetailPanel({
   const [currentSku, setCurrentSku] = useState<string | null>(product.sku || null);
   const [matchedVariation, setMatchedVariation] = useState<WooCommerceVariation | null>(null);
   const matched = useMemo(() => matchVariation(variations, selected), [variations, selected]);
+
+  const variationGallery = useProductVariationGallery();
+  useEffect(() => {
+    if (!variationGallery) return;
+    const v = matchedVariation ?? matched;
+    const raw = v?.image;
+    if (
+      raw &&
+      typeof raw === "object" &&
+      "src" in raw &&
+      String((raw as { src?: unknown }).src || "").trim() !== ""
+    ) {
+      variationGallery.setVariationImage(raw as { id?: number; src: string; name?: string; alt?: string });
+    } else {
+      variationGallery.setVariationImage(null);
+    }
+  }, [matchedVariation, matched, variationGallery]);
+
+  const cartLineImageUrl = useMemo(() => {
+    const vi = matchedVariation?.image;
+    if (vi && typeof vi === "object" && String(vi.src || "").trim()) return vi.src;
+    const mi = matched?.image;
+    if (mi && typeof mi === "object" && String(mi.src || "").trim()) return mi.src;
+    return product.images?.[0]?.src;
+  }, [matchedVariation, matched, product.images]);
 
   // variable attribute definitions for swatches
   const attributes = useMemo(() => {
@@ -133,7 +159,7 @@ export default function ProductDetailPanel({
       <div>
         <h1
           id="product-details-heading"
-          className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl"
+          className="text-md font-medium tracking-tight text-gray-900 sm:text-3xl"
         >
           {product.name}
         </h1>
@@ -338,7 +364,7 @@ export default function ProductDetailPanel({
                   variationId,
                   name: product.name,
                   slug: product.slug,
-                  imageUrl: product.images?.[0]?.src,
+                  imageUrl: cartLineImageUrl,
                   price: matchedVariation?.price || matched?.price || product.price || "0",
                   qty: quantity,
                   sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,

@@ -83,7 +83,7 @@ export default async function EventsPage({
                             className="absolute inset-0 h-full w-full object-contain object-center transition-opacity duration-300 group-hover:opacity-95"
                           />
                         ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
+                          <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-600">
                             No image
                           </div>
                         )}

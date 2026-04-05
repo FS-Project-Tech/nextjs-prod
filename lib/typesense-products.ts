@@ -5,7 +5,8 @@
  * - TYPESENSE_FIELD_CATEGORY_SLUG — filter/facet field for category (default `category`)
  * - TYPESENSE_FIELD_BRAND_SLUG — brand filter/facet (default `brand`)
  * - TYPESENSE_FACET_BY — comma-separated facet fields (default: brand + category fields above)
- * - TYPESENSE_FIELD_ON_SALE — if unset/empty, `on_sale=true` filter is skipped (no field in schema)
+ * - TYPESENSE_FIELD_ON_SALE — if unset/empty, `on_sale=true` branch is skipped (no field in schema)
+ * - TYPESENSE_FIELD_SALE_PRICE — optional; default `sale_price`. Clearance uses `(on_sale:true || sale_price>0)` when both exist.
  * - TYPESENSE_FIELD_POPULARITY / DATE_CREATED / RATING — if unset, sort falls back to `price:desc`
  */
 
@@ -15,6 +16,8 @@ export const TS_FIELDS = {
   price: process.env.TYPESENSE_FIELD_PRICE || "price",
   /** Empty = do not apply on_sale filter (collection has no such field). */
   onSale: (process.env.TYPESENSE_FIELD_ON_SALE ?? "").trim(),
+  /** Numeric sale price field; used with clearance to include discounted rows even if `on_sale` is false. */
+  salePrice: (process.env.TYPESENSE_FIELD_SALE_PRICE ?? "sale_price").trim(),
   /** Empty = popularity sort uses price fallback. */
   popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "").trim(),
   dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "").trim(),
@@ -77,8 +80,16 @@ export function buildTypesenseFilterParts(opts: {
     f.push(`${pf}:<=${maxP}`);
   }
 
-  if (opts.onSaleOnly && TS_FIELDS.onSale) {
-    f.push(`${TS_FIELDS.onSale}:=true`);
+  if (opts.onSaleOnly) {
+    const os = TS_FIELDS.onSale;
+    const sp = TS_FIELDS.salePrice;
+    if (os && sp) {
+      f.push(`(${os}:=true || ${sp}:>0)`);
+    } else if (os) {
+      f.push(`${os}:=true`);
+    } else if (sp) {
+      f.push(`${sp}:>0`);
+    }
   }
 
   return f;

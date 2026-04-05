@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import CouponInput from "./CouponInput";
 import { useCoupon } from "./CouponProvider";
 import { useShippingAddress } from "@/hooks/useShippingAddress";
 import { parseCartTotal, calculateTotal } from "@/lib/cart/pricing";
@@ -84,7 +83,7 @@ const CartItem = memo(
               className="object-cover"
             />
           ) : (
-            <div className="grid h-full w-full place-items-center text-xs text-gray-400">
+            <div className="grid h-full w-full place-items-center text-xs text-gray-600">
               No Image
             </div>
           )}
@@ -99,7 +98,7 @@ const CartItem = memo(
               {normalizedAttributes.map((attr) => (
                 <span
                   key={`${attr.key}-${attr.value}`}
-                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600"
+                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
                 >
                   {attr.key}: {attr.value}
                 </span>
@@ -179,7 +178,7 @@ const CartItem = memo(
                       </div>
                     )}
                     {totalInfo.exclPrice && (
-                      <div className="text-[11px] text-gray-400">
+                      <div className="text-xs text-gray-600">
                         Excl. GST: {totalInfo.exclPrice}
                       </div>
                     )}
@@ -188,7 +187,7 @@ const CartItem = memo(
               })()}
               <button
                 onClick={() => onRemove(item.id)}
-                className="rounded-full p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                className="rounded-full p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                 aria-label="Remove item"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -290,7 +289,7 @@ export default function MiniCartDrawer() {
           >
             <div>
               <h2 className="text-base font-bold text-white">Cart</h2>
-              <p className="text-xs text-gray-300">
+              <p className="text-sm text-gray-200">
                 {items.length} {items.length === 1 ? "item" : "items"}
               </p>
             </div>
@@ -319,7 +318,7 @@ export default function MiniCartDrawer() {
                 >
                   <div className="mb-3 rounded-full bg-gray-100 p-5">
                     <svg
-                      className="h-10 w-10 text-gray-400"
+                      className="h-10 w-10 text-gray-600"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -333,7 +332,7 @@ export default function MiniCartDrawer() {
                     </svg>
                   </div>
                   <p className="text-gray-500 font-medium mb-0.5">Your cart is empty</p>
-                  <p className="text-sm text-gray-400">Add items to get started</p>
+                  <p className="text-sm text-gray-600">Add items to get started</p>
                 </div>
               ) : (
                 <div className="p-3 space-y-2">
@@ -356,7 +355,7 @@ export default function MiniCartDrawer() {
                                     <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-xs uppercase tracking-wide text-gray-400">Delivery method</p>
+                                                <p className="text-xs uppercase tracking-wide text-gray-600">Delivery method</p>
                                                 <p className="text-sm font-semibold text-gray-900">
                                                     {selectedShippingRate?.label || "Choose a shipping option"}
                                                 </p>
@@ -383,11 +382,6 @@ export default function MiniCartDrawer() {
                                         />
                                     </div>
                                 )} */}
-
-                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-                      <div className="text-sm font-semibold text-gray-900">Have a promo code?</div>
-                      <CouponInput />
-                    </div>
 
                     <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2">
                       <div className="flex items-center justify-between text-sm">

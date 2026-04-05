@@ -44,7 +44,6 @@ function CheckoutPageInner() {
     placing,
     selectedPaymentMethod,
     setSelectedPaymentMethod,
-    paymentMethods,
     user,
     billingAddresses,
     shippingAddresses,
@@ -147,7 +146,6 @@ function CheckoutPageInner() {
                 cartSubtotal={cartSubtotal}
                 control={control}
                 errors={errors}
-                paymentMethods={paymentMethods}
                 selectedPaymentMethod={selectedPaymentMethod}
                 onPaymentMethodChange={setSelectedPaymentMethod}
                 placing={placing}

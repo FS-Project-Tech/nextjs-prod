@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
     const forBrandFacets = sp.get("for_brand_facets") === "1";
     /** Category facet counts for current brand + price/sale filters; omit category filter so all buckets appear. */
     const forBrandCategoryFacets = sp.get("for_brand_category_facets") === "1";
+    /** Category facets for on-sale / discounted catalogue only; omit category filter. */
+    const forOnSaleCategoryFacets = sp.get("for_on_sale_category_facets") === "1";
     if (forBrandCategoryFacets && !sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"))) {
       return NextResponse.json(
         {
@@ -70,14 +72,15 @@ export async function GET(request: NextRequest) {
     const page = Math.min(500, Math.max(1, parseInt(sp.get("page") || "1", 10) || 1));
 
     const categorySlugRaw = sanitizeSlug(sp.get("category_slug") || sp.get("categorySlug"));
-    const categorySlug = forBrandCategoryFacets ? "" : categorySlugRaw;
+    const categorySlug =
+      forBrandCategoryFacets || forOnSaleCategoryFacets ? "" : categorySlugRaw;
     const brandSingle = sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"));
     const brands = forBrandFacets ? [] : parseBrands(sp.get("brands"));
 
     const minPrice = sp.get("min_price") || sp.get("minPrice") || "";
     const maxPrice = sp.get("max_price") || sp.get("maxPrice") || "";
 
-    const onSaleOnly = sp.get("on_sale") === "true";
+    const onSaleOnly = sp.get("on_sale") === "true" || forOnSaleCategoryFacets;
 
     const sortBy = sp.get("sortBy") || sp.get("sort") || "popularity";
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
@@ -110,12 +113,14 @@ export async function GET(request: NextRequest) {
     if (filter_by) searchParams.filter_by = filter_by;
 
     if (facetsOnly || sp.get("include_facets") === "1") {
-      searchParams.facet_by = forBrandCategoryFacets
-        ? TS_FIELDS.categorySlug
-        : getTypesenseFacetBy();
+      searchParams.facet_by =
+        forBrandCategoryFacets || forOnSaleCategoryFacets
+          ? TS_FIELDS.categorySlug
+          : getTypesenseFacetBy();
       searchParams.max_facet_values = Math.min(
-        100,
-        parseInt(sp.get("max_facet_values") || "50", 10) || 50
+        forOnSaleCategoryFacets ? 250 : 100,
+        parseInt(sp.get("max_facet_values") || (forOnSaleCategoryFacets ? "200" : "50"), 10) ||
+          (forOnSaleCategoryFacets ? 200 : 50)
       );
     }
 

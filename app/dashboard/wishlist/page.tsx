@@ -29,7 +29,7 @@ function WishlistProductWrapper({
         title="Remove from wishlist"
       >
         {isRemoving ? (
-          <svg className="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-gray-600 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle
               className="opacity-25"
               cx="12"
@@ -90,7 +90,7 @@ function EmptyWishlist() {
     <div className="text-center py-16">
       <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
         <svg
-          className="w-12 h-12 text-gray-400"
+          className="w-12 h-12 text-gray-600"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

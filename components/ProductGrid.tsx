@@ -351,12 +351,18 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
       {sortToolbar}
 
       {state.isInitialLoad && state.loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="aspect-square bg-gray-200 rounded-lg mb-3" />
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-              <div className="h-4 bg-gray-200 rounded w-1/2" />
+            <div
+              key={i}
+              className="animate-pulse grid grid-cols-2 gap-3 rounded-xl border border-gray-200 p-3 md:grid-cols-1"
+            >
+              <div className="aspect-square rounded-lg bg-gray-200" />
+              <div className="min-w-0 space-y-2">
+                <div className="h-4 rounded bg-gray-200" />
+                <div className="h-4 w-3/4 rounded bg-gray-200" />
+                <div className="h-4 w-1/2 rounded bg-gray-200" />
+              </div>
             </div>
           ))}
         </div>
@@ -375,7 +381,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:grid-cols-4">
             {state.products.map((product) => (
               <ProductCard
                 key={product.id}

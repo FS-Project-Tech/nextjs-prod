@@ -175,7 +175,7 @@ export default function ListingMobileSortFilter({
           />
           <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] animate-in slide-in-from-bottom duration-200 bg-white shadow-2xl">
             <div className="border-b border-gray-200 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
                 Sort by
               </p>
             </div>

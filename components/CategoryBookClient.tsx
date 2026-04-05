@@ -163,7 +163,7 @@ export default function CategoryBookClient({
                               sizes="150px"
                             />
                           ) : (
-                            <span className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">
+                            <span className="absolute inset-0 flex items-center justify-center text-gray-600 text-xs">
                               No image
                             </span>
                           )}

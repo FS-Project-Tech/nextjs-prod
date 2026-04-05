@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error:
-            "Token checkout session is only available for card (eWAY) payments. Use the standard flow for on-account orders.",
+            "Token checkout session is only available for card (eWAY) payments.",
         },
         { status: 400 }
       );

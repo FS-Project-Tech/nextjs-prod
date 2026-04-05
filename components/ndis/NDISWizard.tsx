@@ -88,7 +88,7 @@ export default function NDISWizard() {
                 <FileText className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">STEP 1</p>
+                <p className="text-gray-600 text-sm">STEP 1</p>
                 <h3 className="text-xl font-bold text-gray-900">Getting Started</h3>
               </div>
             </div>
@@ -130,7 +130,7 @@ export default function NDISWizard() {
                 <CloudUpload className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">STEP 2</p>
+                <p className="text-gray-600 text-sm">STEP 2</p>
                 <h3 className="text-xl font-bold text-gray-900">Upload Your Form</h3>
               </div>
             </div>
@@ -248,7 +248,7 @@ export default function NDISWizard() {
                 <User className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">STEP 3</p>
+                <p className="text-gray-600 text-sm">STEP 3</p>
                 <h3 className="text-xl font-bold text-gray-900">Joya&apos;s Response</h3>
               </div>
             </div>
@@ -277,7 +277,7 @@ export default function NDISWizard() {
                 <MailCheck className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">STEP 4</p>
+                <p className="text-gray-600 text-sm">STEP 4</p>
                 <h3 className="text-xl font-bold text-gray-900">Check Your Email</h3>
               </div>
             </div>
@@ -298,7 +298,7 @@ export default function NDISWizard() {
                 <Send className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">STEP 5</p>
+                <p className="text-gray-600 text-sm">STEP 5</p>
                 <h3 className="text-xl font-bold text-gray-900">Skip Paperwork</h3>
               </div>
             </div>
@@ -322,7 +322,7 @@ export default function NDISWizard() {
             type="button"
             onClick={goPrev}
             disabled={currentStep === 1}
-            className="font-medium disabled:text-gray-400 disabled:cursor-not-allowed hover:underline"
+            className="font-medium disabled:text-gray-600 disabled:cursor-not-allowed hover:underline"
             style={{
               color: currentStep === 1 ? undefined : NDIS_PRIMARY,
             }}
@@ -333,7 +333,7 @@ export default function NDISWizard() {
             type="button"
             onClick={goNext}
             disabled={currentStep === 5}
-            className="font-medium disabled:text-gray-400 disabled:cursor-not-allowed hover:underline"
+            className="font-medium disabled:text-gray-600 disabled:cursor-not-allowed hover:underline"
             style={{
               color: currentStep === 5 ? undefined : NDIS_PRIMARY,
             }}

@@ -29,7 +29,7 @@ export function sanitizeHTML(
     whiteList: {
       p: [],
       br: [],
-      strong: [],
+      strong: ["class", "style"],
       b: [],
       em: [],
       i: [],
@@ -45,12 +45,25 @@ export function sanitizeHTML(
       blockquote: [],
       code: [],
       pre: [],
-      ...(allowLinks ? { a: ["href", "title", "target", "rel", "class"] } : {}),
+      /** Woo / Classic Editor spec tables (inline styles from backend) */
+      div: ["class", "style", "id"],
+      span: ["class", "style"],
+      table: ["class", "style", "border", "cellpadding", "cellspacing", "width"],
+      thead: ["class", "style"],
+      tbody: ["class", "style"],
+      tfoot: ["class", "style"],
+      tr: ["class", "style"],
+      th: ["class", "style", "colspan", "rowspan", "width"],
+      td: ["class", "style", "colspan", "rowspan", "width"],
+      caption: ["class", "style"],
+      colgroup: ["class", "style"],
+      col: ["class", "style", "span", "width"],
+      ...(allowLinks ? { a: ["href", "title", "target", "rel", "class", "style"] } : {}),
       ...(allowImages
         ? {
             img: ["src", "alt", "width", "height", "loading", "class", "style"],
             figure: ["class", "style"],
-            figcaption: ["class"],
+            figcaption: ["class", "style"],
           }
         : {}),
       details: ["open"],

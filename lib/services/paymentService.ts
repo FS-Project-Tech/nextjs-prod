@@ -1,5 +1,5 @@
 /**
- * Unified checkout payment orchestration (Woo `cod` = On Account, `eway` = hosted card).
+ * Unified checkout payment orchestration (eWAY hosted card).
  * All payment truth is server-side; Woo order is the source of truth.
  */
 import type { CheckoutInitiatePayload } from "@/types/checkout";
@@ -8,10 +8,15 @@ import {
   isEwayConfigured,
   verifyEwayPayment,
 } from "@/lib/services/ewayService";
-import { extractWooOrderId, resolveOrderPostId, updateWooOrder } from "@/lib/services/wooService";
+import {
+  extractWooOrderId,
+  extractWooOrderKey,
+  resolveOrderPostId,
+  updateWooOrder,
+} from "@/lib/services/wooService";
 
 export type HandlePaymentContext = {
-  method: "eway" | "cod";
+  method: "eway";
   order: unknown;
   payload: CheckoutInitiatePayload;
   customerIp?: string;
@@ -22,7 +27,6 @@ export type HandlePaymentContext = {
 export type PostOrderPaymentContext = HandlePaymentContext;
 
 export type HandlePaymentResult =
-  | { type: "success"; redirect: string }
   | { type: "redirect"; url: string }
   | { type: "error"; message: string };
 
@@ -42,7 +46,7 @@ async function resolvePostId(order: unknown): Promise<number | null> {
 }
 
 /**
- * Single entry after Woo order exists: finalize COD (On Account) or start eWAY hosted payment.
+ * After Woo order exists: start eWAY hosted payment.
  */
 export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePaymentResult> {
   const postId = await resolvePostId(ctx.order);
@@ -64,31 +68,6 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     country: sp.country,
   };
 
-  if (ctx.method === "cod") {
-    console.log("[payment] cod (On Account): updating Woo order", { postId });
-    try {
-      await updateWooOrder(postId, {
-        payment_method: "cod",
-        payment_method_title: "On Account",
-        status: "processing",
-        set_paid: false,
-        ...(typeof ctx.actorUserId === "number" && ctx.actorUserId > 0
-          ? { customer_id: ctx.actorUserId }
-          : {}),
-      });
-      console.log("[payment] cod finalized → processing", { postId });
-    } catch (e) {
-      console.error(
-        "[payment] cod Woo update failed (enable COD in Woo or check REST errors) — still redirecting to order review",
-        e
-      );
-    }
-    return {
-      type: "success",
-      redirect: `/order-review?order_id=${encodeURIComponent(String(postId))}`,
-    };
-  }
-
   if (!isEwayConfigured()) {
     return {
       type: "error",
@@ -101,9 +80,18 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0";
   const currency = typeof o.currency === "string" && o.currency.trim() ? o.currency.trim() : "AUD";
 
+  const orderKey = extractWooOrderKey(ctx.order);
+  if (!orderKey) {
+    return {
+      type: "error",
+      message: "WooCommerce order is missing order_key; cannot build payment return URL.",
+    };
+  }
+
   console.log("[payment] eway: creating hosted payment", { postId });
   const eway = await createEwayHostedPayment({
     wooOrderId: postId,
+    orderKey,
     orderTotal: total,
     currencyCode: currency,
     billing,

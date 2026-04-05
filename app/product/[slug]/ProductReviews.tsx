@@ -249,7 +249,7 @@ export default function ProductReviews({
                     className={`h-8 w-8 shrink-0 transition-colors ${
                       value <= (hoverRating || rating)
                         ? "text-amber-400 fill-amber-400"
-                        : "text-gray-300 fill-gray-300"
+                        : "text-gray-500 fill-gray-500"
                     }`}
                     viewBox="0 0 20 20"
                   >

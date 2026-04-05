@@ -40,7 +40,7 @@ export default function CategoryBrandsSection({ brands }: CategoryBrandsSectionP
                   />
                 </div>
               ) : (
-                <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-100 text-xs font-semibold text-gray-400">
+                <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-100 text-xs font-semibold text-gray-600">
                   {brand.name.charAt(0).toUpperCase()}
                 </div>
               )}

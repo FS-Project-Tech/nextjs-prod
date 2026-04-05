@@ -23,7 +23,7 @@ export type CheckoutPayload = {
   shipping: Address;
   line_items: CartItem[];
   shipping_method_id: string;
-  payment_method: "cod" | "eway";
+  payment_method: "eway" | "cod";
   coupon_code?: string;
   ndis_type?: string;
   // Optional client hint; never trusted for pricing/totals.

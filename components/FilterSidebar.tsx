@@ -182,6 +182,35 @@ function sanitizeBrands(list: Brand[] | undefined | null): Brand[] {
   });
 }
 
+/** True if this category or any descendant has an on-sale (clearance) product per Typesense facet slugs. */
+function subtreeHasClearanceProducts(
+  slug: string,
+  childrenBySlug: Record<string, Category[]>,
+  saleSlugs: Set<string>
+): boolean {
+  if (saleSlugs.has(slug.trim().toLowerCase())) return true;
+  const kids = childrenBySlug[slug] || [];
+  return kids.some((ch) => subtreeHasClearanceProducts(ch.slug, childrenBySlug, saleSlugs));
+}
+
+/**
+ * Sum Typesense facet counts for this node and all descendants (full Woo tree).
+ * Facet buckets are usually leaf slugs; parents get rolled-up clearance totals.
+ */
+function clearanceCountRollup(
+  slug: string,
+  fullChildrenBySlug: Record<string, Category[]>,
+  facetCounts: Map<string, number>
+): number {
+  const norm = slug.trim().toLowerCase();
+  let total = facetCounts.get(norm) || 0;
+  const kids = fullChildrenBySlug[slug] || [];
+  for (const ch of kids) {
+    total += clearanceCountRollup(ch.slug, fullChildrenBySlug, facetCounts);
+  }
+  return total;
+}
+
 /** Remove deprecated keys so URLs stay canonical (`brands`, `min_price`, `max_price`). */
 function stripDeprecatedFilterParams(params: URLSearchParams, pathname: string) {
   if (!pathname.startsWith("/search")) {
@@ -215,6 +244,11 @@ export default function FilterSidebar({
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [brandRelatedCategories, setBrandRelatedCategories] = useState<Category[]>([]);
   const [brandCategoriesLoading, setBrandCategoriesLoading] = useState(false);
+  /**
+   * Typesense category facet counts for on-sale filter only (slug lowercased → document count).
+   * null = not loaded yet (clearance mode only).
+   */
+  const [clearanceFacetCounts, setClearanceFacetCounts] = useState<Map<string, number> | null>(null);
   const [mobileFilterSection, setMobileFilterSection] = useState<
     "categories" | "price" | "brands"
   >("categories");
@@ -248,15 +282,46 @@ export default function FilterSidebar({
 
   const isBrandContext = Boolean(brandSlug || pathname.startsWith("/brands/"));
 
-  const categoriesBySlug = useMemo(() => {
-    const map: Record<string, Category> = {};
-    categories.forEach((c) => {
-      map[c.slug] = c;
-    });
-    return map;
-  }, [categories]);
+  useEffect(() => {
+    if (!onSaleOnly || isBrandContext) {
+      setClearanceFacetCounts(null);
+      return;
+    }
+    let cancelled = false;
+    const usp = new URLSearchParams();
+    usp.set("facets_only", "1");
+    usp.set("include_facets", "1");
+    usp.set("on_sale", "true");
+    usp.set("for_on_sale_category_facets", "1");
+    usp.set("q", "*");
+    usp.set("max_facet_values", "200");
 
-  const childrenBySlug = useMemo(() => {
+    fetch(`/api/typesense/search?${usp.toString()}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const facet = (data.facet_counts || []).find(
+          (f: { field_name?: string }) => f.field_name === CATEGORY_FACET_FIELD
+        );
+        const counts = Array.isArray(facet?.counts) ? facet.counts : [];
+        const next = new Map<string, number>();
+        for (const c of counts) {
+          const slug = String(c.value ?? "")
+            .trim()
+            .toLowerCase();
+          if (slug && typeof c.count === "number" && c.count > 0) next.set(slug, c.count);
+        }
+        setClearanceFacetCounts(next);
+      })
+      .catch(() => {
+        if (!cancelled) setClearanceFacetCounts(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onSaleOnly, isBrandContext]);
+
+  const fullTreeChildrenBySlug = useMemo(() => {
     const byParentId = new Map<number, Category[]>();
     categories.forEach((c) => {
       const parentId = c.parent || 0;
@@ -270,20 +335,69 @@ export default function FilterSidebar({
     return bySlug;
   }, [categories]);
 
+  const sidebarCategories = useMemo(() => {
+    if (!onSaleOnly || isBrandContext) return categories;
+    if (clearanceFacetCounts === null) return [];
+    if (clearanceFacetCounts.size === 0) return [];
+    const saleSlugs = new Set(clearanceFacetCounts.keys());
+    return categories.filter((c) =>
+      subtreeHasClearanceProducts(c.slug, fullTreeChildrenBySlug, saleSlugs)
+    );
+  }, [categories, onSaleOnly, isBrandContext, clearanceFacetCounts, fullTreeChildrenBySlug]);
+
+  /** Same tree as sidebarCategories, but counts match Typesense clearance facets (rolled up). */
+  const sidebarCategoriesForDisplay = useMemo(() => {
+    if (!onSaleOnly || isBrandContext || clearanceFacetCounts === null) {
+      return sidebarCategories;
+    }
+    return sidebarCategories.map((c) => ({
+      ...c,
+      count: clearanceCountRollup(c.slug, fullTreeChildrenBySlug, clearanceFacetCounts),
+    }));
+  }, [
+    onSaleOnly,
+    isBrandContext,
+    sidebarCategories,
+    fullTreeChildrenBySlug,
+    clearanceFacetCounts,
+  ]);
+
+  const categoriesBySlug = useMemo(() => {
+    const map: Record<string, Category> = {};
+    sidebarCategoriesForDisplay.forEach((c) => {
+      map[c.slug] = c;
+    });
+    return map;
+  }, [sidebarCategoriesForDisplay]);
+
+  const childrenBySlug = useMemo(() => {
+    const byParentId = new Map<number, Category[]>();
+    sidebarCategories.forEach((c) => {
+      const parentId = c.parent || 0;
+      if (!byParentId.has(parentId)) byParentId.set(parentId, []);
+      byParentId.get(parentId)!.push(c);
+    });
+    const bySlug: Record<string, Category[]> = {};
+    sidebarCategories.forEach((c) => {
+      bySlug[c.slug] = byParentId.get(c.id) || [];
+    });
+    return bySlug;
+  }, [sidebarCategories]);
+
   const parentBySlug = useMemo(() => {
     const map: Record<string, string | null> = {};
     const byId = new Map<number, Category>();
-    categories.forEach((c) => byId.set(c.id, c));
-    categories.forEach((c) => {
+    sidebarCategories.forEach((c) => byId.set(c.id, c));
+    sidebarCategories.forEach((c) => {
       const parent = c.parent ? byId.get(c.parent) : null;
       map[c.slug] = parent?.slug || null;
     });
     return map;
-  }, [categories]);
+  }, [sidebarCategories]);
 
   const rootCategorySlugs = useMemo(
-    () => categories.filter((c) => !c.parent).map((c) => c.slug),
-    [categories]
+    () => sidebarCategories.filter((c) => !c.parent).map((c) => c.slug),
+    [sidebarCategories]
   );
 
   const activeAncestors = useMemo(() => {
@@ -598,6 +712,21 @@ export default function FilterSidebar({
         return;
       }
 
+      if (pathname.startsWith("/clearance")) {
+        const params = new URLSearchParams(searchParams.toString());
+        stripDeprecatedFilterParams(params, pathname);
+        params.delete("page");
+        if (activeCategory === slug) {
+          params.delete("category");
+        } else {
+          params.set("category", slug);
+        }
+        const qs = params.toString();
+        router.replace(qs ? `/clearance?${qs}` : "/clearance", { scroll: false });
+        onClose?.();
+        return;
+      }
+
       const params = new URLSearchParams(searchParams.toString());
       stripDeprecatedFilterParams(params, pathname);
       params.delete("category");
@@ -699,6 +828,18 @@ export default function FilterSidebar({
       return;
     }
 
+    if (pathname.startsWith("/clearance")) {
+      const params = new URLSearchParams(searchParams.toString());
+      stripDeprecatedFilterParams(params, pathname);
+      ["brands", "brand", "min_price", "max_price", "page", "category", "sortBy"].forEach((k) =>
+        params.delete(k)
+      );
+      const qs = params.toString();
+      router.replace(qs ? `/clearance?${qs}` : "/clearance", { scroll: false });
+      onClose?.();
+      return;
+    }
+
     const params = new URLSearchParams(searchParams.toString());
     stripDeprecatedFilterParams(params, pathname);
     ["brands", "min_price", "max_price", "page", "category", "sortBy"].forEach((k) =>
@@ -748,7 +889,7 @@ export default function FilterSidebar({
           >
             <span className="truncate">{category.name}</span>
             {typeof category.count === "number" && (
-              <span className={`ml-2 text-xs ${isActive ? "text-teal-100" : "text-gray-400"}`}>
+              <span className={`ml-2 text-xs ${isActive ? "text-teal-100" : "text-gray-600"}`}>
                 {category.count}
               </span>
             )}
@@ -835,7 +976,7 @@ export default function FilterSidebar({
                   <span className="truncate">{cat.name}</span>
                   {typeof cat.count === "number" && cat.count > 0 && (
                     <span
-                      className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}
+                      className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-600"}`}
                     >
                       {cat.count}
                     </span>
@@ -844,6 +985,10 @@ export default function FilterSidebar({
               ))
             )}
           </>
+        ) : onSaleOnly && !isBrandContext && clearanceFacetCounts === null ? (
+          <p className="text-sm text-gray-500">Loading sale categories…</p>
+        ) : onSaleOnly && !isBrandContext && clearanceFacetCounts !== null && sidebarCategories.length === 0 ? (
+          <p className="text-sm text-gray-500">No categories have clearance products right now.</p>
         ) : showAllCategories ? (
           rootCategorySlugs.map((slug) => renderTree(slug, 0))
         ) : (
@@ -863,7 +1008,7 @@ export default function FilterSidebar({
               <span className="truncate">{cat.name}</span>
               {typeof cat.count === "number" && (
                 <span
-                  className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-400"}`}
+                  className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-600"}`}
                 >
                   {cat.count}
                 </span>
@@ -1074,7 +1219,7 @@ export default function FilterSidebar({
                     value={mobileBrandSearch}
                     onChange={(e) => setMobileBrandSearch(e.target.value)}
                     autoComplete="off"
-                    className="min-w-0 flex-1 border-0 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
+                    className="min-w-0 flex-1 border-0 bg-transparent text-sm text-gray-900 placeholder:text-gray-600 focus:outline-none focus:ring-0"
                   />
                 </div>
                 {renderBrandCheckboxList(

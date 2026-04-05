@@ -48,6 +48,10 @@ function optionValueMatches(a: string, b: string): boolean {
   return normalizeOptionValue(a) === normalizeOptionValue(b);
 }
 
+function optionInAvailableList(option: string, available: string[]): boolean {
+  return available.some((o) => optionValueMatches(o, option));
+}
+
 /**
  * Finds the matched variation based on selected attributes
  */
@@ -179,30 +183,22 @@ export default function ProductVariations({
     );
   }, [mainAttribute, secondaryAttributes, selectedAttributes, variations]);
 
-  // Check if secondary section should be visible (has valid variations for selected main attribute)
+  /** Show secondary rows once colour (main) is chosen — every option is listed; invalid combos stay disabled. */
   const shouldShowSecondarySection = useMemo(() => {
     if (!mainAttribute || !selectedAttributes[mainAttribute.name]) {
       return false;
     }
+    return secondaryAttributes.length > 0;
+  }, [mainAttribute, selectedAttributes, secondaryAttributes]);
 
-    // Check if at least one secondary attribute has available options
-    return secondaryAttributes.some((attr) => {
-      const options = secondaryAttributeOptions[attr.name] || [];
-      return options.length > 0;
-    });
-  }, [mainAttribute, selectedAttributes, secondaryAttributes, secondaryAttributeOptions]);
-
-  // Check if an option is enabled (available for selection)
   const isOptionEnabled = (attributeName: string, option: string): boolean => {
-    // Main attribute options are always enabled (if they exist in variations)
     if (mainAttribute && attributeNameMatches(attributeName, mainAttribute.name)) {
-      return mainAttributeOptions.includes(option);
+      return optionInAvailableList(option, mainAttributeOptions);
     }
 
-    // Secondary attribute options are enabled only if they exist in filtered list
     if (mainAttribute && selectedAttributes[mainAttribute.name]) {
       const availableOptions = secondaryAttributeOptions[attributeName] || [];
-      return availableOptions.includes(option);
+      return optionInAvailableList(option, availableOptions);
     }
 
     return false;
@@ -289,7 +285,7 @@ export default function ProductVariations({
             ? "border-gray-900 bg-gray-900 text-white"
             : isEnabled
               ? "border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50"
-              : "border-gray-200 bg-gray-50 text-gray-400 disabled-option cursor-not-allowed"
+              : "border-gray-200 bg-gray-50 text-gray-600 disabled-option cursor-not-allowed"
         }`}
       >
         {option}
@@ -297,31 +293,32 @@ export default function ProductVariations({
     );
   };
 
-  // Render dropdown
   const renderDropdown = (
     attributeName: string,
-    options: string[],
-    selectedValue: string | undefined,
-    isEnabled: boolean
+    allOptions: string[],
+    availableOptions: string[],
+    selectedValue: string | undefined
   ) => {
     return (
       <select
         key={attributeName}
         value={selectedValue || ""}
-        onChange={(e) => handleAttributeSelect(attributeName, e.target.value)}
-        disabled={!isEnabled}
-        className={`w-full rounded-md border px-3 py-2 text-sm ${
-          isEnabled
-            ? "border-gray-300 bg-white text-gray-900"
-            : "border-gray-200 bg-gray-50 text-gray-400 disabled-option cursor-not-allowed"
-        }`}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v && !optionInAvailableList(v, availableOptions)) return;
+          handleAttributeSelect(attributeName, v);
+        }}
+        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
       >
         <option value="">Select {attributeName}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {allOptions.map((option) => {
+          const canPick = optionInAvailableList(option, availableOptions);
+          return (
+            <option key={option} value={option} disabled={!canPick}>
+              {!canPick ? `${option} (unavailable)` : option}
+            </option>
+          );
+        })}
       </select>
     );
   };
@@ -339,8 +336,8 @@ export default function ProductVariations({
             {mainAttribute.name}
           </label>
           <div className="flex flex-wrap gap-2">
-            {mainAttributeOptions.length > 0 ? (
-              mainAttributeOptions.map((option) => {
+            {mainAttribute.options.length > 0 ? (
+              mainAttribute.options.map((option) => {
                 const isSelected = selectedAttributes[mainAttribute.name] === option;
                 const isEnabled = isOptionEnabled(mainAttribute.name, option);
 
@@ -348,10 +345,8 @@ export default function ProductVariations({
                   return renderSwatch(mainAttribute.name, option, isSelected, isEnabled);
                 } else if (style === "buttons") {
                   return renderButton(mainAttribute.name, option, isSelected, isEnabled);
-                } else {
-                  // For dropdowns, we'll render all at once below
-                  return null;
                 }
+                return null;
               })
             ) : (
               <p className="text-sm text-gray-500">No options available</p>
@@ -361,9 +356,9 @@ export default function ProductVariations({
             <div className="mt-2">
               {renderDropdown(
                 mainAttribute.name,
+                mainAttribute.options,
                 mainAttributeOptions,
-                selectedAttributes[mainAttribute.name],
-                true
+                selectedAttributes[mainAttribute.name]
               )}
             </div>
           )}
@@ -374,17 +369,15 @@ export default function ProductVariations({
       {shouldShowSecondarySection && (
         <div className="block">
           {secondaryAttributes.map((attribute) => {
-            // Get filtered options based on main selection
             const availableOptions = secondaryAttributeOptions[attribute.name] || [];
             const selectedValue = selectedAttributes[attribute.name];
 
-            // Only render if this attribute has available options
-            if (availableOptions.length === 0) {
+            if (!attribute.options?.length) {
               return null;
             }
 
             return (
-              <div key={attribute.name} className="block">
+              <div key={attribute.name} className="mb-4 block last:mb-0">
                 <label className="mb-2 block text-sm font-medium text-gray-700">
                   {attribute.name}
                 </label>
@@ -392,25 +385,22 @@ export default function ProductVariations({
                   <div>
                     {renderDropdown(
                       attribute.name,
+                      attribute.options,
                       availableOptions,
-                      selectedValue,
-                      availableOptions.length > 0
+                      selectedValue
                     )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {availableOptions.length > 0
-                      ? availableOptions.map((option) => {
-                          const isSelected = selectedValue === option;
-                          const isEnabled = isOptionEnabled(attribute.name, option);
+                    {attribute.options.map((option) => {
+                      const isSelected = selectedValue === option;
+                      const isEnabled = isOptionEnabled(attribute.name, option);
 
-                          if (style === "swatches") {
-                            return renderSwatch(attribute.name, option, isSelected, isEnabled);
-                          } else {
-                            return renderButton(attribute.name, option, isSelected, isEnabled);
-                          }
-                        })
-                      : null}
+                      if (style === "swatches") {
+                        return renderSwatch(attribute.name, option, isSelected, isEnabled);
+                      }
+                      return renderButton(attribute.name, option, isSelected, isEnabled);
+                    })}
                   </div>
                 )}
               </div>

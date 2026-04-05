@@ -189,7 +189,7 @@ export default function ShippingOptions({
                   <div className="text-xs text-gray-500 mt-0.5">{safeDescription}</div>
                 )}
                 {r.minimum_amount && (
-                  <div className="text-xs text-gray-400 mt-0.5">
+                  <div className="text-xs text-gray-600 mt-0.5">
                     Min. order: ${r.minimum_amount.toFixed(2)}
                   </div>
                 )}

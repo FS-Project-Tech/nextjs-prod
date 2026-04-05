@@ -50,3 +50,15 @@ export async function updateWooOrder(
   const res = await wcAPI.put(`/orders/${orderId}`, patch);
   return res.data;
 }
+
+/** Private order note (not visible to customer on emails unless customer_note is true). */
+export async function addWooOrderNote(
+  orderId: number,
+  note: string,
+  options?: { customer_note?: boolean }
+): Promise<void> {
+  await wcAPI.post(`/orders/${orderId}/notes`, {
+    note,
+    customer_note: options?.customer_note ?? false,
+  });
+}

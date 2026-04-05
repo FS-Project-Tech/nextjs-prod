@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextAuthOptions";
 import wcAPI from "@/lib/woocommerce";
-import { userCanUsePayOnAccount } from "@/lib/checkout-payment-roles";
 import type { CheckoutActor } from "@/types/checkout";
 
 function norm(input: unknown): string {
@@ -44,7 +43,7 @@ async function lookupNdisApprovedByEmail(email?: string): Promise<boolean> {
 export type ResolveCheckoutActorOptions = {
   /**
    * When false (default), may call WooCommerce to read customer `ndis_approved` meta by email.
-   * Set true for card checkout to skip that HTTP round-trip — on-account eligibility is not evaluated.
+   * Set true to skip that HTTP round-trip (e.g. card checkout).
    */
   skipNdisCustomerLookup?: boolean;
 };
@@ -78,8 +77,4 @@ export async function resolveCheckoutActor(
     roles,
     ndisApproved: fromMeta || fromCustomerMeta,
   };
-}
-
-export function canUseOnAccount(actor: CheckoutActor): boolean {
-  return userCanUsePayOnAccount(actor.roles) || actor.ndisApproved === true;
 }

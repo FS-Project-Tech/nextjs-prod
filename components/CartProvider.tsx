@@ -11,6 +11,7 @@ import {
 } from "react";
 import { calculateSubtotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
+import { trackAddToCart } from "@/lib/analytics";
 import { useUser } from "@/hooks/useUser";
 
 // Re-export CartItem for backward compatibility
@@ -211,6 +212,19 @@ export default function CartProvider({ children }: { children: React.ReactNode }
 
     setSyncError(null);
     setIsOpen(true);
+
+    queueMicrotask(() => {
+      const unitPrice = parseFloat(String(input.price ?? "0")) || 0;
+      if (unitPrice >= 0 && input.productId) {
+        trackAddToCart({
+          id: input.productId,
+          name: input.name || "Product",
+          price: unitPrice,
+          quantity: Math.max(1, input.qty),
+          sku: input.sku ?? undefined,
+        });
+      }
+    });
   }, []);
 
   const removeItem = useCallback((id: string) => {
