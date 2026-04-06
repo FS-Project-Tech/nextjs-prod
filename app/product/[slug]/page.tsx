@@ -49,22 +49,22 @@ export const dynamicParams = true;
 // ============================================================================
 // Static params
 // ============================================================================
-export async function generateStaticParams() {
-  try {
-    const result = await fetchProducts({
-      per_page: 100,
-      featured: true,
-    });
+// export async function generateStaticParams() {
+//   try {
+//     const result = await fetchProducts({
+//       per_page: 100,
+//       featured: true,
+//     });
 
-    return (
-      result?.products?.map((p: { slug: string }) => ({
-        slug: p.slug,
-      })) || []
-    );
-  } catch {
-    return [];
-  }
-}
+//     return (
+//       result?.products?.map((p: { slug: string }) => ({
+//         slug: p.slug,
+//       })) || []
+//     );
+//   } catch {
+//     return [];
+//   }
+// }
 
 // ============================================================================
 // Metadata seo
@@ -151,7 +151,10 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
 
   const getProduct = cache(fetchProductBySlug);
   const product = await getProduct(decodedSlug);
-  if (!product) notFound();
+  if (!product) {
+    console.error("Product not found for slug:", decodedSlug);
+    notFound();
+  }
 
   // =======================================================
   // CATEGORY & BRAND (from product)
@@ -184,7 +187,9 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
 
   const categoryIds = product.categories?.map((c) => c.id) || [];
   const activePromotions = getActivePromotions(promotions, categoryIds);
-  const categoryProducts = categoryProductsResult?.products ?? [];
+  const categoryProducts = Array.isArray(categoryProductsResult?.products)
+    ? categoryProductsResult.products
+    : [];
   // =======================================================
   // BANNERS: category repeater first, else global fallback
   // =======================================================
@@ -225,7 +230,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
   // =======================================================
   // TOP SELLING (same category)
   // =======================================================
-  const topSellingProducts = categoryProducts.slice(0, 6);
+  const topSellingProducts = Array.isArray(categoryProducts) ? categoryProducts.slice(0, 6) : [];
 
   // =======================================================
   // OTHER BRAND PRODUCTS (KEY LOGIC)
