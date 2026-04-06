@@ -4,7 +4,7 @@ import type { InsuranceOption } from "@/lib/checkout-parcel-protection";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 
 /**
- * Checkout totals including optional parcel protection fee (GST on subtotal − discount + shipping + fee).
+ * Checkout totals including optional parcel protection fee (no GST on parcel protection).
  */
 export function useCheckoutTotals(
   subtotal: number,
@@ -14,7 +14,7 @@ export function useCheckoutTotals(
 ) {
   return useMemo(() => {
     const parcelProtectionFee = insurance_option === "yes" ? PARCEL_PROTECTION_FEE_AUD : 0;
-    const gst = calculateGST(subtotal, shippingCost, couponDiscount, parcelProtectionFee);
+    const gst = calculateGST(subtotal, shippingCost, couponDiscount);
     const orderTotal = calculateTotal(
       subtotal,
       shippingCost,

@@ -71,13 +71,19 @@ export default function CartProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const store = useCartStore.getState();
     if (cartKey === undefined) {
-      useCartStore.getState().setActiveUserId(null);
+      if (store.activeUserId !== null) {
+        store.setActiveUserId(null);
+      }
       setIsHydrated(false);
       return;
     }
-    const { setActiveUserId, migrateFromLegacyKey } = useCartStore.getState();
-    setActiveUserId(user?.id ? String(user.id) : null);
+    const { setActiveUserId, migrateFromLegacyKey, activeUserId } = useCartStore.getState();
+    const nextUserId = user?.id ? String(user.id) : null;
+    if (activeUserId !== nextUserId) {
+      setActiveUserId(nextUserId);
+    }
     migrateFromLegacyKey(cartKey);
     setIsHydrated(true);
   }, [cartKey, user?.id]);

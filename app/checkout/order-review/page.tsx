@@ -274,17 +274,33 @@ function OrderReviewContent() {
   }
 
   const getNDISNumber = (): string | null => {
-    const ndisMeta = order.meta_data?.find((m) => m.key === "NDIS Number");
-    const v = ndisMeta?.value;
-    if (v == null || String(v).trim() === "") return null;
-    return String(v);
+    const ndisInfo = order.meta_data?.find((m) => m.key === "ndis_info")?.value;
+    if (typeof ndisInfo === "string" && ndisInfo.trim()) {
+      try {
+        const parsed = JSON.parse(ndisInfo) as { number?: unknown };
+        if (parsed?.number != null && String(parsed.number).trim()) return String(parsed.number);
+      } catch {
+        // no-op
+      }
+    }
+    const legacy = order.meta_data?.find((m) => m.key === "NDIS Number")?.value;
+    if (legacy == null || String(legacy).trim() === "") return null;
+    return String(legacy);
   };
 
   const getHCPNumber = (): string | null => {
-    const hcpMeta = order.meta_data?.find((m) => m.key === "HCP Number");
-    const v = hcpMeta?.value;
-    if (v == null || String(v).trim() === "") return null;
-    return String(v);
+    const hcpInfo = order.meta_data?.find((m) => m.key === "hcp_info")?.value;
+    if (typeof hcpInfo === "string" && hcpInfo.trim()) {
+      try {
+        const parsed = JSON.parse(hcpInfo) as { number?: unknown };
+        if (parsed?.number != null && String(parsed.number).trim()) return String(parsed.number);
+      } catch {
+        // no-op
+      }
+    }
+    const legacy = order.meta_data?.find((m) => m.key === "HCP Number")?.value;
+    if (legacy == null || String(legacy).trim() === "") return null;
+    return String(legacy);
   };
 
   const getMetaValue = (key: string) => {
@@ -293,26 +309,26 @@ function OrderReviewContent() {
   };
 
   const getDeliveryAuthority = () => {
-    const value = getMetaValue("Signature Required");
+    const value = getMetaValue("delivery_authority") ?? getMetaValue("Signature Required");
     return value === "yes" ? "With Signature" : null;
   };
 
   const getDeliveryInstructions = () => {
-    return getMetaValue("Delivery Instructions");
+    return getMetaValue("delivery_notes") ?? getMetaValue("Delivery Instructions");
   };
 
   const getDoNotSendPaperwork = () => {
-    const value = getMetaValue("Do not Send Paperwork With Delivery");
+    const value = getMetaValue("no_paperwork") ?? getMetaValue("Do not Send Paperwork With Delivery");
     return value === "yes";
   };
 
   const getDiscreetPackaging = () => {
-    const value = getMetaValue("Discreet Packaging");
+    const value = getMetaValue("discreet_packaging") ?? getMetaValue("Discreet Packaging");
     return value === "yes";
   };
 
   const getNewsletterSubscription = () => {
-    const value = getMetaValue("Newsletter Subscription");
+    const value = getMetaValue("newsletter") ?? getMetaValue("Newsletter Subscription");
     return value === "yes";
   };
 

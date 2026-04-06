@@ -78,7 +78,15 @@ export const fetchProductVariations = async (
       q,
       "product",
     );
-    return data;
+    const rows = Array.isArray(data) ? data : [];
+    return rows.filter((v) => {
+      const enabled = (v as { enabled?: unknown }).enabled;
+      const status = String((v as { status?: unknown }).status || "").toLowerCase();
+      // Keep only active variations; disabled/private/draft/trash should never appear on PDP.
+      if (enabled === false) return false;
+      if (status && status !== "publish") return false;
+      return true;
+    });
   } catch (error: unknown) {
     console.error("Error fetching product variations:", getErrorMessage(error));
     throw error;

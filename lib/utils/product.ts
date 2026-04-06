@@ -269,17 +269,35 @@ export function getSalePercentageFromProduct(product: {
 }
 
 /**
+ * Remove duplicate products by numeric `id`, preserving first occurrence order.
+ */
+export function dedupeProductsById<T extends { id?: unknown }>(items: T[]): T[] {
+  const seen = new Set<number>();
+  const out: T[] = [];
+  for (const item of items) {
+    const id = Number(item?.id ?? 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
+/**
  * Normalize products from API/caller: accept array or { products: array } and return a plain array.
  * Used by ProductSectionCard, ProductsSlider, etc.
  */
-export function normalizeProductsList<T>(raw: T[] | { products?: T[] } | null | undefined): T[] {
+export function normalizeProductsList<T extends { id?: unknown }>(
+  raw: T[] | { products?: T[] } | null | undefined,
+): T[] {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw)) return dedupeProductsById(raw);
   if (
     typeof raw === "object" &&
     "products" in raw &&
     Array.isArray((raw as { products?: T[] }).products)
   )
-    return (raw as { products: T[] }).products;
+    return dedupeProductsById((raw as { products: T[] }).products);
   return [];
 }

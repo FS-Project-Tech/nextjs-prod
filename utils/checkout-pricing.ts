@@ -121,7 +121,7 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
 
   const shipping = Number(selectedRate.cost || 0);
   const insuranceFee = payload.insurance_option === "yes" ? PARCEL_PROTECTION_FEE_AUD : 0;
-  const gst = calculateGST(subtotal, shipping, discount, insuranceFee);
+  const gst = calculateGST(subtotal, shipping, discount);
   const total = calculateTotal(subtotal, shipping, discount, gst, insuranceFee);
   const totals: CheckoutTotals = {
     subtotal,

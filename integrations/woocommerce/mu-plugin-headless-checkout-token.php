@@ -154,6 +154,7 @@ function joya_headless_build_order_from_session(array $session): WC_Order
         $item->set_method_title(isset($ship['method_title']) ? (string) $ship['method_title'] : __('Shipping', 'joya'));
         $total = isset($ship['total']) ? wc_format_decimal((string) $ship['total']) : '0';
         $item->set_total($total);
+        $item->set_total_tax(0);
         $order->add_item($item);
     }
 
@@ -166,7 +167,7 @@ function joya_headless_build_order_from_session(array $session): WC_Order
         $fee = new WC_Order_Item_Fee();
         $fee->set_name(__('Parcel protection', 'joya'));
         $fee->set_total(JOYA_PARCEL_PROTECTION_FEE_AUD);
-        $fee->set_tax_status('taxable');
+        $fee->set_tax_status('none');
         $order->add_item($fee);
     }
 

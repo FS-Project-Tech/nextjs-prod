@@ -86,6 +86,8 @@ export interface WooCommerceVariationAttribute {
 export interface WooCommerceVariation {
   id: number;
   sku: string | null;
+  status?: string;
+  enabled?: boolean;
   price: string;
   regular_price: string;
   sale_price: string;

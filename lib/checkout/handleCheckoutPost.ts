@@ -11,6 +11,7 @@ import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { executeWooCheckoutOrder } from "@/lib/checkout/executeWooCheckoutOrder";
 import { isTimeoutError } from "@/lib/utils/errors";
+import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
 
 function clientIpFromRequest(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -201,6 +202,16 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
 
   try {
     const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    after(async () => {
+      try {
+        await syncCheckoutUserMeta(actor, payload);
+      } catch (e) {
+        console.warn("[checkout] user meta sync failed", {
+          userId: actor.userId,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    });
     const { validatedLineItems, shippingLine } = await validateAndRecalculateCheckout(payload);
 
     const orderExtensionTiming =

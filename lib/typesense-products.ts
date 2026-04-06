@@ -116,6 +116,20 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
   }
 }
 
+/** De-duplicate listing products by numeric id (keeps first occurrence order). */
+export function dedupeProductsById<T extends { id?: unknown }>(items: T[]): T[] {
+  const seen = new Set<number>();
+  const out: T[] = [];
+  for (const item of items) {
+    const id = Number(item?.id ?? 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
 function firstStringish(v: unknown): string {
   if (v == null) return "";
   if (Array.isArray(v)) return firstStringish(v[0]);

@@ -184,6 +184,8 @@ export function buildCheckoutExtensionPatch(input: WooCreateOrderInput): Record<
         method_id: input.shipping_line.method_id,
         method_title: input.shipping_line.method_title,
         total: input.shipping_line.total,
+        total_tax: "0",
+        taxes: [],
       },
     ];
   }
@@ -375,7 +377,7 @@ export async function appendParcelProtectionFee(orderId: number): Promise<void> 
       {
         name: "Parcel Protection",
         total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
-        tax_status: "taxable",
+        tax_status: "none",
       },
     ],
   });

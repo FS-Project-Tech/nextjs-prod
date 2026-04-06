@@ -113,7 +113,7 @@ export async function executeWooCheckoutOrder(input: {
               {
                 name: "Parcel Protection",
                 total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
-                tax_status: "taxable" as const,
+                tax_status: "none" as const,
               },
             ]
           : undefined,

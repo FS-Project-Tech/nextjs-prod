@@ -50,6 +50,19 @@ const initialState: GridState = {
   isInitialLoad: true,
 };
 
+function dedupeProductsById(items: ProductCardProduct[]): ProductCardProduct[] {
+  const seen = new Set<number>();
+  const out: ProductCardProduct[] = [];
+  for (const item of items) {
+    const id = Number(item.id || 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
 function gridReducer(state: GridState, action: GridAction): GridState {
   switch (action.type) {
     case "FETCH_START":
@@ -60,9 +73,10 @@ function gridReducer(state: GridState, action: GridAction): GridState {
         isInitialLoad: action.isInitial ?? state.isInitialLoad,
       };
     case "FETCH_SUCCESS":
+      const merged = action.append ? [...state.products, ...action.products] : action.products;
       return {
         ...state,
-        products: action.append ? [...state.products, ...action.products] : action.products,
+        products: dedupeProductsById(merged),
         total: action.total,
         hasMore: action.pageNum < action.totalPages,
         loading: false,

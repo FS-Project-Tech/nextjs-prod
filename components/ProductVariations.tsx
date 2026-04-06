@@ -337,7 +337,9 @@ export default function ProductVariations({
           </label>
           <div className="flex flex-wrap gap-2">
             {mainAttribute.options.length > 0 ? (
-              mainAttribute.options.map((option) => {
+              mainAttribute.options
+                .filter((option) => optionInAvailableList(option, mainAttributeOptions))
+                .map((option) => {
                 const isSelected = selectedAttributes[mainAttribute.name] === option;
                 const isEnabled = isOptionEnabled(mainAttribute.name, option);
 
@@ -347,7 +349,7 @@ export default function ProductVariations({
                   return renderButton(mainAttribute.name, option, isSelected, isEnabled);
                 }
                 return null;
-              })
+                })
             ) : (
               <p className="text-sm text-gray-500">No options available</p>
             )}
@@ -356,7 +358,7 @@ export default function ProductVariations({
             <div className="mt-2">
               {renderDropdown(
                 mainAttribute.name,
-                mainAttribute.options,
+                mainAttributeOptions,
                 mainAttributeOptions,
                 selectedAttributes[mainAttribute.name]
               )}
@@ -385,14 +387,16 @@ export default function ProductVariations({
                   <div>
                     {renderDropdown(
                       attribute.name,
-                      attribute.options,
+                      availableOptions,
                       availableOptions,
                       selectedValue
                     )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {attribute.options.map((option) => {
+                    {attribute.options
+                      .filter((option) => optionInAvailableList(option, availableOptions))
+                      .map((option) => {
                       const isSelected = selectedValue === option;
                       const isEnabled = isOptionEnabled(attribute.name, option);
 
@@ -400,7 +404,7 @@ export default function ProductVariations({
                         return renderSwatch(attribute.name, option, isSelected, isEnabled);
                       }
                       return renderButton(attribute.name, option, isSelected, isEnabled);
-                    })}
+                      })}
                   </div>
                 )}
               </div>

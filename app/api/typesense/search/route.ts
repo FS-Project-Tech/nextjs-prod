@@ -6,6 +6,7 @@ import {
 } from "@/lib/typesenseClient";
 import {
   buildTypesenseFilterParts,
+  dedupeProductsById,
   getTypesenseFacetBy,
   mapSortToTypesense,
   TS_FIELDS,
@@ -132,8 +133,10 @@ export async function GET(request: NextRequest) {
     const found = result.found ?? 0;
     const totalPages = facetsOnly ? 1 : Math.max(1, Math.ceil(found / perPage));
 
-    const products = (result.hits || []).map((h) =>
-      typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
+    const products = dedupeProductsById(
+      (result.hits || []).map((h) =>
+        typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
+      )
     );
 
     return NextResponse.json(

@@ -19,6 +19,7 @@ import { useViewedProduct } from "@/hooks/useViewedProducts";
 import ConsultationFormModal from "@/components/ConsultationFormModal";
 import EmpowerCampaignBox from "@/components/EmpowerCampaignBox";
 import Image from "next/image";
+import Link from "next/link";
 
 function hasEmpowerTag(product: WooCommerceProduct): boolean {
   const tags = product.tags || [];
@@ -169,16 +170,43 @@ export default function ProductDetailPanel({
               SKU: <span className="font-medium text-gray-700">{currentSku || product.sku}</span>
             </span>
           ) : null}
-          {brand && (
+          {brandList.length > 0 && (
             <span>
-              Brand: <span className="font-medium text-gray-700">{brand}</span>
+              Brand:{" "}
+              <span className="font-medium text-gray-700">
+                {brandList.map((b, idx) => (
+                  <span key={b.slug || `${b.name}-${idx}`}>
+                    {idx > 0 ? ", " : ""}
+                    {b.slug ? (
+                      <Link
+                        href={`/brands/${encodeURIComponent(b.slug)}`}
+                        className="hover:text-teal-700 hover:underline"
+                      >
+                        {b.name}
+                      </Link>
+                    ) : (
+                      <span>{b.name}</span>
+                    )}
+                  </span>
+                ))}
+              </span>
             </span>
           )}
           {product.categories && product.categories.length > 0 && (
             <span>
               Category:{" "}
               <span className="font-medium text-gray-700">
-                {product.categories.map((c) => c.name).join(", ")}
+                {product.categories.map((c, idx) => (
+                  <span key={c.id || `${c.slug}-${idx}`}>
+                    {idx > 0 ? ", " : ""}
+                    <Link
+                      href={`/product-category/${encodeURIComponent(c.slug)}`}
+                      className="hover:text-teal-700 hover:underline"
+                    >
+                      {c.name}
+                    </Link>
+                  </span>
+                ))}
               </span>
             </span>
           )}
@@ -200,74 +228,87 @@ export default function ProductDetailPanel({
 
       {/* Price — same treatment as product card: strikethrough original + Save $X when on sale */}
       <div className="space-y-2">
-        {(() => {
-          const raw = Number(displayPrice || 0);
-          const taxClass = matchedVariation?.tax_class || matched?.tax_class || product.tax_class;
-          const taxStatus =
-            matchedVariation?.tax_status || matched?.tax_status || product.tax_status;
-          const regularNum = Number(displayRegular || 0);
-          const isOnSale = onSale && regularNum > 0 && raw > 0 && raw < regularNum;
-          const savingsAmount = isOnSale ? regularNum - raw : 0;
-          const savings = savingsAmount > 0 ? `$${savingsAmount.toFixed(2)}` : "";
+  {(() => {
+    const raw = Number(displayPrice || 0);
+    const regularNum = Number(displayRegular || 0);
 
-          if (isNaN(raw) || raw <= 0) {
-            return <span className="text-2xl font-semibold text-[#1f605f]">${displayPrice}</span>;
-          }
+    const taxClass =
+      matchedVariation?.tax_class || matched?.tax_class || product.tax_class;
+    const taxStatus =
+      matchedVariation?.tax_status || matched?.tax_status || product.tax_status;
 
-          const priceInfo = formatPriceWithLabel(raw, taxClass, taxStatus);
-          const regularInfo = isOnSale
-            ? formatPriceWithLabel(regularNum, taxClass, taxStatus)
-            : null;
-          const formattedRegularWithLabel = regularInfo?.label
-            ? `${regularInfo.label}: ${regularInfo.price}`
-            : (regularInfo?.price ?? "");
+    const isOnSale = onSale && regularNum > 0 && raw > 0 && raw < regularNum;
 
-          return (
-            <>
-              {isOnSale && formattedRegularWithLabel && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-gray-500 line-through">
-                    {formattedRegularWithLabel}
-                  </span>
-                  {savings && (
-                    <span className="text-sm font-semibold text-green-600">Save {savings}</span>
-                  )}
-                </div>
-              )}
-              <div className="flex flex-wrap items-baseline gap-3">
-                <div className="text-gray-900">
-                  {priceInfo.taxType === "gst_free" ? (
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="text-2xl font-semibold text-[#1f605f]">
-                        {priceInfo.label}: {priceInfo.price}
-                      </span>
-                      <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        GST FREE
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="space-y-0.5">
-                      <div className="text-2xl font-semibold text-[#1f605f]">
-                        {priceInfo.label}: {priceInfo.price}
-                      </div>
-                      {priceInfo.exclPrice ? (
-                        <div className="text-sm text-gray-600">
-                          Excl. GST: {priceInfo.exclPrice}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-                {onSale && (
-                  <span className="rounded-md bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
-                    Sale
-                  </span>
-                )}
-              </div>
-            </>
-          );
-        })()}
+    const discountPercent =
+  isOnSale && regularNum > raw
+    ? Math.round(((regularNum - raw) / regularNum) * 100)
+    : 0;
+
+    if (isNaN(raw) || raw <= 0) {
+      return (
+        <span className="text-2xl font-semibold text-[#1f605f]">
+          ${displayPrice}
+        </span>
+      );
+    }
+
+    const priceInfo = formatPriceWithLabel(raw, taxClass, taxStatus);
+    const regularPrice = isOnSale
+          ? `$${Number(regularNum).toFixed(2)}`
+          : "";
+
+    const savingsAmount =
+      isOnSale && regularNum > raw ? regularNum - raw : 0;
+    const savings =
+      savingsAmount > 0 ? `$${savingsAmount.toFixed(2)}` : "";
+
+    return (
+      <div className="space-y-1 text-gray-900">
+
+        {/* 💰 Price Row */}
+        <div className="flex items-center gap-2 text-lg font-semibold">
+          {/* <span className="text-[#1f605f]">
+            {priceInfo.exclPrice || priceInfo.price}
+          </span> */}
+
+           {/* 🔥 SALE TAG */}
+            {isOnSale && (
+              <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded">
+                {discountPercent}% Discount
+              </span>
+            )}
+
+          {isOnSale && regularPrice && (
+            <span className="text-sm text-gray-500 line-through">
+              {regularPrice}
+            </span>
+          )}
+
+          {savings && (
+            <span className="text-green-600 text-sm font-medium">
+              Save {savings}
+            </span>
+          )}
+        </div>
+
+        {/* 📊 GST Breakdown */}
+        {priceInfo.taxType !== "gst_free" && (
+          <div className="text-sm text-gray-600 leading-tight">
+            <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
+            <div className="text-teal text-xl font-bold">Inc. GST : {priceInfo.price}</div>
+          </div>
+        )}
+
+        {/* 🟢 GST FREE */}
+        {priceInfo.taxType === "gst_free" && (
+          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            GST FREE
+          </span>
+        )}
       </div>
+    );
+  })()}
+</div>
 
       {/* Packaging / Variations */}
       {attributes.length > 0 && (

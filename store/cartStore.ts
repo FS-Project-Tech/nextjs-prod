@@ -6,6 +6,8 @@ import { calculateSubtotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
 import { trackAddToCart } from "@/lib/analytics";
 
+const EMPTY_ITEMS: CartItem[] = [];
+
 function normalizeItems(raw: unknown[]): CartItem[] {
   return raw.map((item) => ({
     ...(item as CartItem),
@@ -16,7 +18,26 @@ function normalizeItems(raw: unknown[]): CartItem[] {
 function sliceItems(state: CartStoreState): CartItem[] {
   const uid = state.activeUserId;
   if (!uid) return state.guestItems;
-  return state.userCarts[uid] ?? [];
+  return state.userCarts[uid] ?? EMPTY_ITEMS;
+}
+
+function areItemsShallowEqual(a: CartItem[], b: CartItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.qty !== y.qty ||
+      x.price !== y.price ||
+      x.productId !== y.productId ||
+      x.variationId !== y.variationId
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function setSlice(
@@ -51,7 +72,8 @@ export const useCartStore = create<CartStoreState>()(
       userCarts: {},
       activeUserId: null,
 
-      setActiveUserId: (userId) => set({ activeUserId: userId }),
+      setActiveUserId: (userId) =>
+        set((state) => (state.activeUserId === userId ? state : { activeUserId: userId })),
 
       migrateFromLegacyKey: (legacyStorageKey) => {
         if (typeof window === "undefined" || !legacyStorageKey) return;
@@ -80,6 +102,7 @@ export const useCartStore = create<CartStoreState>()(
         const state = get();
         const prev = sliceItems(state);
         const next = typeof updater === "function" ? (updater as (p: CartItem[]) => CartItem[])(prev) : updater;
+        if (areItemsShallowEqual(prev, next)) return;
         set(setSlice(state, next));
       },
 
@@ -137,11 +160,13 @@ export const useCartStore = create<CartStoreState>()(
 
       clear: () => {
         const state = get();
+        if (sliceItems(state).length === 0) return;
         set(setSlice(state, []));
       },
 
       replaceItems: (items) => {
         const state = get();
+        if (areItemsShallowEqual(sliceItems(state), items)) return;
         set(setSlice(state, items));
       },
     }),
@@ -154,7 +179,9 @@ export const useCartStore = create<CartStoreState>()(
 
 /** Subscribe to the active cart lines (guest or logged-in bucket). */
 export function useCartStoreItems(): CartItem[] {
-  return useCartStore((s) => (!s.activeUserId ? s.guestItems : s.userCarts[s.activeUserId] ?? []));
+  return useCartStore((s) =>
+    !s.activeUserId ? s.guestItems : (s.userCarts[s.activeUserId] ?? EMPTY_ITEMS),
+  );
 }
 
 export function useCartStoreTotalString(): string {

@@ -44,7 +44,7 @@ interface PriceData {
   discount: number;
   savings: string;
   formattedRegular: string;
-  formattedRegularWithLabel: string;
+  formattedRegularExcl: string;
   formattedCurrent: string;
   label: string;
   exclPrice: string | null;
@@ -98,17 +98,13 @@ function calculatePriceData(
   let exclPrice: string | null = null;
   let isGstFree = false;
 
-  let formattedRegularWithLabel = `$${regular.toFixed(2)}`;
+  const formattedRegularExcl = `$${regular.toFixed(2)}`;
   try {
     const priceInfo = formatPriceWithLabel(current, taxClass, taxStatus);
     formattedPrice = priceInfo.price;
     label = priceInfo.label || label;
     exclPrice = priceInfo.exclPrice || null;
     isGstFree = priceInfo.taxType === "gst_free";
-    const regularInfo = formatPriceWithLabel(regular, taxClass, taxStatus);
-    formattedRegularWithLabel = regularInfo.label
-      ? `${regularInfo.label}: ${regularInfo.price}`
-      : regularInfo.price;
   } catch {}
 
   return {
@@ -118,7 +114,7 @@ function calculatePriceData(
     discount,
     savings,
     formattedRegular: `$${regular.toFixed(2)}`,
-    formattedRegularWithLabel,
+    formattedRegularExcl,
     formattedCurrent: formattedPrice,
     label,
     exclPrice,
@@ -402,25 +398,22 @@ function ProductCardComponent({
 
           {priceData.isOnSale && (
             <div className="hidden flex-wrap items-center gap-2 md:flex">
-              <p className="text-sm text-gray-500 line-through">
-                {priceData.formattedRegularWithLabel}
-              </p>
+              <p className="text-sm text-gray-500 line-through">{priceData.formattedRegularExcl}</p>
               <span className="text-xs font-semibold text-green-600">Save {priceData.savings}</span>
             </div>
           )}
 
           <div className={priceData.isGstFree ? "text-emerald-700" : undefined}>
+            {priceData.exclPrice ? (
+              <p className="text-sm text-gray-600">Excl. GST: {priceData.exclPrice}</p>
+            ) : null}
             <p className="text-lg font-bold text-teal md:text-[16px]">
               {priceData.label}: {priceData.formattedCurrent}
             </p>
 
-            {priceData.exclPrice ? (
-              <p className="text-sm text-gray-600">Excl. GST: {priceData.exclPrice}</p>
-            ) : null}
-
             {priceData.isOnSale && (
               <div className="mt-0.5 text-xs text-gray-600 md:hidden">
-                <span className="line-through">{priceData.formattedRegularWithLabel}</span>
+                <span className="line-through">{priceData.formattedRegularExcl}</span>
                 {priceData.discount > 0 ? (
                   <span className="ml-1 font-medium text-gray-800">({priceData.discount}% off)</span>
                 ) : null}

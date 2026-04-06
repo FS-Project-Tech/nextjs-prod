@@ -9,11 +9,12 @@ export function calculateSubtotal(items: CartItem[]): number {
 
 export function calculateGST(
   subtotal: number,
-  shipping: number,
+  _shipping: number,
   discount: number = 0,
   additionalTaxable: number = 0
 ): number {
-  const base = Math.max(0, subtotal - discount) + shipping + additionalTaxable;
+  // Shipping is non-taxable: GST is calculated on items (after discount) + explicitly taxable extras only.
+  const base = Math.max(0, subtotal - discount) + additionalTaxable;
   return Number((base * 0.1).toFixed(2));
 }
 
