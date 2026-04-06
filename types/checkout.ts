@@ -30,9 +30,20 @@ export type CheckoutInitiatePayload = {
   line_items: CheckoutCartItem[];
   shipping_method_id: string;
   payment_method: PaymentMethod;
+  /** Woo Store API checkout field; optional on REST payloads. */
+  payment_data?: unknown[];
   coupon_code?: string;
   insurance_option?: "yes" | "no";
   ndis_type?: string;
+  /** Aggregated NDIS details for order meta (JSON string). */
+  ndis_info?: string;
+  /** Aggregated HCP details for order meta (JSON string). */
+  hcp_info?: string;
+  delivery_authority?: string;
+  no_paperwork?: boolean;
+  discreet_packaging?: boolean;
+  newsletter?: boolean;
+  delivery_notes?: string;
 };
 
 export type CheckoutActor = {

@@ -1,6 +1,6 @@
 import "server-only";
 
-import wcAPI from "@/lib/woocommerce";
+import { wcGet } from "@/lib/woocommerce/wc-fetch";
 import type { CartItem } from "@/lib/types/cart";
 import { productsKey, CACHE_TTL, CACHE_TAGS } from "@/lib/cache";
 import { fetchJsonCached } from "@/services/api";
@@ -38,9 +38,9 @@ export async function fetchProductsByIdsForServer(productIds: number[]): Promise
   if (!baseUrl || !key || !secret) {
     const products = await Promise.all(
       ids.map(async (id) => {
-        const res = await wcAPI.get(`/products/${id}`);
-        return res.data;
-      })
+        const { data } = await wcGet<unknown>(`/products/${id}`, undefined, "product");
+        return data;
+      }),
     );
     return products;
   }
@@ -64,43 +64,21 @@ export async function fetchProductsByIdsForServer(productIds: number[]): Promise
 }
 
 export async function getProductsByBrandForServer(brandId: number): Promise<unknown> {
-  const base = process.env.NEXT_PUBLIC_WP_URL?.replace(/\/+$/, "");
-  const key = process.env.WC_CONSUMER_KEY;
-  const secret = process.env.WC_CONSUMER_SECRET;
-  if (!base || !key || !secret) {
-    throw new Error("WooCommerce REST credentials not configured");
-  }
-  const res = await fetch(
-    `${base}/wp-json/wc/v3/products?product_brand=${brandId}&per_page=20`,
-    {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`,
-      },
-      next: { revalidate: 60 },
-    }
+  const { data } = await wcGet<unknown[]>(
+    "/products",
+    { product_brand: brandId, per_page: 20 },
+    "products",
   );
-  if (!res.ok) throw new Error("Failed to fetch products by brand");
-  return res.json();
+  return data;
 }
 
 export async function getFeaturedProductsSampleForServer(): Promise<unknown> {
-  const base = process.env.NEXT_PUBLIC_WP_URL?.replace(/\/+$/, "");
-  const key = process.env.WC_CONSUMER_KEY;
-  const secret = process.env.WC_CONSUMER_SECRET;
-  if (!base || !key || !secret) {
-    throw new Error("WooCommerce REST credentials not configured");
-  }
-  const res = await fetch(
-    `${base}/wp-json/wc/v3/products?per_page=5&_fields=id,name,slug,price,images`,
-    {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`,
-      },
-      next: { revalidate: 60 },
-    }
+  const { data } = await wcGet<unknown[]>(
+    "/products",
+    { per_page: 5, _fields: "id,name,slug,price,images" },
+    "products",
   );
-  if (!res.ok) throw new Error("Failed to fetch featured products");
-  return res.json();
+  return data;
 }
 
 export async function validateCartLineStock(
@@ -114,13 +92,12 @@ export async function validateCartLineStock(
         ? `/products/${line.productId}/variations/${line.variationId}`
         : `/products/${line.productId}`;
 
-      const response = await wcAPI.get(endpoint);
-      const product = response.data as {
+      const { data: product } = await wcGet<{
         stock_status?: string;
         manage_stock?: boolean;
         stock_quantity?: number | null;
         backorders_allowed?: boolean;
-      };
+      }>(endpoint, undefined, "noStore");
 
       if (product.stock_status === "outofstock") {
         errors.push({ itemId: line.id, message: `${line.name} is out of stock` });
@@ -152,15 +129,12 @@ export async function resolveUnitPricesForCartLines(
           ? `/products/${line.productId}/variations/${line.variationId}`
           : `/products/${line.productId}`;
 
-        const response = await wcAPI.get(endpoint, {
-          params: { _fields: "id,price,regular_price,sale_price,on_sale" },
-        });
-        const product = response.data as {
+        const { data: product } = await wcGet<{
           price?: string;
           regular_price?: string;
           sale_price?: string;
           on_sale?: boolean;
-        };
+        }>(endpoint, { _fields: "id,price,regular_price,sale_price,on_sale" }, "noStore");
 
         const unit =
           product.on_sale && product.sale_price

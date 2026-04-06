@@ -32,9 +32,9 @@ export type SubmitCheckoutOrderArgs = {
 function checkoutEndpoint(
   paymentMethod: "eway" | "cod",
   tokenFlow: boolean
-): "/api/checkout/create-session" | "/api/checkout/create-order" {
+): "/api/checkout/create-session" | "/api/checkout" {
   const useTokenHandoff = paymentMethod === "eway" && tokenFlow;
-  return useTokenHandoff ? "/api/checkout/create-session" : "/api/checkout/create-order";
+  return useTokenHandoff ? "/api/checkout/create-session" : "/api/checkout";
 }
 
 export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promise<void> {
@@ -84,6 +84,8 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
   const useTokenHandoff = selectedPaymentMethod === "eway" && ewayTokenFlowEnabled;
   const endpoint = checkoutEndpoint(selectedPaymentMethod, ewayTokenFlowEnabled);
 
+  /** COD / card: `POST /api/checkout` builds the Woo order from JSON line items (no Store API cart). */
+
   const outcomeDeps: CheckoutOutcomeDeps = {
     toast: { error: showError, success },
     clearLocalCart,
@@ -116,7 +118,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       },
       body: JSON.stringify(payload),
       cache: "no-store",
-      credentials: "same-origin",
+      credentials: "include",
     });
 
     const { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps);

@@ -1,14 +1,19 @@
 "use client";
-
+ 
 import { useState } from "react";
-
+ 
 export default function AboutVideoSection() {
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
-
-  // Replace with your actual YouTube video ID or local video path
-  const youtubeVideoId = process.env.NEXT_PUBLIC_ABOUT_VIDEO_ID || "dQw4w9WgXcQ";
-  const videoUrl = `https://www.youtube.com/embed/${youtubeVideoId}`;
-
+ 
+  /** Vimeo: https://vimeo.com/{id}/{hash} → player URL with ?h= for unlisted/private. */
+  const vimeoId = process.env.NEXT_PUBLIC_ABOUT_VIMEO_ID?.trim() || "1074525533";
+  const vimeoHash = process.env.NEXT_PUBLIC_ABOUT_VIMEO_HASH?.trim() || "49fa13a9eb";
+  const videoUrl =
+    process.env.NEXT_PUBLIC_ABOUT_VIDEO_EMBED_URL?.trim() ||
+    (vimeoHash
+      ? `https://player.vimeo.com/video/${vimeoId}?h=${encodeURIComponent(vimeoHash)}`
+      : `https://player.vimeo.com/video/${vimeoId}`);
+ 
   return (
     <section className="py-16 md:py-20 bg-gradient-to-br from-gray-50 to-white">
       <div className="mx-auto w-[85vw] px-4 sm:px-6 lg:px-8">
@@ -17,27 +22,30 @@ export default function AboutVideoSection() {
           <div className="order-2 lg:order-1">
             <h2 className="text-3xl md:text-3xl font-bold text-gray-900 mb-6">About Us</h2>
             <div className="space-y-4 text-gray-700 leading-relaxed">
-              <p>
-                JOYA was founded with a simple yet powerful mission: to make quality healthcare
-                products accessible to everyone across Australia. We understand that healthcare
-                needs are deeply personal, and we're committed to providing solutions that respect
-                dignity, promote independence, and enhance quality of life.
-              </p>
-              <p>
-                Our journey began when we recognized a gap in the market for reliable, affordable,
-                and easily accessible medical supplies and continence care products. Today, we're
-                proud to serve thousands of customers, including NDIS participants, healthcare
-                professionals, and families seeking quality healthcare solutions.
-              </p>
-              <p>
-                What sets us apart is our unwavering commitment to quality, customer service, and
-                understanding the unique needs of our community. We work closely with healthcare
-                professionals, NDIS participants, and families to ensure our product range meets the
-                highest standards of care and comfort.
-              </p>
-            </div>
+                <p className="text-lg">
+                  Here at Joya Medical Supplies, we are a trusted and reliable supplier of a wide
+                  range of medical products to professionals and the general public. We are proud to
+                  be an Australian family-owned and operated company. Our comprehensive inventory
+                  allows you to choose from a huge range and presents you with the most suitable
+                  medical supplies at modest rates.
+                </p>
+                <p>
+                  Not only that, but we also provide a store pick-up option, and with that motive,
+                  Joya Medical Supplies wanted to give our customers the freedom of availability.
+                </p>
+                <p>
+                  We want to stay in touch with our customers and make them believe that we are
+                  always here for them. That&apos;s why whenever you ring us, you won&apos;t hear an
+                  automated voice but our experts helping you.
+                </p>
+                <p className="font-medium text-gray-900">
+                  We aim to fulfil your medical needs by providing the right consumables to you at
+                  the right time. With more than 7,000 products in stock right now, we aim to be
+                  your one-stop-shop solution for your medical requirements.
+                </p>
+              </div>
           </div>
-
+ 
           {/* Right: Video */}
           <div className="order-1 lg:order-2">
             <div className="relative aspect-video rounded-xl overflow-hidden shadow-xl bg-gray-100">
@@ -48,10 +56,10 @@ export default function AboutVideoSection() {
               )}
               <iframe
                 src={videoUrl}
-                title="About JOYA"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                title="About JOYA on Vimeo"
+                allow="autoplay; fullscreen; picture-in-picture; clipboard-write"
                 allowFullScreen
-                className="w-full h-full"
+                className="absolute inset-0 h-full w-full border-0"
                 onLoad={() => setIsVideoLoaded(true)}
                 style={{ display: isVideoLoaded ? "block" : "none" }}
               />

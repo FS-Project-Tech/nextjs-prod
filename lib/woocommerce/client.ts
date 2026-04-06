@@ -32,7 +32,8 @@ const API_URL = process.env.WC_API_URL;
 const CONSUMER_KEY = process.env.WC_CONSUMER_KEY;
 const CONSUMER_SECRET = process.env.WC_CONSUMER_SECRET;
 
-const WOOCOMMERCE_TIMEOUT = parseInt(process.env.WOOCOMMERCE_API_TIMEOUT || "30000", 10);
+/** Default 45s — slow shared Woo hosts often exceed 30s on order writes; override with WOOCOMMERCE_API_TIMEOUT. */
+const WOOCOMMERCE_TIMEOUT = parseInt(process.env.WOOCOMMERCE_API_TIMEOUT || "45000", 10);
 
 const wcAPI = axios.create({
   baseURL: API_URL,

@@ -1,5 +1,5 @@
 /**
- * Place a Cash on Delivery order via `/api/create-order`, then send the shopper to a thank-you / next step URL.
+ * Place a WooCommerce COD order (`payment_method: cod`) via `/api/create-order`; shoppers see “On Account” in UI.
  *
  * @example
  * ```ts

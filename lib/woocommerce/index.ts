@@ -1,4 +1,11 @@
 export { default } from "./client";
+export {
+  wcGet,
+  buildWcGetUrl,
+  WOO_REVALIDATE_SECONDS,
+  type WooCacheProfile,
+  type WcGetResult,
+} from "./wc-fetch";
 export * from "./types";
 export * from "./product-list";
 export * from "./product-single";

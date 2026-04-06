@@ -3,8 +3,8 @@ import {
   getAxiosErrorDetails,
   isTimeoutError,
 } from "@/lib/utils/errors";
-import wcAPI from "./client";
 import type { WooCommerceCategory } from "./types";
+import { wcGet } from "./wc-fetch";
 
 export const fetchCategories = async (params?: {
   per_page?: number;
@@ -12,27 +12,29 @@ export const fetchCategories = async (params?: {
   hide_empty?: boolean;
 }): Promise<WooCommerceCategory[]> => {
   try {
-    let page = 1;
-    let all: WooCommerceCategory[] = [];
+    const baseQuery: Record<string, unknown> = {
+      ...params,
+      per_page: 100,
+      page: 1,
+    };
 
-    while (true) {
-      const response = await wcAPI.get("/products/categories", {
-        params: {
-          ...params,
-          per_page: 100,
-          page,
-        },
-      });
+    const first = await wcGet<WooCommerceCategory[]>("/products/categories", baseQuery, "categories");
+    let all: WooCommerceCategory[] = [...(first.data || [])];
+    const totalPages = first.wpTotalPages ?? 1;
 
-      const data = response.data || [];
-
-      if (!data.length) break;
-
-      all = [...all, ...data];
-
-      if (data.length < 100) break;
-
-      page++;
+    if (totalPages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          wcGet<WooCommerceCategory[]>(
+            "/products/categories",
+            { ...baseQuery, page: i + 2 },
+            "categories",
+          ),
+        ),
+      );
+      for (const r of rest) {
+        all = all.concat(r.data || []);
+      }
     }
 
     return all;
@@ -51,15 +53,18 @@ export const fetchCategories = async (params?: {
 
 export const fetchCategoryBySlug = async (slug: string): Promise<WooCommerceCategory | null> => {
   try {
-    const response = await wcAPI.get("/products/categories", { params: { slug } });
-    const categories: WooCommerceCategory[] = response.data;
+    const { data: categories } = await wcGet<WooCommerceCategory[]>(
+      "/products/categories",
+      { slug },
+      "categories",
+    );
     return categories.length ? categories[0] : null;
   } catch (error: unknown) {
     const isTimeout =
       isTimeoutError(error) ||
       (hasAxiosResponse(error) &&
         ["ECONNABORTED", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT"].includes(
-          getAxiosErrorDetails(error).code || ""
+          getAxiosErrorDetails(error).code || "",
         ));
 
     if (process.env.NODE_ENV === "development" && !hasAxiosResponse(error) && !isTimeout) {

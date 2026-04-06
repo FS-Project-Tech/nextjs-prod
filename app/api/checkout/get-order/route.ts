@@ -10,6 +10,26 @@ import { resolveOrderPostId } from "@/lib/services/wooService";
  */
 export const dynamic = "force-dynamic";
 
+/** Lean payload for order-review UI (smaller JSON over the wire). */
+const ORDER_REVIEW_WOO_FIELDS =
+  "id,number,order_number,order_key,status,total,subtotal,total_shipping,shipping_total,total_tax,tax_total,discount_total,payment_method,payment_method_title,date_created,billing,shipping,line_items,meta_data,currency";
+
+function orderReviewReadParams(): { _fields: string } {
+  return { _fields: ORDER_REVIEW_WOO_FIELDS };
+}
+
+/** Fast read for order-review (avoid waiting on 90s budget when Woo is healthy). */
+function orderReviewReadTimeoutMs(): number {
+  const n = Number(process.env.WOOCOMMERCE_ORDER_REVIEW_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 20_000;
+}
+
+/** Woo PUT/GET during eWAY return can exceed default 30s axios timeout on slow hosts. */
+function wooCheckoutMutationTimeoutMs(): number {
+  const n = Number(process.env.WOOCOMMERCE_CHECKOUT_WRITE_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 90_000;
+}
+
 function keysMatch(wooKey: string, provided: string): boolean {
   const a = String(wooKey || "");
   const b = String(provided || "");
@@ -37,9 +57,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const readTimeout = orderReviewReadTimeoutMs();
+    const mutationTimeout = wooCheckoutMutationTimeoutMs();
+    const lean = orderReviewReadParams();
+
     let order: Record<string, unknown> | null = null;
     try {
-      const { data } = await wcAPI.get(`/orders/${encodeURIComponent(orderIdParam)}`);
+      const { data } = await wcAPI.get(`/orders/${encodeURIComponent(orderIdParam)}`, {
+        timeout: readTimeout,
+        params: lean,
+      });
       order = data as Record<string, unknown>;
     } catch (firstErr: unknown) {
       const status = (firstErr as { response?: { status?: number } }).response?.status;
@@ -51,7 +78,10 @@ export async function GET(req: NextRequest) {
       if (!postId) {
         return NextResponse.json({ error: "Order not found" }, { status: 404 });
       }
-      const { data } = await wcAPI.get(`/orders/${postId}`);
+      const { data } = await wcAPI.get(`/orders/${postId}`, {
+        timeout: readTimeout,
+        params: lean,
+      });
       order = data as Record<string, unknown>;
     }
 
@@ -75,15 +105,22 @@ export async function GET(req: NextRequest) {
           if (verification.transactionId) {
             patch.transaction_id = verification.transactionId;
           }
-          await wcAPI.put(`/orders/${order.id}`, patch);
+          await wcAPI.put(`/orders/${order.id}`, patch, { timeout: mutationTimeout });
           let refreshed: Record<string, unknown> | null = null;
-          for (let r = 0; r < 6; r++) {
-            const { data: again } = await wcAPI.get(`/orders/${order.id}`);
-            if (again && typeof again === "object") {
-              refreshed = again as Record<string, unknown>;
-              break;
+          for (let r = 0; r < 4; r++) {
+            try {
+              const { data: again } = await wcAPI.get(`/orders/${order.id}`, {
+                timeout: mutationTimeout,
+                params: lean,
+              });
+              if (again && typeof again === "object") {
+                refreshed = again as Record<string, unknown>;
+                break;
+              }
+            } catch (getErr) {
+              if (r === 3) throw getErr;
             }
-            await new Promise((res) => setTimeout(res, 350 + r * 120));
+            await new Promise((res) => setTimeout(res, 400 + r * 250));
           }
           if (!refreshed || typeof refreshed !== "object") {
             return NextResponse.json(
@@ -104,10 +141,14 @@ export async function GET(req: NextRequest) {
             ]
               .filter(Boolean)
               .join(" ");
-            await wcAPI.post(`/orders/${order.id}/notes`, {
-              note,
-              customer_note: false,
-            });
+            await wcAPI.post(
+              `/orders/${order.id}/notes`,
+              {
+                note,
+                customer_note: false,
+              },
+              { timeout: mutationTimeout },
+            );
           } catch (noteErr) {
             console.warn("[checkout/get-order] eWAY note write failed", noteErr);
           }
@@ -129,10 +170,14 @@ export async function GET(req: NextRequest) {
           ]
             .filter(Boolean)
             .join(" ");
-          await wcAPI.post(`/orders/${order.id}/notes`, {
-            note,
-            customer_note: false,
-          });
+          await wcAPI.post(
+            `/orders/${order.id}/notes`,
+            {
+              note,
+              customer_note: false,
+            },
+            { timeout: mutationTimeout },
+          );
         } catch (noteErr) {
           console.warn("[checkout/get-order] eWAY unsuccessful note write failed", noteErr);
         }

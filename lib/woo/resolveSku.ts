@@ -1,4 +1,4 @@
-import wcAPI from "@/lib/woocommerce";
+import { wcGet } from "@/lib/woocommerce/wc-fetch";
 
 export type SkuResolveResult =
   | {
@@ -24,9 +24,11 @@ export async function resolveProductRefBySku(
   }
 
   try {
-    const { data } = await wcAPI.get("/products", {
-      params: { sku: s, per_page: 20, status: "publish" },
-    });
+    const { data } = await wcGet<unknown[]>(
+      "/products",
+      { sku: s, per_page: 20, status: "publish" },
+      "noStore",
+    );
     const list = Array.isArray(data) ? data : [];
     const exact = list.filter((p: { sku?: string }) => String(p?.sku ?? "").trim() === s);
 
@@ -57,9 +59,11 @@ export async function resolveProductRefBySku(
     parentIdHint != null && Number.isFinite(parentIdHint) && parentIdHint > 0 ? parentIdHint : 0;
   if (hint > 0) {
     try {
-      const { data } = await wcAPI.get(`/products/${hint}/variations`, {
-        params: { per_page: 100 },
-      });
+      const { data } = await wcGet<unknown[]>(
+        `/products/${hint}/variations`,
+        { per_page: 100 },
+        "noStore",
+      );
       const vars = Array.isArray(data) ? data : [];
       const hit = vars.find((v: { sku?: string }) => String(v?.sku ?? "").trim() === s) as
         | { id?: number }

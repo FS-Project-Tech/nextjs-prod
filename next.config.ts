@@ -273,5 +273,7 @@ const nextConfig: NextConfig = {
   // Enable static page generation with ISR
   output: 'standalone',
 };
+
+
  
 export default withBundleAnalyzer(nextConfig);

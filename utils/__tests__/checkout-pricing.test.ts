@@ -8,9 +8,8 @@ jest.mock("@/lib/shipping-rates-server", () => ({
   computeShippingRates: jest.fn(),
 }));
 
-jest.mock("@/lib/woocommerce", () => ({
-  __esModule: true,
-  default: { get: jest.fn() },
+jest.mock("@/lib/woocommerce/wc-fetch", () => ({
+  wcGet: jest.fn(),
 }));
 
 const { resolveWooLineItems } = jest.requireMock("@/lib/woo/resolveLineItems") as {
@@ -21,13 +20,13 @@ const { computeShippingRates } = jest.requireMock("@/lib/shipping-rates-server")
   computeShippingRates: jest.Mock;
 };
 
-const wcAPI = jest.requireMock("@/lib/woocommerce").default as { get: jest.Mock };
+const { wcGet } = jest.requireMock("@/lib/woocommerce/wc-fetch") as { wcGet: jest.Mock };
 
 describe("validateAndRecalculateCheckout", () => {
   beforeEach(() => {
     resolveWooLineItems.mockReset();
     computeShippingRates.mockReset();
-    wcAPI.get.mockReset();
+    wcGet.mockReset();
     computeShippingRates.mockResolvedValue({
       rates: [{ id: "flat_rate:1", label: "Flat", cost: 0 }],
     });

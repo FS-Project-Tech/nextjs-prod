@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  buildPurchasePayloadFromWooOrder,
+  trackPurchaseServerSide,
+} from "@/lib/analytics/server-track-purchase";
 import wcAPI from "@/lib/woocommerce";
 import { readJsonBody } from "@/utils/api-parse";
 
@@ -86,7 +90,7 @@ function mapLineItems(raw: unknown): { ok: true; items: object[] } | { ok: false
 }
 
 /**
- * Creates a Cash on Delivery order in WooCommerce (payment_method cod, processing, unpaid).
+ * Creates a WooCommerce COD order (`payment_method: cod`, processing, unpaid). Customer-facing label: On Account.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -110,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     const paymentTitle = isNonEmptyString(body.payment_method_title)
       ? body.payment_method_title.trim()
-      : "Cash on delivery";
+      : "On Account";
 
     const customerNote = isNonEmptyString(body.customer_note) ? body.customer_note.trim() : undefined;
 
@@ -147,6 +151,13 @@ export async function POST(req: NextRequest) {
     }
 
     const { data } = await wcAPI.post("/orders", orderPayload);
+
+    const billingEmail =
+      typeof billing.email === "string" ? billing.email : undefined;
+    const purchasePayload = buildPurchasePayloadFromWooOrder(data, billingEmail);
+    if (purchasePayload) {
+      void trackPurchaseServerSide(purchasePayload);
+    }
 
     return NextResponse.json({
       success: true,

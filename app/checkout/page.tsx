@@ -104,13 +104,31 @@ function CheckoutPageInner() {
           </Link>
         </div>
 
-        <form
-          id="checkout-main"
-          onSubmit={onFormSubmit}
-          className="grid gap-6 lg:grid-cols-3"
-          noValidate
-          aria-label="Checkout and place order"
-        >
+        <div className="relative">
+          {placing && (
+            <div
+              className="absolute inset-0 z-40 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-sm"
+              aria-hidden={false}
+              aria-busy="true"
+              aria-live="polite"
+            >
+              <div className="rounded-lg bg-white/90 px-6 py-4 text-center shadow-lg ring-1 ring-gray-200">
+                <div
+                  className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-solid border-gray-900 border-r-transparent"
+                  aria-hidden="true"
+                />
+                <p className="text-sm font-medium text-gray-900">Processing checkout…</p>
+                <p className="mt-1 text-xs text-gray-600">Please do not refresh or close this page.</p>
+              </div>
+            </div>
+          )}
+          <form
+            id="checkout-main"
+            onSubmit={onFormSubmit}
+            className={`grid gap-6 lg:grid-cols-3 ${placing ? "pointer-events-none select-none" : ""}`}
+            noValidate
+            aria-label="Checkout and place order"
+          >
           <CheckoutForm
             user={user}
             billingAddresses={billingAddresses}
@@ -154,6 +172,7 @@ function CheckoutPageInner() {
             </div>
           </aside>
         </form>
+        </div>
       </div>
     </>
   );

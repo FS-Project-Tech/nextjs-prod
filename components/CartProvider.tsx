@@ -11,8 +11,8 @@ import {
 } from "react";
 import { calculateSubtotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
-import { trackAddToCart } from "@/lib/analytics";
 import { useUser } from "@/hooks/useUser";
+import { useCartStore, useCartStoreItems } from "@/store/cartStore";
 
 // Re-export CartItem for backward compatibility
 export type { CartItem };
@@ -50,7 +50,7 @@ interface CartState {
 const CartContext = createContext<CartState | undefined>(undefined);
 
 export default function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const items = useCartStoreItems();
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -72,38 +72,15 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (cartKey === undefined) {
-      setItems([]);
+      useCartStore.getState().setActiveUserId(null);
       setIsHydrated(false);
       return;
     }
-    try {
-      const raw = localStorage.getItem(cartKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setItems(
-          Array.isArray(parsed)
-            ? parsed.map((item) => ({
-                ...item,
-                price: Number(item.price).toFixed(2),
-              }))
-            : []
-        );
-      } else {
-        setItems([]);
-      }
-    } catch {
-      setItems([]);
-    } finally {
-      setIsHydrated(true);
-    }
-  }, [cartKey]);
-
-  useEffect(() => {
-    if (!isHydrated || typeof window === "undefined" || !cartKey) return;
-    try {
-      localStorage.setItem(cartKey, JSON.stringify(items));
-    } catch {}
-  }, [items, isHydrated, cartKey]);
+    const { setActiveUserId, migrateFromLegacyKey } = useCartStore.getState();
+    setActiveUserId(user?.id ? String(user.id) : null);
+    migrateFromLegacyKey(cartKey);
+    setIsHydrated(true);
+  }, [cartKey, user?.id]);
 
   // Persist cart to server when user leaves the page (so other browsers get the latest)
   useEffect(() => {
@@ -160,9 +137,8 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         loadRetryCount.current = 0;
         const data = await res.json();
         const serverItems: CartItem[] = Array.isArray(data.items) ? data.items : [];
-        // Prefer server when it has items or when local is empty (cross-browser / new device)
-        setItems((current) =>
-          serverItems.length > 0 || current.length === 0 ? serverItems : current
+        useCartStore.getState().setItems((current) =>
+          serverItems.length > 0 || current.length === 0 ? serverItems : current,
         );
         lastSavedSnapshotRef.current = JSON.stringify({ items: serverItems });
         setHasLoadedServerCart(true);
@@ -193,52 +169,21 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   const close = useCallback(() => setIsOpen(false), []);
 
   const addItem = useCallback((input: Omit<CartItem, "id"> & { id?: string }) => {
-    const id = input.id || `${input.productId}${input.variationId ? ":" + input.variationId : ""}`;
-
-    setItems((prev) => {
-      const idx = prev.findIndex((p) => p.id === id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = {
-          ...next[idx],
-          ...input,
-          qty: next[idx].qty + input.qty,
-          id: next[idx].id,
-        };
-        return next;
-      }
-      return [...prev, { ...input, id } as CartItem];
-    });
-
+    useCartStore.getState().addItem(input);
     setSyncError(null);
     setIsOpen(true);
-
-    queueMicrotask(() => {
-      const unitPrice = parseFloat(String(input.price ?? "0")) || 0;
-      if (unitPrice >= 0 && input.productId) {
-        trackAddToCart({
-          id: input.productId,
-          name: input.name || "Product",
-          price: unitPrice,
-          quantity: Math.max(1, input.qty),
-          sku: input.sku ?? undefined,
-        });
-      }
-    });
   }, []);
 
   const removeItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((p) => p.id !== id));
+    useCartStore.getState().removeItem(id);
   }, []);
 
   const updateItemQty = useCallback((id: string, qty: number) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, qty: Math.max(1, qty) } : item))
-    );
+    useCartStore.getState().updateItemQty(id, qty);
   }, []);
 
   const clear = useCallback(() => {
-    setItems([]);
+    useCartStore.getState().clear();
     setSyncError(null);
   }, []);
 
@@ -291,7 +236,6 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     };
   }, [items, isHydrated, user?.id, hasLoadedServerCart]);
 
-  // 🔄 WooCommerce sync (unchanged)
   const syncWithWooCommerce = useCallback(
     async (couponCode?: string) => {
       if (items.length === 0) return;
@@ -310,8 +254,24 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         });
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to sync cart");
+          const error = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            message?: string;
+          };
+          const raw =
+            (typeof error.error === "string" && error.error) ||
+            (typeof error.message === "string" && error.message) ||
+            "";
+          let msg = raw || "Failed to sync cart";
+          try {
+            const parsed = JSON.parse(raw) as { message?: string };
+            if (typeof parsed.message === "string" && parsed.message.trim()) {
+              msg = parsed.message.trim();
+            }
+          } catch {
+            /* use raw */
+          }
+          throw new Error(msg);
         }
 
         const data = await response.json();
@@ -325,7 +285,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
             priceMap.set(itemId, wcItem.price);
           });
 
-          setItems((prev) =>
+          useCartStore.getState().setItems((prev) =>
             prev.map((item) => {
               const updatedPrice = priceMap.get(item.id);
 
@@ -333,10 +293,9 @@ export default function CartProvider({ children }: { children: React.ReactNode }
 
               return {
                 ...item,
-                // 🔥 force Woo price + correct decimals
                 price: Number(updatedPrice).toFixed(2),
               };
-            })
+            }),
           );
         }
       } catch (error) {
@@ -348,7 +307,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         setIsSyncing(false);
       }
     },
-    [items]
+    [items],
   );
 
   const refreshCartFromServer = useCallback(() => {
@@ -432,7 +391,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       validateCart,
       total,
       refreshCartFromServer,
-    ]
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

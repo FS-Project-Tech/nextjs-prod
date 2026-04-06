@@ -144,6 +144,20 @@ export function useCheckoutPageState() {
   useInsuranceHydration(isMounted, setValue);
   useInsurancePersistence(isMounted, insuranceResolved);
   useCheckoutQueryToasts(isMounted, searchParams, showError);
+
+  /** Warm checkout API + prefetch order review so post-submit navigation is instant. */
+  useEffect(() => {
+    if (!isMounted || cartLines.length === 0) return;
+    router.prefetch("/checkout/order-review");
+    const ac = new AbortController();
+    void fetch("/api/checkout/payment-options", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      signal: ac.signal,
+    }).catch(() => {});
+    return () => ac.abort();
+  }, [isMounted, cartLines.length, router]);
   useRecalculateCouponWhenCartChanges(
     appliedCoupon,
     cartLines,

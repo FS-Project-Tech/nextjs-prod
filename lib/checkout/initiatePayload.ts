@@ -31,8 +31,8 @@ const cartLineSchema = z
 
 const paymentMethodSchema = z.preprocess((v) => {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
-  // Legacy clients sent on-account as `cod`; keep accepting the string but treat as card checkout.
-  if (s === "on_account") return "eway";
+  // UI may say "on account"; Woo only accepts gateway id `cod`. Never forward `on_account` to Woo.
+  if (s === "on_account" || s === "pay_on_account" || s === "account") return "cod";
   return v;
 }, z.enum(["eway", "cod"]));
 
@@ -42,9 +42,18 @@ export const checkoutInitiateSchema = z.object({
   line_items: z.array(cartLineSchema).min(1),
   shipping_method_id: z.string().trim().min(1),
   payment_method: paymentMethodSchema,
+  /** Matches Woo Store API; optional on headless REST checkout. */
+  payment_data: z.array(z.unknown()).optional(),
   coupon_code: z.string().trim().optional(),
   insurance_option: z.enum(["yes", "no"]).optional(),
   ndis_type: z.string().trim().optional(),
+  ndis_info: z.string().trim().max(8000).optional(),
+  hcp_info: z.string().trim().max(8000).optional(),
+  delivery_authority: z.string().trim().max(120).optional(),
+  no_paperwork: z.boolean().optional(),
+  discreet_packaging: z.boolean().optional(),
+  newsletter: z.boolean().optional(),
+  delivery_notes: z.string().trim().max(2000).optional(),
 });
 
 export function parseCheckoutPayload(input: unknown): CheckoutInitiatePayload {

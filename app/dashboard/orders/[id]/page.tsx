@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { getOrderPaymentMethodDisplay } from "@/lib/checkout/paymentDisplay";
 
 interface OrderItem {
   id: number;
@@ -44,6 +45,7 @@ interface Order {
     postcode: string;
     country: string;
   };
+  payment_method?: string;
   payment_method_title?: string;
   shipping_lines?: Array<{
     method_title: string;
@@ -201,11 +203,11 @@ export default function OrderDetailPage() {
                   })}
                 </dd>
               </div>
-              {order.payment_method_title && (
+              {(order.payment_method || order.payment_method_title) && (
                 <div>
                   <dt className="text-sm text-gray-500">Payment Method</dt>
                   <dd className="text-sm font-medium text-gray-900">
-                    {order.payment_method_title}
+                    {getOrderPaymentMethodDisplay(order)}
                   </dd>
                 </div>
               )}

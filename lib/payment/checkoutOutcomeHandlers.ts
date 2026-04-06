@@ -4,6 +4,8 @@ import {
   pickCreateOrderIdFromHeaders,
   pickCreateOrderKeyFromHeaders,
   messageFromCreateOrderError,
+  checkoutResponseIndicatesCod,
+  parseCheckoutMirrorFromResponse,
 } from "./createOrderHttp";
 
 export type CheckoutToast = { error: (m: string) => void; success: (m: string) => void };
@@ -64,10 +66,16 @@ export async function readCheckoutJsonOrRecoverHeaders(
   res: Response,
   deps: CheckoutOutcomeDeps
 ): Promise<{ apiJson: Record<string, unknown>; recoveredEarly: boolean }> {
+  /** One body read (no clone) — avoids rare empty/locked streams after clone.json(). */
   let responseText = "";
   try {
     responseText = await readResponseBodyText(res);
   } catch {
+    const mirror = parseCheckoutMirrorFromResponse(res);
+    if (mirror) return { apiJson: mirror, recoveredEarly: false };
+    if (recoverPlacedCodOrderFromHeaders(res, deps)) {
+      return { apiJson: {}, recoveredEarly: true };
+    }
     const recoveredId = pickCreateOrderIdFromHeaders(res);
     if (recoveredId) {
       const recoveredKey = pickCreateOrderKeyFromHeaders(res);
@@ -81,9 +89,41 @@ export async function readCheckoutJsonOrRecoverHeaders(
   }
 
   const trimmed = responseText.trim();
+  if (trimmed) {
+    try {
+      const apiJson = JSON.parse(trimmed) as Record<string, unknown>;
+      if (apiJson !== null && typeof apiJson === "object" && !Array.isArray(apiJson)) {
+        return { apiJson, recoveredEarly: false };
+      }
+    } catch {
+      const mirror = parseCheckoutMirrorFromResponse(res);
+      if (mirror) return { apiJson: mirror, recoveredEarly: false };
+      deps.toast.error(
+        !res.ok
+          ? `Checkout service error (HTTP ${res.status}). Please try again.`
+          : "Checkout returned an unexpected response. Please try again or contact support."
+      );
+      return { apiJson: {}, recoveredEarly: true };
+    }
+    const mirrorAfterShape = parseCheckoutMirrorFromResponse(res);
+    if (mirrorAfterShape) return { apiJson: mirrorAfterShape, recoveredEarly: false };
+    deps.toast.error(
+      !res.ok
+        ? `Checkout service error (HTTP ${res.status}). Please try again.`
+        : "Checkout returned an unexpected response. Please try again or contact support."
+    );
+    return { apiJson: {}, recoveredEarly: true };
+  }
+
+  const mirror = parseCheckoutMirrorFromResponse(res);
+  if (mirror) return { apiJson: mirror, recoveredEarly: false };
+
   if (!trimmed) {
     if (!res.ok) {
       deps.toast.error(`Checkout service error (HTTP ${res.status}). Please try again.`);
+      return { apiJson: {}, recoveredEarly: true };
+    }
+    if (recoverPlacedCodOrderFromHeaders(res, deps)) {
       return { apiJson: {}, recoveredEarly: true };
     }
     const recoveredId = pickCreateOrderIdFromHeaders(res);
@@ -100,18 +140,6 @@ export async function readCheckoutJsonOrRecoverHeaders(
     }
     deps.toast.error(
       "Empty response from checkout server. If this persists, check the Network tab for the create-order request."
-    );
-    return { apiJson: {}, recoveredEarly: true };
-  }
-
-  try {
-    const apiJson = JSON.parse(trimmed) as Record<string, unknown>;
-    return { apiJson, recoveredEarly: false };
-  } catch {
-    deps.toast.error(
-      !res.ok
-        ? `Checkout service error (HTTP ${res.status}). Please try again.`
-        : "Checkout returned an unexpected response. Please try again or contact support."
     );
     return { apiJson: {}, recoveredEarly: true };
   }
@@ -136,6 +164,32 @@ function persistEmptyServerCart(userId?: string): void {
   }).catch(() => {});
 }
 
+/**
+ * When the JSON body is missing but COD succeeded, headers carry order id + cod hint.
+ * Clears cart and navigates to order review (same as a normal COD JSON success).
+ */
+export function recoverPlacedCodOrderFromHeaders(res: Response, deps: CheckoutOutcomeDeps): boolean {
+  if (!res.ok || !checkoutResponseIndicatesCod(res)) return false;
+  const orderId = pickCreateOrderIdFromHeaders(res);
+  if (!orderId) return false;
+  const orderKey = pickCreateOrderKeyFromHeaders(res);
+  deps.setPostSubmitNavigation("order_confirmation");
+  try {
+    sessionStorage.setItem(`headless_clear_cart_for_order_${orderId}`, "1");
+  } catch {
+    /* ignore */
+  }
+  try {
+    deps.clearLocalCart();
+    persistEmptyServerCart(deps.userId);
+  } catch {
+    /* ignore */
+  }
+  deps.toast.success("Order placed successfully.");
+  goToOrderReview(orderId, undefined, deps, orderKey);
+  return true;
+}
+
 /** After `/api/checkout/create-order` with cash on delivery (no eWAY redirect). */
 export function handleCashOnDeliveryCompleteJson(
   payload: Record<string, unknown>,
@@ -152,6 +206,11 @@ export function handleCashOnDeliveryCompleteJson(
       : null;
 
   deps.setPostSubmitNavigation("order_confirmation");
+  try {
+    sessionStorage.setItem(`headless_clear_cart_for_order_${String(orderIdRaw)}`, "1");
+  } catch {
+    /* ignore */
+  }
   try {
     deps.clearLocalCart();
     persistEmptyServerCart(deps.userId);

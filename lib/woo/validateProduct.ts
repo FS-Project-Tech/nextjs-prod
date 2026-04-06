@@ -1,4 +1,4 @@
-import wcAPI from "@/lib/woocommerce";
+import { wcGet } from "@/lib/woocommerce/wc-fetch";
 
 export type WooProductValidation =
   | {
@@ -26,8 +26,12 @@ export type WooProductValidation =
 
 export async function validateProduct(productId: number): Promise<WooProductValidation> {
   try {
-    const res = await wcAPI.get(`/products/${productId}`);
-    const p = (res?.data || {}) as Record<string, unknown>;
+    const { data: raw } = await wcGet<Record<string, unknown>>(
+      `/products/${productId}`,
+      undefined,
+      "noStore",
+    );
+    const p = raw || {};
 
     const id = Number(p.id || 0);
     const type = String(p.type || "");
@@ -123,8 +127,12 @@ export async function validateVariation(
   variationId: number
 ): Promise<WooProductValidation> {
   try {
-    const res = await wcAPI.get(`/products/${parentId}/variations/${variationId}`);
-    const v = (res?.data || {}) as Record<string, unknown>;
+    const { data: raw } = await wcGet<Record<string, unknown>>(
+      `/products/${parentId}/variations/${variationId}`,
+      undefined,
+      "noStore",
+    );
+    const v = raw || {};
     const id = Number(v.id || 0);
     const status = String(v.status || "");
     const purchasable = Boolean(v.purchasable);

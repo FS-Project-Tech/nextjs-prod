@@ -97,9 +97,14 @@ function PaymentStatusInner({
             Payment Method
           </h3>
           <p className="text-sm text-gray-700">{paymentMethodDisplay}</p>
-          {!isPaid && offlinePaymentMethods.includes(order.payment_method) && (
-            <p className="mt-1 text-xs text-amber-800">Payment pending</p>
+          {String(order.payment_method || "").toLowerCase() === "cod" && (
+            <p className="mt-1 text-xs text-gray-600">On Account Payment</p>
           )}
+          {!isPaid &&
+            offlinePaymentMethods.includes(String(order.payment_method || "").toLowerCase()) &&
+            String(order.payment_method || "").toLowerCase() !== "cod" && (
+              <p className="mt-1 text-xs text-amber-800">Payment pending</p>
+            )}
         </div>
         <div>
           <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-500">

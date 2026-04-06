@@ -4,7 +4,7 @@ import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
 import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
-import wcAPI from "@/lib/woocommerce";
+import { wcGet } from "@/lib/woocommerce/wc-fetch";
 
 function normCountry(v?: string): string {
   const c = String(v || "")
@@ -63,11 +63,11 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
 
   const unitPrices = await Promise.all(
     validatedLineItems.map(async (li) => {
-      const endpoint = li.variation_id
+      const path = li.variation_id
         ? `/products/${li.product_id}/variations/${li.variation_id}`
         : `/products/${li.product_id}`;
-      const res = await wcAPI.get(endpoint);
-      const p = (res?.data || {}) as Record<string, unknown>;
+      const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
+      const p = data || {};
       const unit = Number.parseFloat(String(p.price ?? "0")) || 0;
       return {
         key: toItemKey(li.product_id, li.variation_id),
@@ -82,13 +82,16 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   let discount = 0;
   if (payload.coupon_code) {
     try {
-      const couponRes = await wcAPI.get("/coupons", {
-        params: { code: payload.coupon_code, per_page: 1 },
-      });
+      const couponRes = await wcGet<unknown[]>(
+        "/coupons",
+        { code: payload.coupon_code, per_page: 1 },
+        "noStore",
+      );
       const coupon = Array.isArray(couponRes.data) ? couponRes.data[0] : null;
-      if (coupon) {
-        const amount = Number.parseFloat(String(coupon.amount || "0")) || 0;
-        const type = String(coupon.discount_type || "");
+      if (coupon && typeof coupon === "object" && coupon !== null) {
+        const c = coupon as { amount?: unknown; discount_type?: unknown };
+        const amount = Number.parseFloat(String(c.amount || "0")) || 0;
+        const type = String(c.discount_type || "");
         if (type === "percent") {
           discount = (subtotal * amount) / 100;
         } else if (type === "fixed_cart") {

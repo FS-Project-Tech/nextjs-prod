@@ -10,6 +10,7 @@ import OrderItems from "@/components/checkout/order-review/OrderItems";
 import PaymentStatus from "@/components/checkout/order-review/PaymentStatus";
 import { downloadOrderInvoicePdf } from "@/lib/order-review-pdf";
 import { trackPurchase } from "@/lib/analytics";
+import { getOrderPaymentMethodDisplay } from "@/lib/checkout/paymentDisplay";
 
 function OrderReviewContent() {
   const searchParams = useSearchParams();
@@ -70,13 +71,13 @@ function OrderReviewContent() {
             ? `/api/orders/${encodeURIComponent(orderId)}?AccessCode=${encodeURIComponent(accessCodeFromUrl)}`
             : `/api/orders/${encodeURIComponent(orderId)}`;
 
-        const maxAttempts = accessCodeFromUrl ? 8 : hasKey ? 4 : 5;
+        const maxAttempts = accessCodeFromUrl ? 6 : hasKey ? 2 : 3;
         let data: { order?: OrderReviewOrder } | null = null;
         let lastError: Error | null = null;
 
         for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt++) {
           if (attempt > 0) {
-            await sleep(350 + attempt * 150);
+            await sleep(180 + attempt * 220);
           }
 
           const res = await fetch(orderApiUrl, {
@@ -143,7 +144,9 @@ function OrderReviewContent() {
           try {
             if (typeof window !== "undefined" && data.order) {
               const oid = String(data.order.id ?? "");
-              let shouldClear = false;
+              const pm = String(data.order.payment_method || "").toLowerCase();
+              const offlinePm = ["cod", "bacs", "bank_transfer", "cheque"];
+              let shouldClear = offlinePm.includes(pm);
               if (oid && sessionStorage.getItem(`headless_clear_cart_for_order_${oid}`)) {
                 sessionStorage.removeItem(`headless_clear_cart_for_order_${oid}`);
                 shouldClear = true;
@@ -316,17 +319,17 @@ function OrderReviewContent() {
   const isPaid = order.status === "processing" || order.status === "completed";
   const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque"];
 
-  const paymentMethodDisplay =
-    order.payment_method_title ||
-    String(order.payment_method || "").replace(/_/g, " ") ||
-    "—";
+  const paymentMethodDisplay = getOrderPaymentMethodDisplay(order);
 
-  /** Receipt label: show Completed once payment is successful/processing */
+  /** Receipt label: on-account orders show **Done** when Woo is processing (or completed). */
   const orderStatusLabel = (() => {
     const s = String(order.status || "").toLowerCase();
     const pm = String(order.payment_method || "").toLowerCase();
     if (pm === "eway" && (s === "processing" || s === "completed")) {
       return "Payment Done";
+    }
+    if (pm === "cod" && (s === "processing" || s === "completed")) {
+      return "Done";
     }
     if (s === "processing") return "Completed";
     if (s === "completed") return "Completed";
@@ -340,6 +343,8 @@ function OrderReviewContent() {
 
   const orderStatusToneClass = (() => {
     const s = String(order.status || "").toLowerCase();
+    const pm = String(order.payment_method || "").toLowerCase();
+    if (pm === "cod" && (s === "processing" || s === "completed")) return "text-green-700";
     if (s === "completed") return "text-green-700";
     if (s === "processing") return "text-blue-700";
     return "text-amber-800";

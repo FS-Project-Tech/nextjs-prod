@@ -1,6 +1,3 @@
-/**
- * @deprecated Prefer POST `/api/checkout` (same handler). Kept for backward compatibility.
- */
 import { NextRequest } from "next/server";
 import { handleCheckoutPost } from "@/lib/checkout/handleCheckoutPost";
 

@@ -285,12 +285,18 @@ function CartPageContent() {
             </div>
 
             {isMounted && items.length > 0 && (
-              <Link
-                href="/checkout"
-                className="mt-6 block w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black"
-              >
-                Proceed to Checkout
-              </Link>
+              <>
+                <Link
+                  href="/checkout"
+                  className="mt-6 block w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black"
+                >
+                  Proceed to Checkout
+                </Link>
+                <p className="mt-3 text-center text-xs text-gray-500">
+                  At checkout you can pay by card or choose{" "}
+                  <span className="font-medium text-gray-700">On Account</span>.
+                </p>
+              </>
             )}
           </div>
         </div>

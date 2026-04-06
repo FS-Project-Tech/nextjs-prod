@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import wcAPI, { fetchCategoryBySlug } from "@/lib/woocommerce";
+import { fetchCategoryBySlug, wcGet, type WooCommerceProduct } from "@/lib/woocommerce";
 import { cached, CACHE_TTL, CACHE_TAGS, STATIC_CACHE_HEADERS } from "@/lib/cache";
 
 /**
@@ -38,12 +38,8 @@ export async function GET(request: NextRequest) {
         }
 
         const [minResponse, maxResponse] = await Promise.all([
-          wcAPI.get("/products", {
-            params: { ...params, order: "asc" },
-          }),
-          wcAPI.get("/products", {
-            params: { ...params, order: "desc" },
-          }),
+          wcGet<WooCommerceProduct[]>("/products", { ...params, order: "asc" }, "products"),
+          wcGet<WooCommerceProduct[]>("/products", { ...params, order: "desc" }, "products"),
         ]);
 
         const minProduct = minResponse.data?.[0];

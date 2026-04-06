@@ -1,6 +1,38 @@
 import type { CartItem } from "@/lib/types/cart";
 import type { CheckoutFormData, ShippingMethodType } from "./schema";
 
+function jsonInfoBlock(record: Record<string, unknown>): string | undefined {
+  const entries = Object.entries(record).filter(
+    ([, v]) => v !== undefined && v !== "" && v !== false && v !== null,
+  );
+  if (entries.length === 0) return undefined;
+  try {
+    return JSON.stringify(Object.fromEntries(entries));
+  } catch {
+    return undefined;
+  }
+}
+
+function ndisInfoFromForm(data: CheckoutFormData): string | undefined {
+  return jsonInfoBlock({
+    number: data.cust_woo_ndis_number || data.ndis_number,
+    participant_name: data.cust_woo_ndis_participant_name || data.ndis_participant_name,
+    dob: data.cust_woo_ndis_dob || data.ndis_dob,
+    funding_type: data.cust_woo_ndis_funding_type || data.ndis_funding_type,
+    invoice_email: data.cust_woo_invoice_email || data.billing_ndis_invoice_email,
+    approval: data.cust_woo_ndis_approval ?? data.ndis_approval,
+  });
+}
+
+function hcpInfoFromForm(data: CheckoutFormData): string | undefined {
+  return jsonInfoBlock({
+    participant_name: data.cust_woo_hcp_participant_name || data.hcp_participant_name,
+    number: data.cust_woo_hcp_number || data.hcp_number,
+    provider_email: data.cust_woo_provider_email || data.hcp_provider_email,
+    approval: data.cust_woo_hcp_approval ?? data.hcp_approval,
+  });
+}
+
 function billingBlock(data: CheckoutFormData) {
   return {
     first_name: data.billing_first_name || "",
@@ -77,8 +109,17 @@ export function buildCreateOrderPayload(params: {
     line_items: lineItemsFromCart(cartLines),
     shipping_method_id: shippingMethod?.id,
     payment_method: paymentMethod,
+    /** Store API COD expects `payment_data: []`; kept on payload for parity and future direct Store calls. */
+    payment_data: [] as unknown[],
     coupon_code: appliedCouponCode || couponFromUrl || undefined,
     insurance_option: data.insurance_option === "yes" ? "yes" : "no",
     ndis_type: (data.cust_woo_ndis_funding_type ?? data.ndis_funding_type) || undefined,
+    ndis_info: ndisInfoFromForm(data),
+    hcp_info: hcpInfoFromForm(data),
+    delivery_authority: data.deliveryAuthority || undefined,
+    no_paperwork: data.doNotSendPaperwork === true,
+    discreet_packaging: data.discreetPackaging === true,
+    newsletter: data.subscribe_newsletter === true,
+    delivery_notes: data.deliveryInstructions?.trim() || undefined,
   };
 }

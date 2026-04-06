@@ -6,6 +6,7 @@ import {
   isTimeoutError,
 } from "@/lib/utils/errors";
 import wcAPI from "./client";
+import { wcGet } from "./wc-fetch";
 import type { WooCommerceProductReview } from "./types";
 
 async function fetchProductReviewsCustomEndpoint(
@@ -32,15 +33,17 @@ export const fetchProductReviews = async (
   const perPage = params?.per_page ?? 10;
   const page = params?.page ?? 1;
   try {
-    const response = await wcAPI.get("/products/reviews", {
-      params: { product: productId, per_page: perPage, page },
-    });
-    const data = response.data ?? [];
-    if (Array.isArray(data) && data.length > 0) {
-      return data;
+    const { data } = await wcGet<unknown[]>(
+      "/products/reviews",
+      { product: productId, per_page: perPage, page },
+      "products",
+    );
+    const dataArr = data ?? [];
+    if (Array.isArray(dataArr) && dataArr.length > 0) {
+      return dataArr as WooCommerceProductReview[];
     }
     const custom = await fetchProductReviewsCustomEndpoint(productId, { per_page: perPage, page });
-    return custom.length > 0 ? custom : data;
+    return custom.length > 0 ? custom : (dataArr as WooCommerceProductReview[]);
   } catch (error: unknown) {
     const isNoRoute =
       hasAxiosResponse(error) &&

@@ -4,7 +4,7 @@ import HeroHeadingSection from "@/components/about/HeroHeadingSection";
 import ServicesSection from "@/components/about/ServicesSection";
 import AboutVideoSection from "@/components/about/AboutVideoSection";
 import NumberCountersSection from "@/components/about/NumberCountersSection";
-import FoundersDeskSection from "@/components/about/FoundersDeskSection";
+// import FoundersDeskSection from "@/components/about/FoundersDeskSection";
 import WhatMakesUsSpecialSection from "@/components/about/WhatMakesUsSpecialSection";
 import JOYAMeaningSection from "@/components/about/JOYAMeaningSection";
 import WhereWeSupplySection from "@/components/about/WhereWeSupplySection";
@@ -58,9 +58,9 @@ export default function AboutPage() {
         {/* Divider */}
         <div className="border-t border-gray-100"></div>
 
-        <AnimatedSection>
+        {/* <AnimatedSection>
           <FoundersDeskSection />
-        </AnimatedSection>
+        </AnimatedSection> */}
 
         <AnimatedSection>
           <WhatMakesUsSpecialSection />

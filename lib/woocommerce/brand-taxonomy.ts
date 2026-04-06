@@ -1,7 +1,7 @@
 import { getWpBaseUrl } from "@/lib/wp-utils";
 import { extractProductBrands } from "@/lib/utils/product";
-import wcAPI from "./client";
 import { WC_REST_INSTOCK } from "./constants";
+import { wcGet } from "./wc-fetch";
 import type { PaginatedProductResponse, WooCommerceProduct } from "./types";
 import { applySortBy } from "./sort-products";
 
@@ -10,23 +10,29 @@ async function filterIdsToInStockProductIds(ids: number[]): Promise<number[]> {
   const unique = [...new Set(ids)];
   const inStock = new Set<number>();
   const chunk = 100;
+  const slices: number[][] = [];
   for (let i = 0; i < unique.length; i += chunk) {
-    const slice = unique.slice(i, i + chunk);
-    try {
-      const res = await wcAPI.get("/products", {
-        params: {
+    slices.push(unique.slice(i, i + chunk));
+  }
+  const rowsLists = await Promise.all(
+    slices.map((slice) =>
+      wcGet<Array<{ id?: number }>>(
+        "/products",
+        {
           include: slice.join(","),
           per_page: slice.length,
           ...WC_REST_INSTOCK,
         },
-      });
-      const rows: Array<{ id?: number }> = Array.isArray(res.data) ? res.data : [];
-      rows.forEach((p) => {
-        if (p?.id != null) inStock.add(p.id);
-      });
-    } catch {
-      /* skip chunk */
-    }
+        "products",
+      )
+        .then((res) => (Array.isArray(res.data) ? res.data : []))
+        .catch(() => [] as Array<{ id?: number }>),
+    ),
+  );
+  for (const rows of rowsLists) {
+    rows.forEach((p) => {
+      if (p?.id != null) inStock.add(p.id);
+    });
   }
   return unique.filter((id) => inStock.has(id));
 }
@@ -104,15 +110,17 @@ export async function fetchProductsByBrandTaxonomy(
     let wcPage = 1;
     const wcPerPage = 100;
     while (true) {
-      const wcRes = await wcAPI.get("/products", {
-        params: {
+      const { data: productsRaw } = await wcGet<unknown[]>(
+        "/products",
+        {
           category: categoryId,
           per_page: wcPerPage,
           page: wcPage,
           ...WC_REST_INSTOCK,
         },
-      });
-      const products: unknown[] = wcRes.data || [];
+        "products",
+      );
+      const products: unknown[] = productsRaw || [];
       if (products.length === 0) break;
       const idSet = new Set(allIds);
       products.forEach((p: unknown) => {
@@ -133,18 +141,20 @@ export async function fetchProductsByBrandTaxonomy(
   const pageIds = filteredIds.slice(start, start + perPage);
   if (pageIds.length === 0) return { products: [], total, totalPages, page, perPage };
 
-  const wcRes = await wcAPI.get("/products", {
-    params: {
+  const { data: productsRaw } = await wcGet<unknown[]>(
+    "/products",
+    {
       include: pageIds.join(","),
       per_page: pageIds.length,
       ...WC_REST_INSTOCK,
     },
-  });
-  const products: unknown[] = wcRes.data || [];
+    "products",
+  );
+  const products: unknown[] = productsRaw || [];
   const orderMap = new Map(pageIds.map((id, i) => [id, i]));
   let sorted = [...products].sort(
     (a: unknown, b: unknown) =>
-      (orderMap.get((a as { id: number }).id) ?? 0) - (orderMap.get((b as { id: number }).id) ?? 0)
+      (orderMap.get((a as { id: number }).id) ?? 0) - (orderMap.get((b as { id: number }).id) ?? 0),
   );
 
   if (sortBy) {
@@ -168,10 +178,15 @@ export async function fetchProductsByBrandTaxonomyMulti(
   if (slugSet.size === 0) return { products: [], total: 0, totalPages: 0, page, perPage };
 
   const allIds = new Set<number>();
-  for (const slug of slugSet) {
-    const resolved = await resolveBrandSlugToTerm(base, slug);
-    if (!resolved) continue;
-    const ids = await getProductIdsByBrandTerm(base, resolved.taxonomyUsed, resolved.termId);
+  const resolvedList = await Promise.all(
+    [...slugSet].map((slug) => resolveBrandSlugToTerm(base, slug)),
+  );
+  const idLists = await Promise.all(
+    resolvedList
+      .filter((r): r is NonNullable<typeof r> => r != null)
+      .map((r) => getProductIdsByBrandTerm(base, r.taxonomyUsed, r.termId)),
+  );
+  for (const ids of idLists) {
     ids.forEach((id) => allIds.add(id));
   }
   let filteredIds = Array.from(allIds);
@@ -181,15 +196,17 @@ export async function fetchProductsByBrandTaxonomyMulti(
     const wcPerPage = 100;
     const idSet = new Set(filteredIds);
     while (true) {
-      const wcRes = await wcAPI.get("/products", {
-        params: {
+      const { data: productsRaw } = await wcGet<unknown[]>(
+        "/products",
+        {
           category: categoryId,
           per_page: wcPerPage,
           page: wcPage,
           ...WC_REST_INSTOCK,
         },
-      });
-      const products: unknown[] = wcRes.data || [];
+        "products",
+      );
+      const products: unknown[] = productsRaw || [];
       if (products.length === 0) break;
       products.forEach((p: unknown) => {
         const id = (p as { id?: number }).id;
@@ -209,14 +226,16 @@ export async function fetchProductsByBrandTaxonomyMulti(
   const pageIds = filteredIds.slice(start, start + perPage);
   if (pageIds.length === 0) return { products: [], total, totalPages, page, perPage };
 
-  const wcRes = await wcAPI.get("/products", {
-    params: {
+  const { data: productsRaw } = await wcGet<unknown[]>(
+    "/products",
+    {
       include: pageIds.join(","),
       per_page: pageIds.length,
       ...WC_REST_INSTOCK,
     },
-  });
-  const products: unknown[] = wcRes.data || [];
+    "products",
+  );
+  const products: unknown[] = productsRaw || [];
   const orderMap = new Map(pageIds.map((id, i) => [id, i]));
   let sorted = [...products].sort(
     (a: unknown, b: unknown) =>
@@ -245,16 +264,18 @@ export async function filterCategoryProductsByBrandSlugs(
   const rescueMaxPages = 10;
 
   while (rescuePage <= rescueMaxPages) {
-    const rescueRes = await wcAPI.get("/products", {
-      params: {
+    const { data: rescueData } = await wcGet<WooCommerceProduct[]>(
+      "/products",
+      {
         category: categoryId,
         per_page: rescuePerPage,
         page: rescuePage,
         ...WC_REST_INSTOCK,
       },
-    });
+      "products",
+    );
 
-    const items: WooCommerceProduct[] = Array.isArray(rescueRes.data) ? rescueRes.data : [];
+    const items: WooCommerceProduct[] = Array.isArray(rescueData) ? rescueData : [];
     if (items.length === 0) break;
     allCategoryProducts.push(...items);
     if (items.length < rescuePerPage) break;

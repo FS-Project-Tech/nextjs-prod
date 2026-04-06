@@ -10,6 +10,7 @@ import type { CheckoutFormData, ShippingMethodType } from "@/lib/checkout/schema
 import { normalizeCountryCode } from "@/lib/checkout/normalizeCountry";
 import { FOCUS_RING, FOCUS_RING_BTN, FOCUS_RING_LINK } from "@/lib/checkout/uiConstants";
 import RequiredMark from "./RequiredMark";
+import { getPaymentMethodOptionLabel } from "@/lib/checkout/paymentDisplay";
 
 export type PaymentSectionProps = {
   items: CartItem[];
@@ -165,7 +166,9 @@ function PaymentSectionInner({
                 className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
               />
               <div className="flex-1">
-                <div className="font-medium text-gray-900">Credit card (eWAY)</div>
+                <div className="font-medium text-gray-900">
+                  {getPaymentMethodOptionLabel({ id: "eway", title: "Credit card (eWAY)" })}
+                </div>
                 <p className="mt-1 text-xs text-gray-700">Secure hosted payment via eWAY.</p>
               </div>
             </label>
@@ -183,8 +186,10 @@ function PaymentSectionInner({
                 className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
               />
               <div className="flex-1">
-                <div className="font-medium text-gray-900">On Account</div>
-                <p className="mt-1 text-xs text-gray-700">Order placed on your account; payment per your agreement.</p>
+                <div className="font-medium text-gray-900">
+                  {getPaymentMethodOptionLabel({ id: "cod", title: "" })}
+                </div>
+                <p className="mt-1 text-xs text-gray-700">Pay later via your account.</p>
               </div>
             </label>
           </div>

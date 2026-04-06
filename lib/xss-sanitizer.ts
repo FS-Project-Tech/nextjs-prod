@@ -211,3 +211,43 @@ export function createSafeHTML(
     __sanitized: true,
   };
 }
+
+
+/**
+ * Telehealth / CMS media column — allows embed iframes (YouTube, Vimeo, etc.) and native video.
+ */
+export function TelehealthMediaHTML(html: string | null | undefined): string {
+  if (!html || typeof html !== "string") return "";
+ 
+  return xss(html, {
+    whiteList: {
+      p: ["class"],
+      br: [],
+      div: ["class", "id", "style"],
+      span: ["class", "style"],
+      figure: ["class", "style"],
+      figcaption: ["class"],
+      a: ["href", "title", "target", "rel", "class"],
+      iframe: [
+        "src",
+        "title",
+        "width",
+        "height",
+        "allow",
+        "allowfullscreen",
+        "referrerpolicy",
+        "loading",
+        "class",
+        "frameborder",
+      ],
+      video: ["src", "controls", "class", "poster", "width", "height", "playsinline"],
+      source: ["src", "type"],
+      img: ["src", "alt", "width", "height", "class", "loading"],
+      strong: ["class"],
+      em: ["class"],
+      embed: ["src", "type", "width", "height", "class", "allowfullscreen"],
+    },
+    stripIgnoreTag: true,
+    stripIgnoreTagBody: ["script", "style", "object"],
+  });
+}

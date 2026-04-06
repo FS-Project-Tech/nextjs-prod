@@ -1,7 +1,7 @@
 import { normalizeError, isTimeoutError } from "@/lib/utils/errors";
-import wcAPI from "./client";
 import { WC_REST_INSTOCK } from "./constants";
-import type { PaginatedProductResponse, WooCommerceProduct } from "./types";
+import type { PaginatedProductResponse, WooCommerceCategory, WooCommerceProduct } from "./types";
+import { wcGet } from "./wc-fetch";
 import {
   fetchProductsByBrandTaxonomy,
   fetchProductsByBrandTaxonomyMulti,
@@ -91,8 +91,11 @@ export const fetchProducts = async (params?: {
 
     const resolveCategorySlug = async (slug: string): Promise<number | null> => {
       try {
-        const response = await wcAPI.get("/products/categories", { params: { slug } });
-        const categories = response.data;
+        const { data: categories } = await wcGet<WooCommerceCategory[]>(
+          "/products/categories",
+          { slug },
+          "categories",
+        );
         if (categories?.length) {
           console.log(`🏷️ Resolved category slug "${slug}" → ID ${categories[0].id}`);
           return categories[0].id;
@@ -157,10 +160,12 @@ export const fetchProducts = async (params?: {
       };
 
       try {
-        const attrRes = await wcAPI.get("/products/attributes");
+        const attrRes = await wcGet<unknown[]>("/products/attributes", {}, "products");
         const attributes = Array.isArray(attrRes.data) ? attrRes.data : [];
-        const brandAttr = attributes.find(matchBrandAttr);
-        if (!brandAttr) return null;
+        const brandAttr = attributes.find(matchBrandAttr) as
+          | { id: number; slug?: string; name?: string }
+          | undefined;
+        if (!brandAttr?.id) return null;
 
         const attributeTaxonomy = brandAttr.slug ? `pa_${brandAttr.slug}` : "pa_brand";
 
@@ -168,15 +173,21 @@ export const fetchProducts = async (params?: {
           return { attribute: attributeTaxonomy, attribute_term: asNum };
         }
 
-        const termsRes = await wcAPI.get(`/products/attributes/${brandAttr.id}/terms`, {
-          params: { per_page: 250, orderby: "name", order: "asc" },
-        });
-        const terms = Array.isArray(termsRes.data) ? termsRes.data : [];
+        const termsRes = await wcGet<unknown[]>(
+          `/products/attributes/${brandAttr.id}/terms`,
+          { per_page: 250, orderby: "name", order: "asc" },
+          "products",
+        );
+        const terms = (Array.isArray(termsRes.data) ? termsRes.data : []) as Array<{
+          slug?: string;
+          name?: string;
+          id?: number;
+        }>;
         const term = terms.find(
-          (t: { slug?: string; name?: string; id?: number }) =>
+          (t) =>
             (t.slug || "").toLowerCase() === slugNorm ||
             (t.slug || "").toLowerCase() === slugTrim ||
-            (t.name || "").toLowerCase() === slugTrim.replace(/-/g, " ")
+            (t.name || "").toLowerCase() === slugTrim.replace(/-/g, " "),
         );
         if (!term || term.id == null) return null;
         return { attribute: attributeTaxonomy, attribute_term: Number(term.id) };
@@ -266,10 +277,10 @@ export const fetchProducts = async (params?: {
       params: cleanParams,
     });
 
-    const response = await wcAPI.get("/products", { params: cleanParams });
+    const response = await wcGet<WooCommerceProduct[]>("/products", cleanParams, "products");
 
-    const total = parseInt(response.headers["x-wp-total"] || "0", 10);
-    const totalPages = parseInt(response.headers["x-wp-totalpages"] || "1", 10);
+    const total = response.wpTotal ?? 0;
+    const totalPages = response.wpTotalPages ?? 1;
 
     console.log("✅ WooCommerce Response:", {
       productsCount: response.data?.length || 0,
@@ -307,7 +318,7 @@ export const fetchProducts = async (params?: {
     }
 
     return {
-      products: (response.data || []) as WooCommerceProduct[],
+      products: response.data || [],
       total,
       totalPages,
       page: cleanParams.page as number,

@@ -1,4 +1,4 @@
-import wcAPI from "@/lib/woocommerce";
+import { wcGet } from "@/lib/woocommerce/wc-fetch";
 import { validateProduct, validateVariation } from "@/lib/woo/validateProduct";
 import { resolveProductRefBySku, type SkuResolveResult } from "@/lib/woo/resolveSku";
 
@@ -125,10 +125,12 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
     let finalVariationId = requestedVariationId;
     if (finalVariationId <= 0) {
       try {
-        const vr = await wcAPI.get(`/products/${productId}/variations`, {
-          params: { per_page: 100 },
-        });
-        const variations = Array.isArray(vr.data) ? vr.data : [];
+        const { data: varData } = await wcGet<unknown[]>(
+          `/products/${productId}/variations`,
+          { per_page: 100 },
+          "noStore",
+        );
+        const variations = Array.isArray(varData) ? varData : [];
         let firstValid = null as any;
         if (skuTrim) {
           firstValid = variations.find(
