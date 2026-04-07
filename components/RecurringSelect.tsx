@@ -16,7 +16,7 @@ export default function RecurringSelect({ onChange, value = "none" }: RecurringS
 
   return (
     <div className="space-y-2" suppressHydrationWarning>
-      <label className="block text-sm font-medium text-gray-700">Delivery Plan</label>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery Plan</label>
       <div className="flex flex-wrap gap-2">
         {plans.map((plan) => {
           const isSelected = value === plan.value;

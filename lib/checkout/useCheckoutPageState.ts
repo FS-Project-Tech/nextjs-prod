@@ -12,6 +12,7 @@ import { useCoupon } from "@/components/CouponProvider";
 import { useCheckoutTotals } from "@/hooks/useCheckoutTotals";
 import type { InsuranceOption } from "@/lib/checkout-parcel-protection";
 import { parseCartTotal } from "@/lib/cart/parseCartTotal";
+import { calculateTaxableSubtotal } from "@/lib/cart/pricing";
 import { submitCheckoutOrder } from "@/lib/payment/submitCheckoutOrder";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
@@ -144,12 +145,14 @@ export function useCheckoutPageState() {
 
   const cartSubtotal = useMemo(() => parseCartTotal(cartTotalString), [cartTotalString]);
   const subtotal = parseCartTotal(cartTotalString);
+  const taxableSubtotal = useMemo(() => calculateTaxableSubtotal(cartLines), [cartLines]);
   const shippingCost = watchedShippingMethod
     ? Number((watchedShippingMethod as ShippingMethodType)?.cost || 0)
     : 0;
   const couponDiscount = couponDiscountAmount || 0;
   const { parcelProtectionFee, gst, orderTotal } = useCheckoutTotals(
     subtotal,
+    taxableSubtotal,
     shippingCost,
     couponDiscount,
     insuranceResolved

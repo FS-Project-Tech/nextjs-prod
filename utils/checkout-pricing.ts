@@ -69,15 +69,25 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
       const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
       const p = data || {};
       const unit = Number.parseFloat(String(p.price ?? "0")) || 0;
+      const taxClass = String(p.tax_class ?? "");
+      const taxStatus = String(p.tax_status ?? "");
+      const cls = taxClass.trim().toLowerCase().replace(/[\s_]+/g, "-");
+      const status = taxStatus.trim().toLowerCase().replace(/[\s_]+/g, "-");
+      const taxable = !(status === "none" || cls === "gst-free" || cls === "gstfree");
       return {
         key: toItemKey(li.product_id, li.variation_id),
         unit,
         qty: li.quantity,
+        taxable,
       };
     })
   );
 
   const subtotal = unitPrices.reduce((sum, row) => sum + row.unit * row.qty, 0);
+  const taxableSubtotal = unitPrices.reduce(
+    (sum, row) => (row.taxable ? sum + row.unit * row.qty : sum),
+    0
+  );
 
   let discount = 0;
   if (payload.coupon_code) {
@@ -121,7 +131,7 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
 
   const shipping = Number(selectedRate.cost || 0);
   const insuranceFee = payload.insurance_option === "yes" ? PARCEL_PROTECTION_FEE_AUD : 0;
-  const gst = calculateGST(subtotal, shipping, discount);
+  const gst = calculateGST(subtotal, shipping, discount, 0, taxableSubtotal);
   const total = calculateTotal(subtotal, shipping, discount, gst, insuranceFee);
   const totals: CheckoutTotals = {
     subtotal,

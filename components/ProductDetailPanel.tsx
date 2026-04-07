@@ -51,6 +51,9 @@ export default function ProductDetailPanel({
 }) {
   const [plan, setPlan] = useState<RecurringPlan>("none");
   const [selected, setSelected] = useState<{ [name: string]: string }>({});
+  const [selectedSimpleAttributes, setSelectedSimpleAttributes] = useState<{ [name: string]: string }>(
+    {}
+  );
   const [currentSku, setCurrentSku] = useState<string | null>(product.sku || null);
   const [matchedVariation, setMatchedVariation] = useState<WooCommerceVariation | null>(null);
   const matched = useMemo(() => matchVariation(variations, selected), [variations, selected]);
@@ -85,6 +88,17 @@ export default function ProductDetailPanel({
     return (product.attributes || [])
       .filter((a: any) => (a?.variation ?? false) && Array.isArray(a.options))
       .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
+  }, [product.attributes]);
+  const simpleAttributes = useMemo(() => {
+    return (product.attributes || [])
+      .filter((a: any) => !(a?.variation ?? false) && Array.isArray(a.options) && a.options.length > 0)
+      .map((a: any) => ({
+        name: String(a?.name || "").trim(),
+        values: (a.options as unknown[])
+          .map((v) => String(v || "").trim())
+          .filter((v) => v.length > 0),
+      }))
+      .filter((a: { name: string; values: string[] }) => a.name.length > 0 && a.values.length > 0);
   }, [product.attributes]);
 
   const brandList = useMemo(() => extractProductBrands(product), [product]);
@@ -149,6 +163,21 @@ export default function ProductDetailPanel({
   const [quantity, setQuantity] = useState<number>(1);
   const [addingToCart, setAddingToCart] = useState(false);
   const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (attributes.length > 0 || simpleAttributes.length === 0) return;
+    setSelectedSimpleAttributes((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      simpleAttributes.forEach((attr) => {
+        if (!next[attr.name] && attr.values.length > 0) {
+          next[attr.name] = attr.values[0];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [attributes.length, simpleAttributes]);
 
   // Track viewed product
   const categoryIds = (product.categories || []).map((c) => c.id);
@@ -310,6 +339,40 @@ export default function ProductDetailPanel({
   })()}
 </div>
 
+      {/* Simple product attributes (non-variation attributes from Woo) */}
+      {attributes.length === 0 && simpleAttributes.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Packaging
+          </p>
+          <div className="space-y-3">
+            {simpleAttributes.map((attr) => (
+              <div key={attr.name} className="flex flex-wrap gap-2">
+                {attr.values.map((value) => {
+                  const isSelected = selectedSimpleAttributes[attr.name] === value;
+                  return (
+                    <button
+                      key={`${attr.name}-${value}`}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSimpleAttributes((prev) => ({ ...prev, [attr.name]: value }))
+                      }
+                      className={`rounded-md border px-4 py-2 text-sm font-medium transition-all ${
+                        isSelected
+                          ? "border-black bg-black text-white"
+                          : "border-black bg-transparent text-black hover:bg-gray-50"
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Packaging / Variations */}
       {attributes.length > 0 && (
         <div>
@@ -332,7 +395,7 @@ export default function ProductDetailPanel({
 
       {/* Delivery plan */}
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery</p>
+        {/* <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery</p> */}
         <RecurringSelect onChange={setPlan} value={plan} />
       </div>
 
@@ -409,7 +472,8 @@ export default function ProductDetailPanel({
                   price: matchedVariation?.price || matched?.price || product.price || "0",
                   qty: quantity,
                   sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,
-                  attributes: selected,
+                  attributes:
+                    attributes.length > 0 ? selected : { ...selectedSimpleAttributes },
                   deliveryPlan: plan,
                   tax_class: variationTaxClass,
                   tax_status: variationTaxStatus,

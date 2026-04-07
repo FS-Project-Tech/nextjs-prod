@@ -8,7 +8,7 @@ import { validateAccessToken, getStoredToken, getCartUrl } from "@/lib/access-to
 import Link from "next/link";
 import ShippingOptions from "@/components/ShippingOptions";
 import { useShippingAddress } from "@/hooks/useShippingAddress";
-import { calculateSubtotal, calculateGST, calculateTotal } from "@/lib/cart/pricing";
+import { calculateSubtotal, calculateGST, calculateTaxableSubtotal, calculateTotal } from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 
@@ -63,10 +63,11 @@ function CartPageContent() {
   }, [isMounted, searchParams, router, items.length, pathname]);
 
   const subtotal = useMemo(() => calculateSubtotal(items), [items]);
+  const taxableSubtotal = useMemo(() => calculateTaxableSubtotal(items), [items]);
 
   const gst = useMemo(() => {
-    return calculateGST(subtotal, shippingCost, discount);
-  }, [subtotal, discount, shippingCost]);
+    return calculateGST(subtotal, shippingCost, discount, 0, taxableSubtotal);
+  }, [subtotal, taxableSubtotal, discount, shippingCost]);
 
   const total = useMemo(() => {
     return calculateTotal(subtotal, shippingCost, discount, gst);

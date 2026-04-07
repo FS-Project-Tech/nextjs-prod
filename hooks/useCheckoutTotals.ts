@@ -8,13 +8,14 @@ import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
  */
 export function useCheckoutTotals(
   subtotal: number,
+  taxableSubtotal: number,
   shippingCost: number,
   couponDiscount: number,
   insurance_option: InsuranceOption
 ) {
   return useMemo(() => {
     const parcelProtectionFee = insurance_option === "yes" ? PARCEL_PROTECTION_FEE_AUD : 0;
-    const gst = calculateGST(subtotal, shippingCost, couponDiscount);
+    const gst = calculateGST(subtotal, shippingCost, couponDiscount, 0, taxableSubtotal);
     const orderTotal = calculateTotal(
       subtotal,
       shippingCost,
@@ -23,5 +24,5 @@ export function useCheckoutTotals(
       parcelProtectionFee
     );
     return { parcelProtectionFee, gst, orderTotal };
-  }, [subtotal, shippingCost, couponDiscount, insurance_option]);
+  }, [subtotal, taxableSubtotal, shippingCost, couponDiscount, insurance_option]);
 }
