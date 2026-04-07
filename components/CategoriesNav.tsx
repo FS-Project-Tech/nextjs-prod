@@ -60,7 +60,7 @@ async function CategoriesNavContent() {
         <ul className="flex items-center gap-3 text-sm">
           {/* All Categories Drawer */}
           <li>
-            <AllCategoriesDrawer className="px-3 py-2 text-white" />
+            <AllCategoriesDrawer className="px-3 py-2 text-white cursor-pointer" />
           </li>
 
          {/* Our Products */}
@@ -74,6 +74,7 @@ async function CategoriesNavContent() {
           
 
           {/* Brands */}
+          
           <li>
             <PrefetchLink href="/brands/" className="px-3 py-2 text-white hover:bg-nav-hover">
               Brands
