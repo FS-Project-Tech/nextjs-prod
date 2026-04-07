@@ -1,3 +1,5 @@
+//D:\nextjs\lib\addresses-normalize.ts
+
 /**
  * Normalize address objects from WordPress to the canonical shape the app expects.
  * Use for both Address Book (primary) and secondary (billing2/shipping2) so

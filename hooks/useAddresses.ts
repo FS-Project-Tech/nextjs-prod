@@ -1,3 +1,5 @@
+//D:\nextjs\hooks\useAddresses.ts
+
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -53,9 +55,14 @@ interface UseAddressesResult {
   addAddress: (address: Omit<Address, "id">) => Promise<void>;
   updateAddress: (id: string, address: Partial<Address>) => Promise<void>;
   deleteAddress: (id: string) => Promise<void>;
+  /** Copies this row into WooCommerce billing or shipping (checkout + wp-admin). */
+  setDefaultAddress: (address: Address) => Promise<void>;
+  /** @deprecated use setDefaultAddress */
+  setDefaultBilling: (address: Address) => Promise<void>;
   isAdding: boolean;
   isUpdating: boolean;
   isDeleting: boolean;
+  isSettingDefault: boolean;
 }
 
 export function useAddresses(options?: UseAddressesOptions): UseAddressesResult {
@@ -190,6 +197,43 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
     },
   });
 
+  const setDefaultMutation = useMutation({
+    mutationFn: async (address: Address) => {
+      const response = await fetch("/api/dashboard/addresses/set-default", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          type: address.type === "shipping" ? "shipping" : "billing",
+          sourceAddressId: address.id != null ? String(address.id) : undefined,
+          first_name: address.first_name,
+          last_name: address.last_name,
+          company: address.company ?? "",
+          address_1: address.address_1,
+          address_2: address.address_2 ?? "",
+          city: address.city,
+          state: address.state,
+          postcode: address.postcode,
+          country: address.country,
+          email: address.email ?? "",
+          phone: address.phone ?? "",
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        const fallback =
+          address.type === "shipping"
+            ? "Failed to set default shipping"
+            : "Failed to set default billing";
+        throw new Error((err as { error?: string }).error || fallback);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["addresses"] });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/dashboard/addresses/${encodeURIComponent(id)}`, {
@@ -228,8 +272,15 @@ export function useAddresses(options?: UseAddressesOptions): UseAddressesResult 
     deleteAddress: async (id) => {
       await deleteMutation.mutateAsync(id);
     },
+    setDefaultAddress: async (address) => {
+      await setDefaultMutation.mutateAsync(address);
+    },
+    setDefaultBilling: async (address) => {
+      await setDefaultMutation.mutateAsync(address);
+    },
     isAdding: addMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isSettingDefault: setDefaultMutation.isPending,
   };
 }

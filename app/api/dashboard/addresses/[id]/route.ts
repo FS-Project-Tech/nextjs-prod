@@ -9,8 +9,43 @@ import {
   removeDeletedId,
 } from "@/lib/addresses-memory-store";
 import { normalizeAddressFromWp } from "@/lib/addresses-normalize";
+import { getCustomerData } from "@/lib/customer";
+import wcAPI from "@/lib/woocommerce";
+import { WC_PRIMARY_BILLING_ID, WC_PRIMARY_SHIPPING_ID } from "@/lib/wc-primary-addresses";
 
-async function getUserId(token: string): Promise<string | null> {
+function wcCustomerUpdateErrorMessage(error: unknown): string {
+  const r = error as { response?: { data?: { message?: unknown } } };
+  const m = r.response?.data?.message;
+  return typeof m === "string" && m.trim() ? m : "Failed to clear address in WooCommerce";
+}
+
+/** WooCommerce often rejects all-empty billing/shipping (invalid email/country). Keep account email + country. */
+function buildWcClearedAddressBlock(
+  field: "billing" | "shipping",
+  customer: Record<string, unknown>,
+  accountEmail: string
+): Record<string, string> {
+  const prev = (customer[field] as Record<string, unknown> | undefined) ?? {};
+  const str = (v: unknown) => (v != null ? String(v).trim() : "");
+  const prevCountry = str(prev.country);
+  const prevEmail = str(prev.email);
+  const email = prevEmail || accountEmail || "";
+  return {
+    first_name: "",
+    last_name: "",
+    company: "",
+    address_1: "",
+    address_2: "",
+    city: "",
+    state: "",
+    postcode: "",
+    country: prevCountry || "AU",
+    email,
+    phone: "",
+  };
+}
+
+async function getWpUserId(token: string): Promise<string | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) return null;
   const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
@@ -62,6 +97,13 @@ function normalizePutBody(body: unknown): Record<string, unknown> {
   return out;
 }
 
+/** joya_ha WordPress usermeta ids are 12 hex chars; REST meta keys are always lowercase. */
+function wpBookAddressIdForRestPath(id: string): string {
+  const t = id.trim();
+  if (/^[a-fA-F0-9]{12}$/.test(t)) return t.toLowerCase();
+  return id;
+}
+
 /**
  * PUT /api/dashboard/addresses/[id]
  * Update an address
@@ -88,13 +130,82 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const userId = await getUserId(token);
+    const userId = await getWpUserId(token);
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
         ? String(userId)
         : (nextAuthToken as any)?.sub != null
           ? String((nextAuthToken as any).sub)
           : "";
+
+    /** WooCommerce default billing/shipping on the customer record (WP admin + checkout). */
+    const isWcPrimary =
+      addressId === WC_PRIMARY_BILLING_ID || addressId === WC_PRIMARY_SHIPPING_ID;
+    if (isWcPrimary) {
+      const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+      if (!userResponse.ok) {
+        return NextResponse.json({ error: "Failed to load user" }, { status: 401, ...noStore });
+      }
+      const wpUser = await userResponse.json();
+      const email = wpUser?.email != null ? String(wpUser.email) : "";
+      if (!email) {
+        return NextResponse.json({ error: "No email for account" }, { status: 400, ...noStore });
+      }
+      const customer = await getCustomerData(email, token);
+      const cid = customer?.id != null ? Number(customer.id) : NaN;
+      if (!customer || !Number.isFinite(cid) || cid <= 0) {
+        return NextResponse.json(
+          { error: "WooCommerce customer not found" },
+          { status: 404, ...noStore }
+        );
+      }
+      const field = addressId === WC_PRIMARY_BILLING_ID ? "billing" : "shipping";
+      const prev = { ...(customer[field] || {}) } as Record<string, unknown>;
+      const wcKeys = [
+        "first_name",
+        "last_name",
+        "company",
+        "address_1",
+        "address_2",
+        "city",
+        "state",
+        "postcode",
+        "country",
+        "email",
+        "phone",
+      ] as const;
+      for (const k of wcKeys) {
+        if (Object.prototype.hasOwnProperty.call(normalizedBody, k)) {
+          prev[k] = normalizedBody[k] ?? "";
+        }
+      }
+      try {
+        await wcAPI.put(`/customers/${cid}`, { [field]: prev });
+      } catch (e: unknown) {
+        console.error("[addresses] WC primary update failed:", e);
+        return NextResponse.json(
+          { error: "Failed to update address in WooCommerce" },
+          { status: 502, ...noStore }
+        );
+      }
+      const label = addressId === WC_PRIMARY_BILLING_ID ? "Primary billing" : "Primary shipping";
+      const addrOut = {
+        ...prev,
+        type: field === "billing" ? "billing" : "shipping",
+        label,
+      };
+      return NextResponse.json(
+        {
+          address: normalizeAddressFromWp(addrOut as Record<string, unknown>, addressId),
+          message: "Address updated successfully",
+        },
+        { status: 200, ...noStore }
+      );
+    }
+
     // Treat as local address if id looks like our in-memory id (case-insensitive)
     const isLocalId = addressId.toLowerCase().startsWith("local-");
     if (isLocalId) {
@@ -143,7 +254,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    const updateResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses/${addressId}`, {
+    const bookPathId = wpBookAddressIdForRestPath(addressId);
+    const updateResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses/${encodeURIComponent(bookPathId)}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(normalizedBody),
@@ -204,13 +316,75 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const userId = await getUserId(token);
+    const userId = await getWpUserId(token);
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
         ? String(userId)
         : (nextAuthToken as any)?.sub != null
           ? String((nextAuthToken as any).sub)
           : "";
+
+    /** Clear WooCommerce primary billing/shipping (virtual “default-*” card) — not a saved joya_ha row */
+    const isWcPrimaryDelete =
+      addressId === WC_PRIMARY_BILLING_ID || addressId === WC_PRIMARY_SHIPPING_ID;
+    if (isWcPrimaryDelete) {
+      const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+      if (!userResponse.ok) {
+        return NextResponse.json({ error: "Failed to load user" }, { status: 401 });
+      }
+      const wpUser = await userResponse.json();
+      const email = wpUser?.email != null ? String(wpUser.email) : "";
+      if (!email) {
+        return NextResponse.json({ error: "No email for account" }, { status: 400 });
+      }
+      const customer = await getCustomerData(email, token);
+      const cid = customer?.id != null ? Number(customer.id) : NaN;
+      if (!customer || !Number.isFinite(cid) || cid <= 0) {
+        return NextResponse.json({ error: "WooCommerce customer not found" }, { status: 404 });
+      }
+      const field = addressId === WC_PRIMARY_BILLING_ID ? "billing" : "shipping";
+      const cleared = buildWcClearedAddressBlock(
+        field,
+        customer as Record<string, unknown>,
+        email
+      );
+      try {
+        await wcAPI.put(`/customers/${cid}`, { [field]: cleared });
+      } catch (e: unknown) {
+        console.error("[addresses] WC primary clear failed:", e);
+        /** Retry with Woo customer.email — some APIs reject until billing.email matches account */
+        const custEmail = String((customer as { email?: string }).email ?? "").trim() || email;
+        const retryBlock = {
+          ...cleared,
+          email: custEmail,
+          country: cleared.country || "AU",
+        };
+        try {
+          await wcAPI.put(`/customers/${cid}`, { [field]: retryBlock });
+        } catch (e2: unknown) {
+          console.error("[addresses] WC primary clear retry failed:", e2);
+          return NextResponse.json(
+            { error: wcCustomerUpdateErrorMessage(e2) },
+            { status: 502 }
+          );
+        }
+      }
+      await fetch(`${wpBase}/wp-json/customers/v1/addresses/clear-primary`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: field }),
+        cache: "no-store",
+      }).catch(() => {});
+
+      return NextResponse.json(
+        { message: "Default address removed from checkout" },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     const isLocalId = addressId.toLowerCase().startsWith("local-");
     if (isLocalId) {
       if (!fileStoreKey)
@@ -237,7 +411,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         const result = await secondaryDelete.json().catch(() => ({}));
 
         if (fileStoreKey) {
-          addDeletedId(fileStoreKey, addressId);
+          /** POST had upserted billing2/shipping2 into file — remove so GET merge doesn’t resurrect it */
+          const removedFromStore = deleteMemoryAddress(fileStoreKey, addressId);
+          if (!removedFromStore) {
+            addDeletedId(fileStoreKey, addressId);
+          }
         }
 
         return NextResponse.json(
@@ -247,11 +425,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       }
     }
 
-    const deleteResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses/${addressId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      cache: "no-store",
-    });
+    const deleteBookId = wpBookAddressIdForRestPath(addressId);
+    const deleteResponse = await fetch(
+      `${wpBase}/wp-json/customers/v1/addresses/${encodeURIComponent(deleteBookId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        cache: "no-store",
+      }
+    );
 
     if (!deleteResponse.ok) {
       if (deleteResponse.status === 404) {
@@ -276,10 +458,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: errorMessage }, { status: deleteResponse.status });
     }
 
-    const result = await deleteResponse.json();
+    const result = (await deleteResponse.json().catch(() => ({}))) as { message?: string };
 
     if (fileStoreKey) {
-      addDeletedId(fileStoreKey, addressId); // ⭐ IMPORTANT
+      /** Remove from file/memory fallback (POST had upserted this id). Survives multi-instance where tombstone file might not be shared. */
+      const removedFromStore = deleteMemoryAddress(fileStoreKey, addressId);
+      if (!removedFromStore) {
+        addDeletedId(fileStoreKey, addressId);
+      }
     }
 
     return NextResponse.json(

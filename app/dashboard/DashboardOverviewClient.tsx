@@ -80,6 +80,22 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
         <p className="text-teal-100">Here&apos;s an overview of your account activity</p>
       </div>
 
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <p className="text-sm leading-6 text-amber-900">
+          <strong className="font-semibold">Important Notice:</strong>{" "}
+          We are currently migrating our system, so you may not be able to see all of your orders
+          at the moment. Our team is actively working on syncing your orders into the new system.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-amber-900">
+          If you have any questions or need assistance, please feel free to contact our customer
+          support team at{" "}
+          <a href="tel:1300005032" className="font-semibold underline">
+            1300 005 032
+          </a>
+          .
+        </p>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow p-6">

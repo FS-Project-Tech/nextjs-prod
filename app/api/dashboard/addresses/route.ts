@@ -1,8 +1,8 @@
+import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getWpBaseUrl } from "@/lib/auth";
 import {
   getAddresses,
-  addAddress,
   getDeletedIds,
   upsertAddress,
   addDeletedId,
@@ -10,18 +10,22 @@ import {
 } from "@/lib/addresses-memory-store";
 import { loadFromFile } from "@/lib/addresses-file-store";
 import { normalizeAddressFromWp } from "@/lib/addresses-normalize";
+import { mergeAddressListWithWooPrimaries } from "@/lib/wc-primary-addresses";
 import { getToken } from "next-auth/jwt";
 
-async function getUserId(token: string): Promise<string | null> {
+async function getWpUserMe(token: string): Promise<{ id: string | null; email: string | null }> {
   const wpBase = getWpBaseUrl();
-  if (!wpBase) return null;
+  if (!wpBase) return { id: null, email: null };
   const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     cache: "no-store",
   });
-  if (!userResponse.ok) return null;
+  if (!userResponse.ok) return { id: null, email: null };
   const user = await userResponse.json();
-  return user?.id != null ? String(user.id) : (user?.slug ?? null);
+  return {
+    id: user?.id != null ? String(user.id) : (user?.slug ?? null),
+    email: user?.email != null ? String(user.email) : null,
+  };
 }
 
 /** Get all fallback addresses (memory + file) so they persist after refresh / different process */
@@ -40,6 +44,77 @@ function getFallbackAddresses(userId: string): Record<string, unknown>[] {
     if (id) byId.set(id, a); // memory overwrites file (more recent)
   }
   return Array.from(byId.values());
+}
+
+/** GET .../customers/v1/addresses-secondary or .../addresses → { addresses: [...] } */
+async function fetchWpAddressList(
+  wpBase: string,
+  path: string,
+  token: string
+): Promise<{ ok: boolean; status: number; list: Record<string, unknown>[] }> {
+  try {
+    const res = await fetch(`${wpBase}${path}`, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { ok: false, status: res.status, list: [] };
+    }
+    const data = await res.json();
+    const arr = data?.addresses;
+    return { ok: true, status: res.status, list: Array.isArray(arr) ? arr : [] };
+  } catch {
+    return { ok: false, status: 0, list: [] };
+  }
+}
+
+/** Stable id when Address Book API omits `id` (avoid unstable list order). */
+function ensureRestAddressId(raw: Record<string, unknown>, index: number): string {
+  const id = String(raw.id ?? "").trim();
+  if (id) return id;
+  const normPieces = [
+    raw.type,
+    raw.address_1,
+    raw.postcode,
+    raw.city,
+    raw.first_name,
+    raw.last_name,
+    String(index),
+  ];
+  const h = createHash("sha256")
+    .update(normPieces.map((x) => String(x ?? "")).join("|"))
+    .digest("hex")
+    .slice(0, 14);
+  return `wp-${h}`;
+}
+
+/**
+ * Merge Address Book (`/customers/v1/addresses`) with billing2/shipping2 (`/addresses-secondary`)
+ * and local fallback. Previously we returned early when secondary returned 200, so full Address Book
+ * entries (e.g. "ABC", "NIKS BILLING") never appeared on the dashboard.
+ */
+function mergeRemoteAndOptionalFallbackAddresses(
+  bookList: Record<string, unknown>[],
+  secondaryList: Record<string, unknown>[],
+  fallbackList: Record<string, unknown>[],
+  deleted: Set<string>
+): Record<string, unknown>[] {
+  const byId = new Map<string, Record<string, unknown>>();
+  let i = 0;
+  const put = (raw: Record<string, unknown>) => {
+    const id = ensureRestAddressId(raw, i++);
+    byId.set(id, normalizeAddressFromWp(raw, id));
+  };
+  for (const a of bookList) put(a);
+  for (const a of secondaryList) put(a);
+  for (const a of fallbackList) {
+    const id = String((a as Record<string, unknown>).id ?? "").trim();
+    if (!id) continue;
+    if (!byId.has(id)) {
+      byId.set(id, normalizeAddressFromWp(a as Record<string, unknown>, id));
+    }
+  }
+  return Array.from(byId.values()).filter((a) => !deleted.has(String(a.id).toLowerCase()));
 }
 
 /**
@@ -64,7 +139,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const userId = await getUserId(token);
+    const { id: userId, email: userEmail } = await getWpUserMe(token);
     // Use userId (WordPress) as primary key; fallback to token.sub so save/load use same key after refresh
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
@@ -80,119 +155,40 @@ export async function GET(req: NextRequest) {
       console.log("[addresses] GET userId:", userId, "fileStoreKey:", fileStoreKey);
 
     const noStore = { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } };
+    const finalize = (merged: Record<string, unknown>[]) =>
+      mergeAddressListWithWooPrimaries(merged, userEmail, token);
 
-    // Prefer secondary addresses (billing2 / shipping2) so dashboard Addresses page syncs with WP "Customer Billing/Shipping Address (Secondary)"
-    const secondaryResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses-secondary`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      cache: "no-store",
-    });
-    if (process.env.NODE_ENV === "development") {
-      console.log("[addresses] GET secondary status:", secondaryResponse.status);
-    }
-    if (secondaryResponse.ok) {
-      const data = await secondaryResponse.json();
-      const wpList = data.addresses || [];
-      const fallbackList = getFallbackAddresses(fileStoreKey);
-      const deleted = getDeletedIds(fileStoreKey);
-      const byId = new Map<string, Record<string, unknown>>();
-      for (const a of wpList) {
-        const raw = a as Record<string, unknown>;
-        const id = String(raw.id ?? "");
-        byId.set(id, normalizeAddressFromWp(raw, id));
-      }
-      for (const a of fallbackList) {
-        const id = String(a.id);
-        if (!byId.has(id)) {
-          byId.set(id, normalizeAddressFromWp(a as Record<string, unknown>, id));
-        }
-      }
-      const merged = Array.from(byId.values()).filter(
-        (a) => !deleted.has(String(a.id).toLowerCase())
-      );
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          "[addresses] GET (secondary) wp:",
-          wpList.length,
-          "fallback:",
-          fallbackList.length,
-          "merged:",
-          merged.length
-        );
-      }
-      return NextResponse.json({ addresses: merged }, noStore);
-    }
-
-    // Fallback: primary addresses endpoint (e.g. Address Book for WooCommerce)
-    const addressesResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      cache: "no-store",
-    });
-    if (process.env.NODE_ENV === "development") {
-      console.log("[addresses] GET primary status:", addressesResponse.status);
-    }
-    if (addressesResponse.ok) {
-      const data = await addressesResponse.json();
-      const wpList = data.addresses || [];
-      const fallbackList = getFallbackAddresses(fileStoreKey);
-      const deleted = getDeletedIds(fileStoreKey);
-      const byId = new Map<string, Record<string, unknown>>();
-      for (const a of wpList) {
-        const raw = a as Record<string, unknown>;
-        const id = String(raw.id ?? "");
-        byId.set(id, normalizeAddressFromWp(raw, id));
-      }
-      for (const a of fallbackList) {
-        const id = String(a.id);
-        if (!byId.has(id)) {
-          byId.set(id, normalizeAddressFromWp(a as Record<string, unknown>, id));
-        }
-      }
-      const merged = Array.from(byId.values()).filter(
-        (a) => !deleted.has(String(a.id).toLowerCase())
-      );
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          "[addresses] GET (primary) wp:",
-          wpList.length,
-          "fallback:",
-          fallbackList.length,
-          "merged:",
-          merged.length
-        );
-      }
-      return NextResponse.json({ addresses: merged }, noStore);
-    }
-
-    if (addressesResponse.status === 404) {
-      const list = getFallbackAddresses(fileStoreKey);
-      const deleted = getDeletedIds(fileStoreKey);
-      const filtered = list.filter((a) => !deleted.has(String(a.id).toLowerCase()));
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          "[addresses] GET (404 fallback) list:",
-          list.length,
-          "filtered:",
-          filtered.length
-        );
-      }
-      return NextResponse.json({ addresses: filtered }, noStore);
-    }
-
-    // Both WordPress endpoints failed (e.g. 401 auth or 404). Return file-store addresses so they persist after refresh.
-    const list = getFallbackAddresses(fileStoreKey);
+    const fallbackList = getFallbackAddresses(fileStoreKey);
     const deleted = getDeletedIds(fileStoreKey);
-    const filtered = list.filter((a) => !deleted.has(String(a.id).toLowerCase()));
+
+    const [bookRes, secondaryRes] = await Promise.all([
+      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses", token),
+      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses-secondary", token),
+    ]);
+
     if (process.env.NODE_ENV === "development") {
       console.log(
-        "[addresses] GET (fallback – WP not ok) secondary:",
-        secondaryResponse.status,
-        "primary:",
-        addressesResponse.status,
-        "list:",
-        filtered.length
+        "[addresses] GET address-book:",
+        bookRes.ok ? bookRes.list.length : `fail ${bookRes.status}`,
+        "secondary:",
+        secondaryRes.ok ? secondaryRes.list.length : `fail ${secondaryRes.status}`
       );
     }
-    return NextResponse.json({ addresses: filtered }, noStore);
+
+    const merged = mergeRemoteAndOptionalFallbackAddresses(
+      bookRes.list,
+      secondaryRes.list,
+      fallbackList,
+      deleted
+    );
+
+    const withPrimaries = await finalize(merged);
+    /** Tombstones must apply after WC primary / Address Book meta merge — those steps can add rows with the same id. */
+    const addresses = withPrimaries.filter(
+      (a) => !deleted.has(String((a as Record<string, unknown>).id ?? "").toLowerCase())
+    );
+
+    return NextResponse.json({ addresses }, noStore);
   } catch (error) {
     console.error("Addresses API error:", error);
     return NextResponse.json(
@@ -250,14 +246,8 @@ function normalizeAddressBody(body: unknown): Record<string, string> {
 
 /**
  * POST /api/dashboard/addresses
- * Add a new address (uses WordPress endpoint if available, otherwise in-memory fallback)
+ * Add a new address (Address Book first = multiple rows; secondary = single billing2/shipping2 slot)
  */
-// export async function POST(req: NextRequest) {
-//   try {
-//     const token = await getAuthToken();
-//     if (!token) {
-//       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-//     }
 export async function POST(req: NextRequest) {
   try {
     const nextAuthToken = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -272,7 +262,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const userId = await getUserId(token);
+    const { id: userId } = await getWpUserMe(token);
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
         ? String(userId)
@@ -283,12 +273,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to get user data" }, { status: 401 });
     }
 
-    // Send normalized body so WordPress secondary API always gets expected keys (first_name, address_1, etc.)
     const body = normalizeAddressBody(rawBody);
     const payloadForWp = { ...rawBody, ...body } as Record<string, unknown>;
     if (payloadForWp.type === undefined) payloadForWp.type = body.type;
 
-    // Prefer secondary (billing2/shipping2) so dashboard Addresses page stores in WP "Customer Billing/Shipping Address (Secondary)"
+    /** 1) Multiple addresses — Address Book / Customer Addresses API */
+    const bookPost = await fetch(`${wpBase}/wp-json/customers/v1/addresses`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payloadForWp),
+      cache: "no-store",
+    });
+
+    if (bookPost.ok) {
+      const result = await bookPost.json();
+      const addr = result.address as Record<string, unknown>;
+      const id = String(addr?.id ?? "");
+      if (id) {
+        upsertAddress(fileStoreKey, id, addr ?? {});
+        removeDeletedId(fileStoreKey, id);
+      }
+      return NextResponse.json({
+        address: normalizeAddressFromWp(addr ?? {}, id || `wp-${Date.now()}`),
+        message: result.message || "Address added successfully",
+      });
+    }
+
+    /** 2) Single secondary slot (billing2 / shipping2) */
     const secondaryPost = await fetch(`${wpBase}/wp-json/customers/v1/addresses-secondary`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -300,7 +311,6 @@ export async function POST(req: NextRequest) {
       const result = await secondaryPost.json();
       const addr = result.address as Record<string, unknown>;
       const id = String(addr?.id ?? `local-${Date.now()}`);
-      // Persist to file using same key as GET (token.sub) so address survives refresh
       upsertAddress(fileStoreKey, id, addr ?? {});
       removeDeletedId(fileStoreKey, id);
       return NextResponse.json({
@@ -309,21 +319,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Log so you can see why address did not store in backend (404 = route not added in WP, 401 = REST auth not set up)
-    const errText = await secondaryPost.text();
+    const bookErr = await bookPost.text().catch(() => "");
+    const secErr = await secondaryPost.text().catch(() => "");
     console.warn(
-      `[Addresses] Secondary endpoint returned ${secondaryPost.status}. Address may not be stored in WordPress. ` +
-        (secondaryPost.status === 404
-          ? "Add the REST API from docs/wordpress-secondary-addresses-rest-api.php to your theme."
-          : secondaryPost.status === 401
-            ? "Ensure WordPress authenticates REST requests (e.g. JWT or Application Passwords) so the user is set for this route."
-            : ""),
-      errText.slice(0, 200)
+      "[Addresses] Add failed — address-book:",
+      bookPost.status,
+      bookErr.slice(0, 120),
+      "secondary:",
+      secondaryPost.status,
+      secErr.slice(0, 120)
     );
 
-    // When WordPress returns 401/404, still save to file store so address persists after refresh
     const fallbackId = `local-${Date.now()}`;
-
     const fallbackAddr: Record<string, unknown> = {
       id: fallbackId,
       type: body.type,
@@ -333,38 +340,16 @@ export async function POST(req: NextRequest) {
     upsertAddress(fileStoreKey, fallbackId, fallbackAddr);
     removeDeletedId(fileStoreKey, fallbackId);
 
-    const addResponse = await fetch(`${wpBase}/wp-json/customers/v1/addresses`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payloadForWp),
-      cache: "no-store",
-    });
-
-    if (addResponse.ok) {
-      const result = await addResponse.json();
-      const addr = result.address as Record<string, unknown>;
-      const id = String(addr?.id ?? "");
-      // Persist to file using same key as GET so address survives refresh
-      if (id) upsertAddress(fileStoreKey, id, addr ?? {});
-      removeDeletedId(fileStoreKey, id); // ADD THIS
-      return NextResponse.json({
-        address: normalizeAddressFromWp(addr ?? {}, id),
-        message: result.message || "Address added successfully",
-      });
-    }
-
-    if (addResponse.status === 404 || addResponse.status === 501) {
-      // Address already saved to file store above; return it so it persists after refresh
+    if (bookPost.status === 404 || bookPost.status === 501 || secondaryPost.status === 404) {
       return NextResponse.json({
         address: normalizeAddressFromWp(fallbackAddr, fallbackId),
-        message: "Address added successfully",
+        message: "Address saved locally. Enable Address Book or secondary-addresses REST on WordPress to sync.",
       });
     }
 
-    // Primary also failed (e.g. 401); still return success with the address we saved to file so it persists after refresh
     return NextResponse.json({
       address: normalizeAddressFromWp(fallbackAddr, fallbackId),
-      message: "Address saved. Enable WordPress REST auth (JWT plugin) to sync to Edit User.",
+      message: "Address saved. Check WordPress REST auth for permanent sync.",
     });
   } catch (error) {
     console.error("Add address error:", error);

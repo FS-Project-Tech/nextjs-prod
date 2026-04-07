@@ -37,9 +37,11 @@ export default function DashboardAddresses() {
     addAddress,
     updateAddress,
     deleteAddress,
+    setDefaultAddress,
     isAdding,
     isUpdating,
     isDeleting,
+    isSettingDefault,
     refetch,
   } = useAddresses({ enabled: sessionReady });
   const { success, error: showError } = useToast();
@@ -83,16 +85,29 @@ export default function DashboardAddresses() {
 
   const handleDelete = async (id: string) => {
     if (!id) return;
-    if (id === "default-billing" || id === "default-shipping") {
-      showError("Cannot delete default addresses");
-      return;
-    }
-    if (!confirm("Are you sure you want to delete this address?")) return;
+    const isPrimary = id === "default-billing" || id === "default-shipping";
+    const msg = isPrimary
+      ? "Remove this default address from checkout and wp-admin? Your saved address cards below are not deleted."
+      : "Are you sure you want to delete this address?";
+    if (!confirm(msg)) return;
     try {
       await deleteAddress(id);
       success("Address deleted successfully");
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : "Failed to delete address");
+    }
+  };
+
+  const handleSetDefaultAddress = async (address: Address) => {
+    try {
+      await setDefaultAddress(address);
+      success(
+        address.type === "shipping"
+          ? "Default shipping updated for checkout"
+          : "Default billing updated for checkout"
+      );
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : "Failed to set default address");
     }
   };
 
@@ -233,15 +248,22 @@ export default function DashboardAddresses() {
       )}
 
       {addresses.length > 0 && !showAddForm && !editingAddress && (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {addresses.map((address) => {
             const isDefault = address.id === "default-billing" || address.id === "default-shipping";
             const hasId = Boolean(address.id);
+            const canSetDefaultBilling =
+              address.type === "billing" && address.id !== "default-billing" && hasId;
+            const canSetDefaultShipping =
+              address.type === "shipping" && address.id !== "default-shipping" && hasId;
             return (
               <div
                 key={String(address.id)}
                 className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md"
               >
+                {address.label && (
+                  <p className="mb-2 text-lg font-bold text-gray-900">{address.label}</p>
+                )}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -253,28 +275,42 @@ export default function DashboardAddresses() {
                     >
                       {address.type === "billing" ? "Billing" : "Shipping"}
                     </span>
-                    {address.label && (
-                      <span className="text-sm font-medium text-gray-700">{address.label}</span>
+                    {isDefault && (
+                      <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-800">
+                        Default
+                      </span>
                     )}
-                    {isDefault && <span className="text-xs text-gray-500">(Default)</span>}
+                    {!isDefault && address.type === "billing" && (
+                      <span className="text-xs text-gray-500">Saved address</span>
+                    )}
                   </div>
-                  {!isDefault && hasId && (
-                    <div className="flex gap-3">
+                  {hasId && (
+                    <div className="flex flex-wrap items-center justify-end gap-3">
                       <button
                         type="button"
                         onClick={() => setEditingAddress(address)}
-                        disabled={isUpdating || isDeleting}
+                        disabled={isUpdating || isDeleting || isSettingDefault}
                         className="text-sm font-medium text-teal-600 hover:text-teal-700 disabled:opacity-50"
                       >
                         Edit
                       </button>
+                      {(canSetDefaultBilling || canSetDefaultShipping) && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultAddress(address)}
+                          disabled={isUpdating || isDeleting || isSettingDefault}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        >
+                          Set as Default
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleDelete(address.id!)}
-                        disabled={isUpdating || isDeleting}
+                        disabled={isUpdating || isDeleting || isSettingDefault}
                         className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
                       >
-                        Delete
+                        {isDefault ? "Remove default" : "Delete"}
                       </button>
                     </div>
                   )}
