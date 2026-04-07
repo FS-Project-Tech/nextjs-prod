@@ -75,6 +75,23 @@ export default function Header() {
 
   return (
     <header className="bg-white">
+      {/* Site migration / improvement notice — above tagline */}
+      <div className="border-b border-amber-200 bg-amber-50 py-2 px-3 sm:px-4 md:px-5 lg:px-0">
+        <div className="container mx-auto text-[11px] leading-relaxed text-amber-950 sm:text-xs">
+          <p className="text-center sm:text-left">
+            We are currently working on improving our website functionality and completing system
+            migrations. If you experience any issues, please contact us at{" "}
+            <a
+              href="mailto:info@joyamedicalsupplies.com.au"
+              className="font-semibold text-amber-900 underline decoration-amber-800 underline-offset-2 hover:text-amber-950"
+            >
+              info@joyamedicalsupplies.com.au
+            </a>{" "}
+            or reach out to our support team for assistance.
+          </p>
+        </div>
+      </div>
+
       {/* Top Bar */}
       <div className="bg-teal-600 text-white py-2 px-3 sm:px-4 md:px-5 lg:px-0">
         <div className="container mx-auto flex min-h-7 items-center justify-between text-[11px] sm:text-xs">
