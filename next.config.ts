@@ -169,17 +169,12 @@ const nextConfig: NextConfig = {
       // Add known WooCommerce media hosts here
       {
         protocol: "https",
-        hostname: "wordpress-1513595-6089575.cloudwaysapps.com",
+        hostname: "live.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
       {
         protocol: "https",
-        hostname: "wordpress-1513595-6318973.cloudwaysapps.com",
-        pathname: "/wp-content/uploads/**",
-      },
-      {
-        protocol: "https",
-        hostname: "**.stage.joyamedicalsupplies.com.au",
+        hostname: "stage.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
       // Placeholder image host used in development/demo sliders

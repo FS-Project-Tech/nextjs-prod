@@ -12,7 +12,6 @@ import { formatPriceWithLabel } from "@/lib/format-utils";
 import {
   matchVariation,
   findBrand,
-  isAllSelected,
   extractProductBrands,
 } from "@/lib/utils/product";
 import { useViewedProduct } from "@/hooks/useViewedProducts";
@@ -144,6 +143,7 @@ export default function ProductDetailPanel({
             String(regularFromFirstVariation) !== String(displayPrice)
           ? regularFromFirstVariation
           : displayRegularRaw;
+  const hasResolvedVariation = attributes.length === 0 || Boolean(matchedVariation || matched);
   const { addItem, open: openCart } = useCart();
   const { success, error: showError } = useToast();
   const [quantity, setQuantity] = useState<number>(1);
@@ -385,7 +385,7 @@ export default function ProductDetailPanel({
           <button
             onClick={async () => {
               if (addingToCart) return;
-              if (attributes.length > 0 && !isAllSelected(selected, attributes)) return;
+              if (!hasResolvedVariation) return;
               setAddingToCart(true);
               try {
                 await new Promise((resolve) => setTimeout(resolve, 500));
@@ -422,9 +422,7 @@ export default function ProductDetailPanel({
                 setAddingToCart(false);
               }
             }}
-            disabled={
-              (attributes.length > 0 && !isAllSelected(selected, attributes)) || addingToCart
-            }
+            disabled={!hasResolvedVariation || addingToCart}
             className="btn-brand flex-1 rounded-lg px-5 py-3.5 text-base font-semibold text-white shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 cursor-pointer"
           >
             {addingToCart ? (
@@ -462,9 +460,9 @@ export default function ProductDetailPanel({
             className="!h-[52px] !w-12 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
           />
         </div>
-        {attributes.length > 0 && !isAllSelected(selected, attributes) && (
+        {attributes.length > 0 && !hasResolvedVariation && (
           <p className="text-sm font-medium text-red-600" role="alert">
-            Please select all variations before adding to cart.
+            Please select a valid variation combination before adding to cart.
           </p>
         )}
       </div>

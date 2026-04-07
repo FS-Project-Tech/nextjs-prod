@@ -67,8 +67,39 @@ interface ProductAttribute {
   options?: string[];
 }
 
+function variationAttrKey(name: string): string {
+  let s = String(name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/^attribute_/, "");
+  if (s.startsWith("pa_")) s = s.slice(3);
+  return s.replace(/[^a-z0-9]+/g, "");
+}
+
+function variationAttributeNamesMatch(a: string, b: string): boolean {
+  const ka = variationAttrKey(a);
+  const kb = variationAttrKey(b);
+  if (ka.length > 0 && kb.length > 0) return ka === kb;
+  return eq(a, b);
+}
+
+function isVariationAnyOption(value: string): boolean {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  const v = raw.toLowerCase();
+  if (v === "any" || v === "*") return true;
+  if (v.startsWith("any ") || v.startsWith("any-") || v.startsWith("any|") || v.startsWith("any/"))
+    return true;
+  return /^any\b/i.test(raw);
+}
+
+function variationOptionMatchesSelected(variationOption: string, selectedValue: string): boolean {
+  if (isVariationAnyOption(variationOption)) return true;
+  return eq(variationOption, selectedValue);
+}
+
 /**
- * Match a variation based on selected attributes
+ * Match a variation based on selected attributes (label vs `pa_` names, "Any …" options, full concrete match).
  */
 export function matchVariation(
   variations: WooCommerceVariation[],
@@ -77,9 +108,19 @@ export function matchVariation(
   const names = Object.keys(selected);
   if (names.length === 0) return null;
   return (
-    variations.find((v) =>
-      names.every((n) => v.attributes.some((a) => eq(a.name, n) && eq(a.option, selected[n])))
-    ) || null
+    variations.find((v) => {
+      const selectedOk = names.every((n) => {
+        const va = v.attributes.find((a) => variationAttributeNamesMatch(a.name, n));
+        return va && variationOptionMatchesSelected(va.option, selected[n]);
+      });
+      if (!selectedOk) return false;
+      return v.attributes.every((attr) => {
+        if (isVariationAnyOption(attr.option)) return true;
+        const sk = names.find((k) => variationAttributeNamesMatch(k, attr.name));
+        const sv = sk ? selected[sk] : undefined;
+        return !!sv && variationOptionMatchesSelected(attr.option, sv);
+      });
+    }) || null
   );
 }
 

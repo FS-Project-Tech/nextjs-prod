@@ -9,4 +9,4 @@ export const CHECKOUT_INSURANCE_STORAGE_KEY = "checkout:insurance_option";
 export const PARCEL_PROTECTION_FEE_AUD = 6;
 
 export const PARCEL_PROTECTION_ICON_URL =
-  "https://stage.joyamedicalsupplies.com.au/wp-content/uploads/2024/08/Package-Safe.svg";
+  "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2024/08/Package-Safe.svg";

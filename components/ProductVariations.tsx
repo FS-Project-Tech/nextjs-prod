@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import type { WooCommerceVariation, WooCommerceVariationAttribute } from "@/lib/woocommerce";
+import type { WooCommerceVariation } from "@/lib/woocommerce";
 
 interface VariationAttribute {
   name: string;
@@ -35,9 +35,24 @@ function normalizeOptionValue(value: string): string {
 }
 
 /**
- * Checks if two attribute names match (case-insensitive)
+ * Comparable key for Woo attribute names (`Length`, `pa_length`, `attribute_pa_length`, `Each | Box`)
+ */
+function attributeKey(name: string): string {
+  let s = String(name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/^attribute_/, "");
+  if (s.startsWith("pa_")) s = s.slice(3);
+  return s.replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * Checks if two attribute names match (labels vs slugs / pa_ prefixes)
  */
 function attributeNameMatches(a: string, b: string): boolean {
+  const ka = attributeKey(a);
+  const kb = attributeKey(b);
+  if (ka.length > 0 && kb.length > 0) return ka === kb;
   return normalizeAttributeName(a) === normalizeAttributeName(b);
 }
 
@@ -46,6 +61,21 @@ function attributeNameMatches(a: string, b: string): boolean {
  */
 function optionValueMatches(a: string, b: string): boolean {
   return normalizeOptionValue(a) === normalizeOptionValue(b);
+}
+
+function isAnyVariationOption(value: string): boolean {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  const v = normalizeOptionValue(raw);
+  if (v === "any" || v === "*") return true;
+  if (v.startsWith("any ") || v.startsWith("any-") || v.startsWith("any|") || v.startsWith("any/"))
+    return true;
+  return /^any\b/i.test(raw);
+}
+
+function variationOptionMatchesSelected(variationOption: string, selectedValue: string): boolean {
+  if (isAnyVariationOption(variationOption)) return true;
+  return optionValueMatches(variationOption, selectedValue);
 }
 
 function optionInAvailableList(option: string, available: string[]): boolean {
@@ -64,13 +94,25 @@ function findMatchedVariation(
 
   return (
     variations.find((variation) => {
-      // Check if variation has all selected attributes with matching values
-      return selectedKeys.every((attrName) => {
+      // 1) All selected attributes must match this variation (respecting "Any ...")
+      const selectedMatch = selectedKeys.every((attrName) => {
         const selectedValue = selectedAttributes[attrName];
         const variationAttr = variation.attributes.find((attr) =>
           attributeNameMatches(attr.name, attrName)
         );
-        return variationAttr && optionValueMatches(variationAttr.option, selectedValue);
+        return variationAttr && variationOptionMatchesSelected(variationAttr.option, selectedValue);
+      });
+      if (!selectedMatch) return false;
+
+      // 2) All concrete variation attributes must be selected, otherwise this is still partial.
+      //    Keys on `selectedAttributes` use product labels; variation rows may use `pa_*` names.
+      return variation.attributes.every((attr) => {
+        if (isAnyVariationOption(attr.option)) return true;
+        const selectedKey = Object.keys(selectedAttributes).find((k) =>
+          attributeNameMatches(k, attr.name)
+        );
+        const selectedValue = selectedKey ? selectedAttributes[selectedKey] : undefined;
+        return !!selectedValue && optionValueMatches(attr.option, selectedValue);
       });
     }) || null
   );
@@ -87,44 +129,48 @@ function getAvailableOptionsForAttribute(
   variations.forEach((variation) => {
     const attr = variation.attributes.find((a) => attributeNameMatches(a.name, attributeName));
     if (attr && variation.stock_status !== "outofstock") {
-      options.add(attr.option);
+      if (!isAnyVariationOption(attr.option)) options.add(attr.option);
     }
   });
   return options;
 }
 
 /**
- * Gets available options for secondary attributes based on main attribute selection
+ * Variations that match every *selected* attribute before `optionIndex` in `attributeOrder`.
+ * Unselected earlier attributes are not enforced (Woo-style: union until user chooses).
  */
-function getAvailableSecondaryOptions(
-  attributeName: string,
-  mainAttributeName: string,
-  mainAttributeValue: string,
-  variations: WooCommerceVariation[]
-): Set<string> {
-  const options = new Set<string>();
-
-  // Filter variations that match the main attribute selection
-  const matchingVariations = variations.filter((variation) => {
-    const mainAttr = variation.attributes.find((a) =>
-      attributeNameMatches(a.name, mainAttributeName)
-    );
-    return (
-      mainAttr &&
-      optionValueMatches(mainAttr.option, mainAttributeValue) &&
-      variation.stock_status !== "outofstock"
-    );
+function variationsMatchingPriorSelections(
+  variations: WooCommerceVariation[],
+  attributeOrder: VariationAttribute[],
+  selectedAttributes: { [name: string]: string },
+  optionIndex: number
+): WooCommerceVariation[] {
+  return variations.filter((variation) => {
+    if (variation.stock_status === "outofstock") return false;
+    for (let j = 0; j < optionIndex; j++) {
+      const def = attributeOrder[j];
+      const sel = selectedAttributes[def.name];
+      if (!sel || !String(sel).trim()) {
+        if (j === 0) return false;
+        continue;
+      }
+      const va = variation.attributes.find((a) => attributeNameMatches(a.name, def.name));
+      if (!va || !variationOptionMatchesSelected(va.option, sel)) return false;
+    }
+    return true;
   });
+}
 
-  // Extract options for the secondary attribute from matching variations
+function concreteOptionsForAttribute(
+  matchingVariations: WooCommerceVariation[],
+  attributeName: string
+): string[] {
+  const options = new Set<string>();
   matchingVariations.forEach((variation) => {
     const attr = variation.attributes.find((a) => attributeNameMatches(a.name, attributeName));
-    if (attr) {
-      options.add(attr.option);
-    }
+    if (attr && !isAnyVariationOption(attr.option)) options.add(attr.option);
   });
-
-  return options;
+  return Array.from(options);
 }
 
 export default function ProductVariations({
@@ -154,10 +200,10 @@ export default function ProductVariations({
     return Array.from(getAvailableOptionsForAttribute(mainAttribute.name, variations));
   }, [mainAttribute, variations]);
 
-  // Get available options for each secondary attribute based on main selection
+  // Eligible options per attribute index: each row only sees variations consistent with
+  // the main selection + any selections already made for earlier secondary rows (Woo-style).
   const secondaryAttributeOptions = useMemo(() => {
     if (!mainAttribute || !selectedAttributes[mainAttribute.name]) {
-      // If main attribute not selected, return empty for all secondary attributes
       return secondaryAttributes.reduce(
         (acc, attr) => {
           acc[attr.name] = [];
@@ -167,21 +213,48 @@ export default function ProductVariations({
       );
     }
 
-    const mainValue = selectedAttributes[mainAttribute.name];
     return secondaryAttributes.reduce(
       (acc, attr) => {
-        const options = getAvailableSecondaryOptions(
-          attr.name,
-          mainAttribute.name,
-          mainValue,
-          variations
+        const idx = attributes.indexOf(attr);
+        if (idx <= 0) return acc;
+        const pool = variationsMatchingPriorSelections(
+          variations,
+          attributes,
+          selectedAttributes,
+          idx
         );
-        acc[attr.name] = Array.from(options);
+        acc[attr.name] = concreteOptionsForAttribute(pool, attr.name);
         return acc;
       },
       {} as { [name: string]: string[] }
     );
-  }, [mainAttribute, secondaryAttributes, selectedAttributes, variations]);
+  }, [mainAttribute, secondaryAttributes, selectedAttributes, variations, attributes]);
+
+  useEffect(() => {
+    if (!mainAttribute || !selectedAttributes[mainAttribute.name]) return;
+
+    const normalizedSelected: { [name: string]: string } = { ...selectedAttributes };
+    let changed = false;
+
+    secondaryAttributes.forEach((attr) => {
+      const availableOptions = secondaryAttributeOptions[attr.name] || [];
+      const selectedValue = normalizedSelected[attr.name];
+
+      // Drop invalid existing selection when dependencies change.
+      if (selectedValue && !optionInAvailableList(selectedValue, availableOptions)) {
+        delete normalizedSelected[attr.name];
+        changed = true;
+      }
+
+      // Woo-like behavior: if only one concrete value is possible, select it automatically.
+      if (!normalizedSelected[attr.name] && availableOptions.length === 1) {
+        normalizedSelected[attr.name] = availableOptions[0];
+        changed = true;
+      }
+    });
+
+    if (changed) setSelectedAttributes(normalizedSelected);
+  }, [mainAttribute, secondaryAttributes, secondaryAttributeOptions, selectedAttributes]);
 
   /** Show secondary rows once colour (main) is chosen — every option is listed; invalid combos stay disabled. */
   const shouldShowSecondarySection = useMemo(() => {
@@ -216,11 +289,11 @@ export default function ProductVariations({
       [attributeName]: option,
     };
 
-    // If main attribute is being changed, clear all secondary selections
-    if (mainAttribute && attributeNameMatches(attributeName, mainAttribute.name)) {
-      secondaryAttributes.forEach((attr) => {
-        delete newSelected[attr.name];
-      });
+    const changedIdx = attributes.findIndex((a) => attributeNameMatches(a.name, attributeName));
+    if (changedIdx >= 0) {
+      for (let k = changedIdx + 1; k < attributes.length; k++) {
+        delete newSelected[attributes[k].name];
+      }
     }
 
     setSelectedAttributes(newSelected);
@@ -371,10 +444,21 @@ export default function ProductVariations({
       {shouldShowSecondarySection && (
         <div className="block">
           {secondaryAttributes.map((attribute) => {
+            const attrIdx = attributes.indexOf(attribute);
+            if (attrIdx > 0) {
+              for (let k = 1; k < attrIdx; k++) {
+                const prior = attributes[k];
+                const priorOpts = secondaryAttributeOptions[prior.name] || [];
+                if (priorOpts.length === 0) continue;
+                if (!selectedAttributes[prior.name]) return null;
+              }
+            }
+
             const availableOptions = secondaryAttributeOptions[attribute.name] || [];
             const selectedValue = selectedAttributes[attribute.name];
 
-            if (!attribute.options?.length) {
+            // Hide non-applicable attribute rows (e.g., all matching variations have "Any ..." here).
+            if (!attribute.options?.length || availableOptions.length === 0) {
               return null;
             }
 

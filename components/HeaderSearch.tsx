@@ -202,7 +202,7 @@ export default function HeaderSearch() {
           .documents()
           .search({
             q: formattedQuery,
-            query_by: "sku,name,category,brand",
+            query_by: "name,description,short_description,sku,variation_skus,variation_names",
             per_page: 5,
             facet_by: "category,brand",
           });
