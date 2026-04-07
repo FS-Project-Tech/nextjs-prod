@@ -60,6 +60,7 @@ function CheckoutPageInner() {
     errors,
     setValue,
     ewayTokenFlowEnabled,
+    canUseOnAccount,
     onFormSubmit,
   } = checkout;
 
@@ -168,6 +169,7 @@ function CheckoutPageInner() {
                 onPaymentMethodChange={setSelectedPaymentMethod}
                 placing={placing}
                 ewayTokenFlowEnabled={ewayTokenFlowEnabled}
+                canUseOnAccount={canUseOnAccount}
               />
             </div>
           </aside>

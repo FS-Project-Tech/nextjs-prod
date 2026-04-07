@@ -21,6 +21,7 @@ export type PaymentSectionProps = {
   onPaymentMethodChange: (method: "eway" | "cod") => void;
   placing: boolean;
   ewayTokenFlowEnabled: boolean;
+  canUseOnAccount: boolean;
 };
 
 function useShipToForRates(control: Control<CheckoutFormData>) {
@@ -120,6 +121,7 @@ function PaymentSectionInner({
   onPaymentMethodChange,
   placing,
   ewayTokenFlowEnabled,
+  canUseOnAccount,
 }: PaymentSectionProps) {
   return (
     <>
@@ -172,26 +174,28 @@ function PaymentSectionInner({
                 <p className="mt-1 text-xs text-gray-700">Secure hosted payment via eWAY.</p>
               </div>
             </label>
-            <label
-              htmlFor="checkout-payment-cod"
-              className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
-            >
-              <input
-                id="checkout-payment-cod"
-                type="radio"
-                name="checkout_payment_method"
-                value="cod"
-                checked={selectedPaymentMethod === "cod"}
-                onChange={() => onPaymentMethodChange("cod")}
-                className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
-              />
-              <div className="flex-1">
-                <div className="font-medium text-gray-900">
-                  {getPaymentMethodOptionLabel({ id: "cod", title: "" })}
+            {canUseOnAccount && (
+              <label
+                htmlFor="checkout-payment-cod"
+                className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
+              >
+                <input
+                  id="checkout-payment-cod"
+                  type="radio"
+                  name="checkout_payment_method"
+                  value="cod"
+                  checked={selectedPaymentMethod === "cod"}
+                  onChange={() => onPaymentMethodChange("cod")}
+                  className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">
+                    {getPaymentMethodOptionLabel({ id: "cod", title: "" })}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-700">Pay later via your account.</p>
                 </div>
-                <p className="mt-1 text-xs text-gray-700">Pay later via your account.</p>
-              </div>
-            </label>
+              </label>
+            )}
           </div>
         </fieldset>
       </div>

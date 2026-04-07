@@ -59,6 +59,21 @@ export function useCheckoutPageState() {
     [addresses]
   );
 
+  const canUseOnAccount = useMemo(() => {
+    const roles = Array.isArray(user?.roles)
+      ? user.roles.map((r: unknown) => String(r || "").trim().toLowerCase())
+      : [];
+    const isAdmin = roles.includes("administrator");
+    const isNdisApprovedRole = roles.includes("ndis_approved");
+    return isAdmin || isNdisApprovedRole;
+  }, [user?.roles]);
+
+  useEffect(() => {
+    if (!canUseOnAccount && selectedPaymentMethod === "cod") {
+      setSelectedPaymentMethod("eway");
+    }
+  }, [canUseOnAccount, selectedPaymentMethod]);
+
   const form = useForm<CheckoutFormData>({
     resolver: yupResolver(checkoutSchema) as never,
     defaultValues: CHECKOUT_FORM_DEFAULTS,
@@ -246,6 +261,7 @@ export function useCheckoutPageState() {
     errors,
     setValue,
     ewayTokenFlowEnabled,
+    canUseOnAccount,
     onFormSubmit,
   };
 }

@@ -202,6 +202,19 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
 
   try {
     const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    const actorRoles = Array.isArray(actor.roles)
+      ? actor.roles.map((r) => String(r || "").trim().toLowerCase())
+      : [];
+    const canUseOnAccount = actorRoles.includes("administrator") || Boolean(actor.ndisApproved);
+    if (payload.payment_method === "cod" && !canUseOnAccount) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "On account payment is only available for administrator and NDIS-approved users.",
+        },
+        { status: 403 },
+      );
+    }
     after(async () => {
       try {
         await syncCheckoutUserMeta(actor, payload);

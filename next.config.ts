@@ -52,6 +52,21 @@ function nursingServiceRootRedirects(): Array<{
 }
  
 const nextConfig: NextConfig = {
+
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: ContentSecurityPolicy.replace(/\n/g, ""),
+          },
+        ],
+      },
+    ];
+  },
+
   reactCompiler: true,
  
   compress: true,
@@ -221,7 +236,7 @@ const nextConfig: NextConfig = {
     // Enable image optimization
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     // Increase timeout for slow upstream servers (30 seconds)
     // Note: This requires Next.js 14.1+ for full support
     unoptimized: false,
@@ -244,13 +259,23 @@ const nextConfig: NextConfig = {
         destination: '/product/:slug',
         permanent: true,
       },
-      { source: '/privacy', destination: '/info/privacy', permanent: true },
-      { source: '/terms', destination: '/info/terms', permanent: true },
+      // { source: '/privacy', destination: '/info/privacy', permanent: true },
+      // { source: '/terms', destination: '/info/terms', permanent: true },
       { source: '/faq', destination: '/info/faq', permanent: true },
       { source: '/shipping', destination: '/info/shipping', permanent: true },
       { source: '/collection-statement', destination: '/info/collection-statement', permanent: true },
       { source: '/collection-statement-general-enquiries', destination: '/info/collection-statement', permanent: true },
       { source: '/info/blog', destination: '/blog', permanent: true },
+      {
+        source: '/legal/terms',
+        destination: '/info/terms',
+        permanent: true,
+      },
+      {
+        source: '/legal/privacy',
+        destination: '/info/privacy',
+        permanent: true,
+      },
       {
         source: '/health-professional',
         destination: '/health-professionals',
@@ -268,6 +293,14 @@ const nextConfig: NextConfig = {
   // Enable static page generation with ISR
   output: 'standalone',
 };
+
+const ContentSecurityPolicy = `
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net;
+  connect-src 'self' https://www.google-analytics.com https://connect.facebook.net;
+  img-src 'self' data: https://www.google-analytics.com https://www.facebook.com https://www.googletagmanager.com;
+  frame-src https://www.googletagmanager.com;
+`;
 
 
  
