@@ -12,28 +12,36 @@ const client = new Typesense.Client({
 async function createCollection() {
   try {
     const schema = {
-      name: "products",
-      fields: [
-        { name: "id", type: "string" },
-      
-        { name: "name", type: "string" },
-        { name: "sku", type: "string", optional: true },
-        { name: "price", type: "float", optional: true },
-      
-        { name: "description", type: "string", optional: true },
-        { name: "short_description", type: "string", optional: true },
-      
-        { name: "categories", type: "string[]", facet: true },
-        { name: "brands", type: "string[]", facet: true },
-        { name: "tags", type: "string[]", facet: true },
-      
-        { name: "variation_skus", type: "string[]", optional: true },
-        { name: "variation_names", type: "string[]", optional: true },
-      
-        { name: "image", type: "string", optional: true },
-        { name: "slug", type: "string", optional: true },
-      ]
-    };
+      "name": "products",
+      "fields": [
+        { "name": "id", "type": "string" },
+    
+        { "name": "name", "type": "string" },
+        { "name": "slug", "type": "string" },
+    
+        { "name": "sku", "type": "string[]", "facet": false },
+    
+        { "name": "description", "type": "string" },
+        { "name": "short_description", "type": "string" },
+    
+        { "name": "price", "type": "float", "facet": true },
+        { "name": "regular_price", "type": "float" },
+        { "name": "sale_price", "type": "float", "optional": true },
+    
+        { "name": "on_sale", "type": "bool", "facet": true },
+    
+        { "name": "category", "type": "string[]", "facet": true },
+        { "name": "brand", "type": "string[]", "facet": true },
+        { "name": "tags", "type": "string[]", "facet": true },
+    
+        { "name": "in_stock", "type": "bool", "facet": true },
+    
+        { "name": "image", "type": "string", "optional": true },
+    
+        { "name": "updated_at", "type": "int64", "facet": true }
+      ],
+      "default_sorting_field": "updated_at"
+    }
 
     await client.collections().create(schema);
 
