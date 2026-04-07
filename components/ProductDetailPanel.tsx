@@ -267,9 +267,9 @@ export default function ProductDetailPanel({
 
         {/* 💰 Price Row */}
         <div className="flex items-center gap-2 text-lg font-semibold">
-          {/* <span className="text-[#1f605f]">
+          <span className="text-[#1f605f]">
             {priceInfo.exclPrice || priceInfo.price}
-          </span> */}
+          </span>
 
            {/* 🔥 SALE TAG */}
             {isOnSale && (
