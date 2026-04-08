@@ -127,7 +127,7 @@ export default function RootLayout({
         className={`${grift.className} min-h-screen antialiased text-base font-normal leading-normal text-gray-900`}
       >
         {/* Remove browser extension attributes before React hydrates */}
-        <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" />
+        {/* <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" /> */}
 
         {ga4MeasurementId ? (
           <>

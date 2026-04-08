@@ -11,13 +11,13 @@ export const revalidate = 300; // 5 minutes
 
 // SEO Metadata for homepage
 export const metadata: Metadata = {
-  title: "Home",
+  title: "Wholesale Medical Supplies & Equipment Online in Gold Coast, Australia",
   description:
-    "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping on orders over $50.",
+    "Joya Medical Supplies is your most trusted local supplier of a wide range of wholesale medical supplies, equipment & hospital products in Gold Coast, Queensland, Australia.",
   openGraph: {
-    title: "WooCommerce Store - Shop Latest Products",
+    title: "JOYA Medical Supplies - Shop Latest Products",
     description:
-      "Shop the latest products at our WooCommerce store. Fast, secure checkout with free shipping.",
+      "Shop the latest products at our JOYA Medical Supplies store. Fast, secure checkout with free shipping.",
     type: "website",
   },
   alternates: {
