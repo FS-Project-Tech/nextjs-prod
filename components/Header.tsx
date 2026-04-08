@@ -231,12 +231,12 @@ export default function Header() {
                     Dashboard
                   </PrefetchLink>
 
-                  <PrefetchLink
+                  {/* <PrefetchLink
                     href="/dashboard/orders"
                     className="block px-4 py-2 hover:bg-gray-100"
                   >
                     Orders
-                  </PrefetchLink>
+                  </PrefetchLink> */}
 
                   <button
                     onClick={async () => {
