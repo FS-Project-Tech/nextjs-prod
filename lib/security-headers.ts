@@ -22,40 +22,24 @@ export const SECURITY_HEADERS = {
  * Note: 'unsafe-inline' for styles is needed for Next.js
  * In production, consider using nonces for scripts
  */
-    const wcOrigin = process.env.WC_API_URL
-      ? new URL(process.env.WC_API_URL).origin
-      : "";
-
-    export const CSP_HEADER = [
-      "default-src 'self'",
-
-      `script-src 'self' 'unsafe-inline'
-        https://www.googletagmanager.com
-        https://www.google-analytics.com
-        https://connect.facebook.net
-        https://embed.tawk.to`,
-
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-
-      "img-src 'self' data: blob: https:",
-
-      "font-src 'self' https://fonts.gstatic.com data:",
-
-      // ✅ IMPORTANT PART
-      `connect-src 'self'
-        https://joyamedicalsupplies.com.au
-        ${wcOrigin}
-        https://www.google-analytics.com
-        https://connect.facebook.net
-        https://embed.tawk.to`,
-
-      `frame-src https://embed.tawk.to`,
-
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-    ].join("; ");
+export const CSP_HEADER = [
+  "default-src 'self'",
+  // script-src: 'self' + 'unsafe-inline' needed for Next.js hydration
+  // Avoid 'unsafe-eval' in production if possible
+  process.env.NODE_ENV === "production"
+    ? "script-src 'self' 'unsafe-inline'"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https: blob:",
+  "font-src 'self' data: https:",
+  // Allow connections to WordPress backend
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https:`.trim(),
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'", // Block plugins
+  "upgrade-insecure-requests",
+].join("; ");
 
 /**
  * Apply security headers to a response
