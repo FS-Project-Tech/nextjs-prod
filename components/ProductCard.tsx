@@ -97,6 +97,11 @@ function calculatePriceData(
   let label = "Price";
   let exclPrice: string | null = null;
   let isGstFree = false;
+  const normalizedTaxClass = (taxClass || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
+  const isGstFreeClass = normalizedTaxClass === "gst-free" || normalizedTaxClass === "gstfree";
 
   const formattedRegularExcl = `$${regular.toFixed(2)}`;
   try {
@@ -106,6 +111,14 @@ function calculatePriceData(
     exclPrice = priceInfo.exclPrice || null;
     isGstFree = priceInfo.taxType === "gst_free";
   } catch {}
+
+  // Enforce GST-free display when explicit tax class is set.
+  if (isGstFreeClass) {
+    isGstFree = true;
+    label = "GST Free";
+    exclPrice = null;
+    formattedPrice = `$${current.toFixed(2)}`;
+  }
 
   return {
     regular,

@@ -118,22 +118,88 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
 
 /** De-duplicate listing products by numeric id (keeps first occurrence order). */
 export function dedupeProductsById<T extends { id?: unknown }>(items: T[]): T[] {
-  const seen = new Set<number>();
-  const out: T[] = [];
+  const byId = new Map<number, T>();
+  const order: number[] = [];
+
+  const norm = (v: unknown) =>
+    String(v ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[\s_]+/g, "-");
+
+  const score = (item: T): number => {
+    const anyItem = item as Record<string, unknown>;
+    const taxClass = norm(anyItem.tax_class ?? anyItem.taxClass);
+    const taxStatus = norm(anyItem.tax_status ?? anyItem.taxStatus);
+
+    let s = 0;
+    if (taxClass) s += 2;
+    if (taxStatus) s += 2;
+    if (taxClass === "gst-free" || taxClass === "gstfree" || taxClass.includes("free")) s += 4;
+    if (taxStatus === "none" || taxStatus === "exempt" || taxStatus === "non-taxable") s += 3;
+    return s;
+  };
+
   for (const item of items) {
     const id = Number(item?.id ?? 0);
     if (!Number.isFinite(id) || id <= 0) continue;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(item);
+
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, item);
+      order.push(id);
+      continue;
+    }
+
+    // For duplicates (common with variation/index rows), keep the richer tax payload.
+    if (score(item) > score(existing)) {
+      byId.set(id, item);
+    }
   }
-  return out;
+  return order
+    .map((id) => byId.get(id))
+    .filter((item): item is T => Boolean(item));
 }
 
 function firstStringish(v: unknown): string {
   if (v == null) return "";
   if (Array.isArray(v)) return firstStringish(v[0]);
   return String(v);
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const v of values) {
+    const s = firstStringish(v).trim();
+    if (s) return s;
+  }
+  return undefined;
+}
+
+function toBooleanLike(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (!s) return null;
+    if (["1", "true", "yes", "y"].includes(s)) return true;
+    if (["0", "false", "no", "n"].includes(s)) return false;
+  }
+  return null;
+}
+
+function normalizeTaxStatus(v: unknown): string | undefined {
+  if (typeof v === "boolean") return v ? "taxable" : "none";
+  if (typeof v === "number") return v === 0 ? "none" : "taxable";
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (!s) return undefined;
+  if (["none", "non-taxable", "nontaxable", "exempt", "free", "false", "0"].includes(s)) {
+    return "none";
+  }
+  if (["taxable", "shipping", "standard", "true", "1"].includes(s)) {
+    return "taxable";
+  }
+  return s;
 }
 
 export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
@@ -154,6 +220,28 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   }
 
   const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);
+  const taxClass = firstNonEmptyString(
+    doc.tax_class,
+    doc.taxClass,
+    doc.variation_tax_class,
+    doc.variationTaxClass,
+    doc.parent_tax_class,
+    doc.parentTaxClass,
+  );
+  const taxStatusFromDoc = firstNonEmptyString(
+    doc.tax_status,
+    doc.taxStatus,
+    doc.variation_tax_status,
+    doc.variationTaxStatus,
+    doc.parent_tax_status,
+    doc.parentTaxStatus,
+  );
+  const isGstFree =
+    toBooleanLike(doc.gst_free) ??
+    toBooleanLike(doc.is_gst_free) ??
+    toBooleanLike(doc.gstFree) ??
+    null;
+  const taxStatus = normalizeTaxStatus(taxStatusFromDoc) ?? (isGstFree === true ? "none" : undefined);
 
   return {
     id,
@@ -169,8 +257,8 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     images: img ? [{ src: img, alt: imgAlt }] : [],
     average_rating: String(doc.average_rating ?? doc.rating ?? "0"),
     rating_count: Number(doc.rating_count ?? 0),
-    tax_class: doc.tax_class as string | undefined,
-    tax_status: doc.tax_status as string | undefined,
+    tax_class: taxClass,
+    tax_status: taxStatus,
     brand_name: brandName,
   };
 }

@@ -86,6 +86,8 @@ export async function GET(request: NextRequest) {
               sale_price: sale,
               regular_price: regular,
               on_sale: p.on_sale || false,
+              tax_class: p.tax_class || undefined,
+              tax_status: p.tax_status || undefined,
               sale_percentage:
                 regular && sale
                   ? Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100)

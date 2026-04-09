@@ -14,7 +14,7 @@ async function sync() {
   const { data } = await axios.get("https://live.joyamedicalsupplies.com.au/wp-json/custom/v1/typesense-products");
   
 
-  await client.collections("products").documents().import(data);
+  await client.collections("products_updated").documents().import(data);
 
   console.log("Synced!");
 }

@@ -47,7 +47,21 @@ export function getTaxDisplayType(
     .trim()
     .replace(/[\s_]+/g, "-");
 
-  if (slug === "gst-free" || slug === "gstfree" || status === "none") {
+  const looksGstFreeClass =
+    slug === "gst-free" ||
+    slug === "gstfree" ||
+    slug.includes("free") ||
+    slug.includes("exempt") ||
+    slug.includes("zero");
+  const looksGstFreeStatus =
+    status === "none" ||
+    status === "non-taxable" ||
+    status === "nontaxable" ||
+    status === "exempt" ||
+    status === "free" ||
+    status === "false" ||
+    status === "0";
+  if (looksGstFreeClass || looksGstFreeStatus) {
     return "gst_free";
   }
 
@@ -62,7 +76,7 @@ export function getTaxDisplayType(
     return "gst_10";
   }
 
-  // Default to GST 10% so pricing always shows the GST context
+  // Keep existing default behavior for unknown/legacy values.
   return "gst_10";
 }
 
