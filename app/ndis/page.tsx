@@ -214,7 +214,7 @@ export default function NDISPage() {
 
           <div className="flex justify-center mb-10">
             <a
-              href="tel:0451852124"
+              href="tel:0721463568"
               className="inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-opacity hover:opacity-90"
               style={{ backgroundColor: NDIS_PRIMARY }}
             >

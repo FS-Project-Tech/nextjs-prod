@@ -36,7 +36,7 @@ const CategoryList = memo(function CategoryList({
                 e.stopPropagation();
                 onCategoryClick(cat);
               }}
-              className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors group"
+              className="w-full cursor-pointer flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors group"
             >
               <span className="font-medium text-left">{cat.name}</span>
               {hasSubcategories && (
@@ -92,6 +92,29 @@ export default function AllCategoriesDrawer({
       onOpenChange?.(nextOpen);
     },
     [isControlled, onOpenChange]
+  );
+
+  const buildCategoryPath = useCallback(
+    (category: WCCategory) => {
+      const byId = new Map<number, WCCategory>();
+      categories.forEach((c) => byId.set(c.id, c));
+      Object.values(childrenMap).forEach((children) => {
+        children.forEach((c) => byId.set(c.id, c));
+      });
+
+      const parts: string[] = [];
+      const seen = new Set<number>();
+      let current: WCCategory | undefined = category;
+
+      while (current && !seen.has(current.id)) {
+        parts.unshift(current.slug);
+        seen.add(current.id);
+        current = current.parent ? byId.get(current.parent) : undefined;
+      }
+
+      return parts;
+    },
+    [categories, childrenMap]
   );
 
   // Single unified /api/categories load (deduped across app via client cache)
@@ -159,16 +182,16 @@ export default function AllCategoriesDrawer({
 
       setSubcategoryDrawerOpen(false);
       setDrawerOpen(false);
-      router.push(`/product-category/${category.slug}`);
+      router.push(`/product-category/${buildCategoryPath(category).join("/")}`);
     },
-    [childrenMap, router, setDrawerOpen]
+    [buildCategoryPath, childrenMap, router, setDrawerOpen]
   );
 
   const handleSubcategoryClick = (subcategory: WCCategory) => {
     setDrawerOpen(false);
     setSubcategoryDrawerOpen(false);
     setSelectedCategory(null);
-    router.push(`/product-category/${subcategory.slug}`);
+    router.push(`/product-category/${buildCategoryPath(subcategory).join("/")}`);
   };
 
   const handleBackToCategories = () => {
@@ -183,7 +206,7 @@ export default function AllCategoriesDrawer({
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className={`inline-flex items-center gap-2 ${className}`}
+          className={`inline-flex items-center gap-2 cursor-pointer ${className}`}
           aria-label="Browse all categories"
         >
           <svg
@@ -200,9 +223,9 @@ export default function AllCategoriesDrawer({
       )}
 
       {isOpen && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-[120]">
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/40 cursor-pointer"
             onClick={() => {
               setDrawerOpen(false);
               setSubcategoryDrawerOpen(false);
@@ -218,7 +241,7 @@ export default function AllCategoriesDrawer({
                 <>
                   <button
                     onClick={handleBackToCategories}
-                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 cursor-pointer"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -242,7 +265,7 @@ export default function AllCategoriesDrawer({
                   setSubcategoryDrawerOpen(false);
                   setSelectedCategory(null);
                 }}
-                className="rounded p-2 text-gray-600 hover:bg-gray-100"
+                className="rounded p-2 text-gray-600 hover:bg-gray-100 cursor-pointer"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -268,7 +291,7 @@ export default function AllCategoriesDrawer({
                         <button
                           type="button"
                           onClick={() => handleSubcategoryClick(sub)}
-                          className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors"
+                          className="w-full cursor-pointer text-left px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors"
                         >
                           {sub.name}
                         </button>
@@ -298,7 +321,7 @@ export default function AllCategoriesDrawer({
                 <div className="flex items-center gap-3 border-b bg-gray-50 px-4 py-3">
                   <button
                     onClick={handleBackToCategories}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors cursor-pointer"
                     aria-label="Back to categories"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,7 +342,7 @@ export default function AllCategoriesDrawer({
                       setSubcategoryDrawerOpen(false);
                       setSelectedCategory(null);
                     }}
-                    className="rounded p-1.5 text-gray-600 hover:bg-gray-200 transition-colors"
+                    className="rounded p-1.5 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
                   >
                     <svg
                       viewBox="0 0 24 24"
@@ -344,7 +367,7 @@ export default function AllCategoriesDrawer({
                           <button
                             type="button"
                             onClick={() => handleSubcategoryClick(sub)}
-                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors font-medium"
+                            className="w-full cursor-pointer text-left px-4 py-3 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors font-medium"
                           >
                             {sub.name}
                           </button>
@@ -367,7 +390,7 @@ export default function AllCategoriesDrawer({
                       setSubcategoryDrawerOpen(false);
                       setSelectedCategory(null);
                     }}
-                    className="rounded p-1.5 text-gray-600 hover:bg-gray-200 transition-colors"
+                    className="rounded p-1.5 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
                   >
                     <svg
                       viewBox="0 0 24 24"

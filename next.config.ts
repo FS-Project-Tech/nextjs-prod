@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from '@next/bundle-analyzer';
+import { CSP_HEADER } from "./lib/security-headers";
  
 // Optionally include a domain from the WooCommerce API URL if provided
 const wcApiUrl = process.env.NEXT_PUBLIC_WP_URL;
@@ -53,20 +54,6 @@ function nursingServiceRootRedirects(): Array<{
  
 const nextConfig: NextConfig = {
 
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: ContentSecurityPolicy.replace(/\n/g, ""),
-          },
-        ],
-      },
-    ];
-  },
-
   reactCompiler: true,
  
   compress: true,
@@ -86,21 +73,8 @@ const nextConfig: NextConfig = {
       'react-hook-form',
       'lucide-react',
     ],
-    // Enable faster refresh for better HMR experience
-    // optimizeCss: true, // Uncomment if using CSS optimization
-    // Turbopack persistent caching (available in Next.js 15.1+)
     // turbopackPersistentCaching: true, // Uncomment if using Next.js 15.1+
   },
- 
-  // Route-based prefetching configuration
-  // Next.js automatically prefetches links when they enter the viewport
-  // This configuration optimizes prefetch behavior
-  // Note: Prefetch distance is controlled by Next.js internally (default: ~200px)
-  // We can optimize by using prefetch={true} on critical paths
- 
-  // ISR (Incremental Static Regeneration) for SEO-friendly product/category pages
-  // Pages will be statically generated and revalidated every 5 minutes
-  // This ensures fast page loads while keeping content fresh
  
   // Optimize loading performance - reduces memory usage in dev
   // Prevents re-compiling on every click by keeping pages in memory longer
@@ -187,11 +161,6 @@ const nextConfig: NextConfig = {
         hostname: "live.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
-      {
-        protocol: "https",
-        hostname: "stage.joyamedicalsupplies.com.au",
-        pathname: "/wp-content/uploads/**",
-      },
       // Placeholder image host used in development/demo sliders
       {
         protocol: "https",
@@ -236,9 +205,7 @@ const nextConfig: NextConfig = {
     // Enable image optimization
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
-    // contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    // Increase timeout for slow upstream servers (30 seconds)
-    // Note: This requires Next.js 14.1+ for full support
+    // contentSecurityPolicy: CSP_HEADER,
     unoptimized: false,
   },
  
@@ -293,6 +260,19 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/privacy-policy", destination: "/info/privacy" }];
   },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: CSP_HEADER,
+          },
+        ],
+      },
+    ];
+  },
 
   // Enable static page generation with ISR
   output: 'standalone',
@@ -302,17 +282,6 @@ const nextConfig: NextConfig = {
  * Google Maps JS + Places needs script/connect to Google hosts, map tiles in img-src,
  * and blob workers. Without these, checkout AddressAutocomplete is blocked by the browser.
  */
-// const ContentSecurityPolicy = `
-//   default-src 'self';
-//   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://maps.googleapis.com https://maps.gstatic.com;
-//   connect-src 'self' https://www.google-analytics.com https://connect.facebook.net https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com https://*.google.com;
-//   img-src 'self' data: blob: https://www.google-analytics.com https://www.facebook.com https://www.googletagmanager.com https://*.google.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com;
-//   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-//   font-src 'self' data: https://fonts.gstatic.com;
-//   worker-src 'self' blob:;
-//   frame-src https://www.googletagmanager.com;
-// `;
-
 
  
 export default withBundleAnalyzer(nextConfig);

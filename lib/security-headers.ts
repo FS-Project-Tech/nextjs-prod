@@ -1,73 +1,65 @@
-/**
- * Security Headers Utility
- * Provides security headers for API responses and middleware
- */
-
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Security headers configuration
+ * Secure API Response Wrapper
+ * Use this in all API routes
  */
-export const SECURITY_HEADERS = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-} as const;
+export function secureResponse(body: any, init?: ResponseInit) {
+  const response = NextResponse.json(body, init);
 
-/**
- * Content Security Policy
- * Note: 'unsafe-inline' for styles is needed for Next.js
- * In production, consider using nonces for scripts
- */
-export const CSP_HEADER = [
-  "default-src 'self'",
-  // script-src: 'self' + 'unsafe-inline' needed for Next.js hydration
-  // Avoid 'unsafe-eval' in production if possible
-  process.env.NODE_ENV === "production"
-    ? "script-src 'self' 'unsafe-inline'"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https: blob:",
-  "font-src 'self' data: https:",
-  // Allow connections to WordPress backend
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https:`.trim(),
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'", // Block plugins
-  "upgrade-insecure-requests",
-].join("; ");
-
-/**
- * Apply security headers to a response
- */
-export function applySecurityHeaders(response: NextResponse): NextResponse {
-  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-
-  // Only add CSP in production or when explicitly enabled
-  if (process.env.NODE_ENV === "production" || process.env.ENABLE_CSP === "true") {
-    response.headers.set("Content-Security-Policy", CSP_HEADER);
-  }
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-XSS-Protection", "1; mode=block");
 
   return response;
 }
 
 /**
- * Create secure response with security headers
+ * Used by next.config.ts (image optimizer CSP)
  */
-export function secureResponse(data: any, init?: ResponseInit): NextResponse {
-  const response = NextResponse.json(data, init);
-  return applySecurityHeaders(response);
-}
+export const CSP_HEADER =
+  "script-src 'none'; frame-src 'none'; sandbox;";
 
 /**
- * Add security headers to middleware response
+ * Middleware / Proxy for CSP + nonce
  */
-export function addSecurityHeadersToResponse(response: NextResponse): NextResponse {
-  return applySecurityHeaders(response);
+export function proxy(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const isDev = process.env.NODE_ENV === "development";
+
+  const cspHeader = `
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://embed.tawk.to;
+      style-src 'self' 'unsafe-inline';
+      connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://www.google.com https://www.google.co.in https://googleads.g.doubleclick.net https://connect.facebook.net https://graph.facebook.com https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://embed.tawk.to https://*.tawk.to wss://*.tawk.to;
+      img-src 'self' blob: data: https://www.google-analytics.com https://www.googletagmanager.com https://www.google.com https://www.google.co.in https://googleads.g.doubleclick.net https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://*.tawk.to;
+      font-src 'self';
+      frame-src 'self' https://www.googletagmanager.com https://embed.tawk.to https://*.tawk.to;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors 'none';
+      upgrade-insecure-requests;
+    `;
+
+  const contentSecurityPolicyHeaderValue = cspHeader
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
+  response.headers.set(
+    "Content-Security-Policy",
+    contentSecurityPolicyHeaderValue
+  );
+
+  return response;
 }

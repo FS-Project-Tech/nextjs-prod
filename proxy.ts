@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { addSecurityHeadersToResponse } from "@/lib/security-headers";
+import { proxy as addSecurityHeadersToResponse } from "@/lib/security-headers";
 
 /**
  * Next.js 16+: `middleware.ts` is deprecated in favor of `proxy.ts`.
@@ -7,12 +7,10 @@ import { addSecurityHeadersToResponse } from "@/lib/security-headers";
  */
 export function proxy(_request: NextRequest) {
   try {
-    const response = NextResponse.next();
-    return addSecurityHeadersToResponse(response);
+    return addSecurityHeadersToResponse(_request);
   } catch (error) {
     console.error("[Proxy] Error:", error);
-    const response = NextResponse.next();
-    return addSecurityHeadersToResponse(response);
+    return addSecurityHeadersToResponse(_request);
   }
 }
 
