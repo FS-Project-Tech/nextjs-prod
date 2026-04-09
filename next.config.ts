@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from '@next/bundle-analyzer';
-import { CSP_HEADER } from "./lib/security-headers";
  
 // Optionally include a domain from the WooCommerce API URL if provided
 const wcApiUrl = process.env.NEXT_PUBLIC_WP_URL;
@@ -205,7 +204,6 @@ const nextConfig: NextConfig = {
     // Enable image optimization
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
-    // contentSecurityPolicy: CSP_HEADER,
     unoptimized: false,
   },
  
@@ -259,19 +257,6 @@ const nextConfig: NextConfig = {
  
   async rewrites() {
     return [{ source: "/privacy-policy", destination: "/info/privacy" }];
-  },
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: CSP_HEADER,
-          },
-        ],
-      },
-    ];
   },
 
   // Enable static page generation with ISR

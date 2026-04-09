@@ -26,7 +26,7 @@ export const fetchProductBySlug = async (slug: string): Promise<WooCommerceProdu
   try {
     const { data: products } = await wcGet<WooCommerceProduct[]>(
       "/products",
-      { slug: slug.trim() },
+      { slug: slug.trim(), status: "publish" },
       "product",
     );
 
