@@ -302,16 +302,16 @@ const nextConfig: NextConfig = {
  * Google Maps JS + Places needs script/connect to Google hosts, map tiles in img-src,
  * and blob workers. Without these, checkout AddressAutocomplete is blocked by the browser.
  */
-const ContentSecurityPolicy = `
-  default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://maps.googleapis.com https://maps.gstatic.com;
-  connect-src 'self' https://www.google-analytics.com https://connect.facebook.net https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com https://*.google.com;
-  img-src 'self' data: blob: https://www.google-analytics.com https://www.facebook.com https://www.googletagmanager.com https://*.google.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com;
-  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-  font-src 'self' data: https://fonts.gstatic.com;
-  worker-src 'self' blob:;
-  frame-src https://www.googletagmanager.com;
-`;
+// const ContentSecurityPolicy = `
+//   default-src 'self';
+//   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://maps.googleapis.com https://maps.gstatic.com;
+//   connect-src 'self' https://www.google-analytics.com https://connect.facebook.net https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com https://*.google.com;
+//   img-src 'self' data: blob: https://www.google-analytics.com https://www.facebook.com https://www.googletagmanager.com https://*.google.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com;
+//   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+//   font-src 'self' data: https://fonts.gstatic.com;
+//   worker-src 'self' blob:;
+//   frame-src https://www.googletagmanager.com;
+// `;
 
 
  

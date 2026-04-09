@@ -8,7 +8,12 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useCoupon } from "./CouponProvider";
 import { useShippingAddress } from "@/hooks/useShippingAddress";
-import { parseCartTotal, calculateTotal } from "@/lib/cart/pricing";
+import {
+  calculateGST,
+  calculateSubtotal,
+  calculateTaxableSubtotal,
+  calculateTotal,
+} from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 import { sanitizeString } from "@/lib/sanitize";
@@ -210,7 +215,7 @@ const CartItem = memo(
 CartItem.displayName = "CartItem";
 
 export default function MiniCartDrawer() {
-  const { isOpen, close, items, total, removeItem, updateItemQty, clear } = useCart();
+  const { isOpen, close, items, removeItem, updateItemQty, clear } = useCart();
   const { data: session } = useSession();
   const user = session?.user ?? null;
   const { discount, appliedCoupon, calculateDiscount } = useCoupon();
@@ -223,12 +228,17 @@ export default function MiniCartDrawer() {
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const { country: shippingCountry, zone: shippingZone } = useShippingAddress();
 
-  const subtotal = useMemo(() => parseCartTotal(total), [total]);
+  const subtotal = useMemo(() => calculateSubtotal(items), [items]);
+  const taxableSubtotal = useMemo(() => calculateTaxableSubtotal(items), [items]);
   const shippingAmount = selectedShippingRate ? selectedShippingRate.cost : 0;
   const couponDiscount = discount || 0;
+  const gst = useMemo(
+    () => calculateGST(subtotal, shippingAmount, couponDiscount, 0, taxableSubtotal),
+    [subtotal, taxableSubtotal, shippingAmount, couponDiscount]
+  );
   const grandTotal = useMemo(
-    () => calculateTotal(subtotal, shippingAmount, couponDiscount),
-    [subtotal, shippingAmount, couponDiscount]
+    () => calculateTotal(subtotal, shippingAmount, couponDiscount, gst),
+    [subtotal, shippingAmount, couponDiscount, gst]
   );
 
   // Memoize handlers to prevent CartItem re-renders
@@ -257,7 +267,7 @@ export default function MiniCartDrawer() {
     if (appliedCoupon && items.length > 0 && isOpen) {
       calculateDiscount(items, subtotal);
     }
-  }, [items, total, appliedCoupon, calculateDiscount, isOpen, subtotal]);
+  }, [items, appliedCoupon, calculateDiscount, isOpen, subtotal]);
 
   return (
     <>
@@ -400,6 +410,12 @@ export default function MiniCartDrawer() {
                           <span className="font-medium">−{formatPrice(couponDiscount)}</span>
                         </div>
                       )}
+                      {gst > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">GST (10%)</span>
+                          <span className="font-medium text-gray-900">{formatPrice(gst)}</span>
+                        </div>
+                      )}
                       <div className="border-t border-gray-100 pt-3">
                         <div className="flex items-center justify-between">
                           <span className="text-base font-bold text-gray-900">Total</span>
@@ -408,7 +424,9 @@ export default function MiniCartDrawer() {
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          GST calculated at checkout if applicable.
+                          {gst > 0
+                            ? "GST applies only to taxable items in your cart."
+                            : "No GST on this cart total (GST-free items only)."}
                         </p>
                       </div>
                     </div>
