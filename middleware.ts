@@ -1,24 +1,11 @@
-import { NextResponse, type NextRequest } from 'next/server';
-// import { validateRedirect, ALLOWED_REDIRECT_PATHS } from '@/lib/redirectUtils';
-import { addSecurityHeadersToResponse } from '@/lib/security-headers';
+import { proxy } from "@/lib/security-headers";
+import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
-  try {
-    const response = NextResponse.next();
-    return addSecurityHeadersToResponse(response);
-  } catch (error) {
-    console.error("[Middleware] Error:", error);
-    const response = NextResponse.next();
-    return addSecurityHeadersToResponse(response);
-  }
+  return proxy(request);
 }
 
-/**
- * Matcher configuration for middleware
- * Only runs on routes that match the pattern
- */
+// Apply to all routes
 export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: "/:path*",
 };

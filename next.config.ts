@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from '@next/bundle-analyzer';
-// import { contentSecurityPolicyHeaderValue } from "./lib/security-headers";
  
 // Optionally include a domain from the WooCommerce API URL if provided
 const wcApiUrl = process.env.NEXT_PUBLIC_WP_URL;
@@ -53,7 +52,6 @@ function nursingServiceRootRedirects(): Array<{
 }
  
 const nextConfig: NextConfig = {
-
   reactCompiler: true,
  
   compress: true,
@@ -73,8 +71,21 @@ const nextConfig: NextConfig = {
       'react-hook-form',
       'lucide-react',
     ],
+    // Enable faster refresh for better HMR experience
+    // optimizeCss: true, // Uncomment if using CSS optimization
+    // Turbopack persistent caching (available in Next.js 15.1+)
     // turbopackPersistentCaching: true, // Uncomment if using Next.js 15.1+
   },
+ 
+  // Route-based prefetching configuration
+  // Next.js automatically prefetches links when they enter the viewport
+  // This configuration optimizes prefetch behavior
+  // Note: Prefetch distance is controlled by Next.js internally (default: ~200px)
+  // We can optimize by using prefetch={true} on critical paths
+ 
+  // ISR (Incremental Static Regeneration) for SEO-friendly product/category pages
+  // Pages will be statically generated and revalidated every 5 minutes
+  // This ensures fast page loads while keeping content fresh
  
   // Optimize loading performance - reduces memory usage in dev
   // Prevents re-compiling on every click by keeping pages in memory longer
@@ -156,9 +167,14 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       // Add known WooCommerce media hosts here
+      // {
+      //   protocol: "https",
+      //   hostname: "wordpress-1496507-5718895.cloudwaysapps.com",
+      //   pathname: "/wp-content/uploads/**",
+      // },
       {
         protocol: "https",
-        hostname: "live.joyamedicalsupplies.com.au",
+        hostname: "**.wordpress-1513595-6089575.cloudwaysapps.com",
         pathname: "/wp-content/uploads/**",
       },
       // Placeholder image host used in development/demo sliders
@@ -205,7 +221,9 @@ const nextConfig: NextConfig = {
     // Enable image optimization
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
-    // contentSecurityPolicy: CSP_HEADER,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // Increase timeout for slow upstream servers (30 seconds)
+    // Note: This requires Next.js 14.1+ for full support
     unoptimized: false,
   },
  
@@ -226,50 +244,19 @@ const nextConfig: NextConfig = {
         destination: '/product/:slug',
         permanent: true,
       },
-      { source: '/privacy', destination: '/privacy-policy', permanent: true },
-      // { source: '/terms', destination: '/info/terms', permanent: true },
+      { source: '/privacy', destination: '/info/privacy', permanent: true },
+      { source: '/terms', destination: '/info/terms', permanent: true },
       { source: '/faq', destination: '/info/faq', permanent: true },
       { source: '/shipping', destination: '/info/shipping', permanent: true },
       { source: '/collection-statement', destination: '/info/collection-statement', permanent: true },
       { source: '/collection-statement-general-enquiries', destination: '/info/collection-statement', permanent: true },
       { source: '/info/blog', destination: '/blog', permanent: true },
-      {
-        source: '/legal/terms',
-        destination: '/info/terms',
-        permanent: true,
-      },
-      {
-        source: '/legal/privacy',
-        destination: '/privacy-policy',
-        permanent: true,
-      },
-      {
-        source: '/health-professional',
-        destination: '/health-professionals',
-        permanent: true,
-      },
-      {
-        source: '/health-professional/:path*',
-        destination: '/health-professionals/:path*',
-        permanent: true,
-      },
       ...nursingServiceRootRedirects()
     ];
   },
  
-  async rewrites() {
-    return [{ source: "/privacy-policy", destination: "/info/privacy" }];
-  },
-
-
   // Enable static page generation with ISR
   output: 'standalone',
 };
-
-/**
- * Google Maps JS + Places needs script/connect to Google hosts, map tiles in img-src,
- * and blob workers. Without these, checkout AddressAutocomplete is blocked by the browser.
- */
-
  
 export default withBundleAnalyzer(nextConfig);
