@@ -18,28 +18,33 @@ export const SECURITY_HEADERS = {
 } as const;
 
 /**
+ * Google Maps JavaScript API + Places (allowlist CSP).
+ * @see https://developers.google.com/maps/documentation/javascript/content-security-policy
+ * googleapis.com must appear in CSP (required since Q2 2023).
+ */
+const GOOGLE_MAPS_SCRIPT_SRC =
+  "https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:";
+
+/**
  * Content Security Policy
  * Note: 'unsafe-inline' for styles is needed for Next.js
- * In production, consider using nonces for scripts
+ * Maps allowlist includes 'unsafe-eval' per Google's documented example (required for some API paths).
  */
 export const CSP_HEADER = [
   "default-src 'self'",
-  // script-src: 'self' + 'unsafe-inline' needed for Next.js hydration
-  // Avoid 'unsafe-eval' in production if possible
-  process.env.NODE_ENV === 'production'
-    ? "script-src 'self' 'unsafe-inline'"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https: blob:",
-  "font-src 'self' data: https:",
-  // Allow connections to WordPress backend
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ''} https:`.trim(),
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC}`,
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com",
+  "font-src 'self' data: https: https://fonts.gstatic.com",
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob:`.trim(),
+  "frame-src *.google.com",
+  "worker-src blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "object-src 'none'", // Block plugins
+  "object-src 'none'",
   "upgrade-insecure-requests",
-].join('; ');
+].join("; ");
 
 /**
  * Apply security headers to a response

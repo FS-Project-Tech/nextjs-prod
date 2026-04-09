@@ -270,7 +270,7 @@ interface AddressAutocompleteProps {
 
 const GOOGLE_MAPS_SCRIPT_ID = "google-maps-places-script";
 
-function loadGoogleMapsScript(apiKey: string, nonce: string): Promise<void> {
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined") {
       reject(new Error("Window is not defined"));
@@ -292,7 +292,7 @@ function loadGoogleMapsScript(apiKey: string, nonce: string): Promise<void> {
     }
     const script = document.createElement("script");
     script.id = GOOGLE_MAPS_SCRIPT_ID;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&nonce=${nonce}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
@@ -361,10 +361,9 @@ export default function AddressAutocomplete({
   const onPlaceSelectRef = useRef(onPlaceSelect);
   onChangeRef.current = onChange;
   onPlaceSelectRef.current = onPlaceSelect;
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   useEffect(() => {
     if (!apiKey || disabled) return;
-    loadGoogleMapsScript(apiKey, nonce as string)
+    loadGoogleMapsScript(apiKey)
       .then(() => setScriptLoaded(true))
       .catch((err) => console.warn("[AddressAutocomplete] Google Maps load failed:", err));
   }, [apiKey, disabled]);
