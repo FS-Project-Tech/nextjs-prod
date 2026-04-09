@@ -72,6 +72,7 @@ main {
 }
 
 .text-teal{color:#1f4551;}
+.bg-teal{background-color:#1f605f;}
 
 /* Default heading scale (WCAG readability); components may override with utilities */
 @layer base {

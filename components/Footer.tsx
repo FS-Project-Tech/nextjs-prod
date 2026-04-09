@@ -99,10 +99,7 @@ export default async function Footer() {
   const siteName = headerData?.siteName || "WooCommerce Store";
 
   return (
-    <footer
-      className="text-white border-t border-teal-600 rounded-t-2xl md:rounded-t-3xl"
-      style={{ backgroundColor: "#1f605f" }}
-    >
+    <footer className="text-white border-t border-teal-600 rounded-t-2xl md:rounded-t-3xl bg-teal">
       <div className="container mx-auto w-full box-border px-4 py-7 sm:px-6 sm:py-9 md:px-8 md:py-10 lg:px-10 lg:py-16">
         <div className="grid grid-cols-1 gap-7 sm:gap-8 md:grid-cols-2 md:gap-8 lg:grid-cols-4 lg:gap-12 mb-7 sm:mb-9 lg:mb-12">
           {/* Column 1: Logo */}
