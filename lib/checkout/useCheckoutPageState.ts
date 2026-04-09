@@ -65,7 +65,7 @@ export function useCheckoutPageState() {
       ? user.roles.map((r: unknown) => String(r || "").trim().toLowerCase())
       : [];
     const isAdmin = roles.includes("administrator");
-    const isNdisApprovedRole = roles.includes("ndis_approved");
+    const isNdisApprovedRole = roles.includes("ndis-approved");
     return isAdmin || isNdisApprovedRole;
   }, [user?.roles]);
 

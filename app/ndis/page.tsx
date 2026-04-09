@@ -219,7 +219,7 @@ export default function NDISPage() {
               style={{ backgroundColor: NDIS_PRIMARY }}
             >
               <Phone className="w-5 h-5" />
-              045 1852 124
+              07 2146 3568
             </a>
           </div>
 
