@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   buildPurchasePayloadFromWooOrder,
   trackPurchaseServerSide,
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
       typeof billing.email === "string" ? billing.email : undefined;
     const purchasePayload = buildPurchasePayloadFromWooOrder(data, billingEmail);
     if (purchasePayload) {
-      void trackPurchaseServerSide(purchasePayload);
+      void trackPurchaseServerSide(purchasePayload, randomUUID());
     }
 
     return NextResponse.json({

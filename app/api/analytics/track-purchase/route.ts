@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   trackPurchaseServerSide,
   type ServerPurchaseItem,
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
     return parsed;
   }
 
-  await trackPurchaseServerSide(parsed);
+  await trackPurchaseServerSide(parsed, randomUUID());
 
   return NextResponse.json({ success: true });
 }
