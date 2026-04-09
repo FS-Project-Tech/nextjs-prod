@@ -3,6 +3,7 @@ import { z } from "zod";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { extractWooOrderKey, getWooOrder } from "@/lib/services/wooService";
 import { createEwayHostedPayment, isEwayConfigured } from "@/lib/services/ewayService";
+import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,6 +14,13 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!validateTrustedBrowserOrigin(req)) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
+
+  const limit = await rateLimit(API_RATE_LIMITS.EWAY_PAYMENT_INIT)(req);
+  if (limit) return limit;
+
   if (!isEwayConfigured()) {
     return NextResponse.json({ success: false, error: "eWAY is not configured." }, { status: 503 });
   }

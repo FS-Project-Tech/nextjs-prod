@@ -7,6 +7,76 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthToken, validateToken, getUserData } from "./auth-server";
 import { getToken } from "next-auth/jwt";
 
+
+const ALLOWED_ORIGINS = [
+  "https://joyamedicalsupplies.com.au",
+  "https://www.joyamedicalsupplies.com.au",
+];
+const ALLOWED_FETCH_SITES = new Set(["same-origin", "same-site", "none"]);
+
+export const API_RATE_LIMITS = {
+  CHECKOUT_WRITE: { maxRequests: 20 },
+  ORDER_WRITE: { windowMs: 60 * 1000, maxRequests: 20 },
+  EWAY_PAYMENT_INIT: { windowMs: 60 * 1000, maxRequests: 10 },
+  CART_MERGE: { windowMs: 60 * 1000, maxRequests: 20 },
+  PRODUCTS_READ: { windowMs: 60 * 1000, maxRequests: 120 },
+  TYPESENSE_SEARCH_READ: { windowMs: 60 * 1000, maxRequests: 180 },
+  WEBHOOK_POST: { windowMs: 60 * 1000, maxRequests: 60 },
+} as const;
+
+export function validateOrigin(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+
+  // Allow server-to-server requests (no origin header)
+  if (!origin) return true;
+
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+export function validateTrustedBrowserOrigin(
+  req: NextRequest,
+  options: { allowNoOrigin?: boolean } = {}
+): boolean {
+  const origin = req.headers.get("origin");
+  const secFetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase();
+
+  if (secFetchSite && !ALLOWED_FETCH_SITES.has(secFetchSite)) {
+    return false;
+  }
+
+  if (!origin) {
+    return options.allowNoOrigin === true;
+  }
+
+  if (origin === req.nextUrl.origin) {
+    return true;
+  }
+
+  return validateOrigin(req);
+}
+
+export function corsResponse(
+  req: NextRequest,
+  response: NextResponse
+): NextResponse {
+  const origin = req.headers.get("origin");
+
+  if (origin && validateOrigin(req)) {
+    response.headers.set("Access-Control-Allow-Origin", origin);
+  }
+
+  response.headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  return response;
+}
+
 /**
  * Rate Limiting Store
  * In production, use Redis or a database
@@ -92,49 +162,7 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
   };
 }
 
-/**
- * JWT Authentication Middleware
- */
-// export async function requireAuth(
-//   req: NextRequest
-// ): Promise<{ user: any; token: string } | NextResponse> {
-//   try {
-//     const token = await getAuthToken();
 
-//     if (!token) {
-//       return NextResponse.json(
-//         { error: 'Authentication required', message: 'Please login to access this resource' },
-//         { status: 401 }
-//       );
-//     }
-
-//     // Validate token
-//     const isValid = await validateToken(token);
-//     if (!isValid) {
-//       return NextResponse.json(
-//         { error: 'Invalid token', message: 'Your session has expired. Please login again.' },
-//         { status: 401 }
-//       );
-//     }
-
-//     // Get user data
-//     const user = await getUserData(token);
-//     if (!user) {
-//       return NextResponse.json(
-//         { error: 'User not found', message: 'Unable to fetch user data. Please login again.' },
-//         { status: 401 }
-//       );
-//     }
-
-//     return { user, token };
-//   } catch (error) {
-//     console.error('Auth middleware error:', error);
-//     return NextResponse.json(
-//       { error: 'Authentication failed', message: 'An error occurred during authentication' },
-//       { status: 500 }
-//     );
-//   }
-// }
 export async function requireAuth(
   req: NextRequest
 ): Promise<{ user: any; token: string } | NextResponse> {

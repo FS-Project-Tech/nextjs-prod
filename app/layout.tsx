@@ -116,6 +116,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   return (
     <html
       lang="en"
@@ -134,6 +135,7 @@ export default function RootLayout({
             <Script
               src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga4MeasurementId)}`}
               strategy="afterInteractive"
+              nonce={nonce}
             />
             <Script id="google-analytics" strategy="afterInteractive">
               {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.gtag=gtag;gtag('js',new Date());gtag('config',${JSON.stringify(ga4MeasurementId)},{send_page_view:false});`}

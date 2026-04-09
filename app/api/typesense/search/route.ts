@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { API_RATE_LIMITS, rateLimit } from "@/lib/api-security";
 import {
   getTypesenseClient,
   getTypesenseCollectionName,
@@ -36,6 +37,9 @@ function parseBrands(raw: string | null): string[] {
 }
 
 export async function GET(request: NextRequest) {
+  const limit = await rateLimit(API_RATE_LIMITS.TYPESENSE_SEARCH_READ)(request);
+  if (limit) return limit;
+
   if (!isTypesenseConfigured()) {
     return NextResponse.json(
       {
@@ -95,6 +99,8 @@ export async function GET(request: NextRequest) {
       maxPrice: /^\d+(\.\d+)?$/.test(maxPrice) ? maxPrice : null,
       onSaleOnly,
     });
+
+    filterParts.push("status:=publish");
 
     const filter_by = filterParts.length ? filterParts.join(" && ") : "";
     const sort_by = mapSortToTypesense(sortBy);

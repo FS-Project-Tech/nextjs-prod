@@ -8,6 +8,7 @@ import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { getCheckoutSessionStore } from "@/lib/checkout-session-store";
 import { getWooStorefrontUrl } from "@/lib/checkout-woo-url";
 import { logCheckoutSession } from "@/lib/checkout-session-log";
+import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import type { CheckoutSessionRecord } from "@/types/checkout-session";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,13 @@ function parseNumericUserId(user: Record<string, unknown> | undefined): number |
  */
 export async function POST(req: NextRequest) {
   try {
+    if (!validateTrustedBrowserOrigin(req)) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
+
+    const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
+    if (limit) return limit;
+
     if (!process.env.CHECKOUT_SESSION_SERVER_SECRET?.trim()) {
       return NextResponse.json(
         {

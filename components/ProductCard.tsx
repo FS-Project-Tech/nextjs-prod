@@ -404,11 +404,13 @@ function ProductCardComponent({
           )}
 
           <div className={priceData.isGstFree ? "text-emerald-700" : undefined}>
-            {priceData.exclPrice ? (
+            {priceData.isGstFree ? (
+              <p className="text-sm font-semibold text-emerald-700">GST Free</p>
+            ) : priceData.exclPrice ? (
               <p className="text-sm text-gray-600">Excl. GST: {priceData.exclPrice}</p>
             ) : null}
             <p className="text-lg font-bold text-teal md:text-[16px]">
-              {priceData.label}: {priceData.formattedCurrent}
+              {priceData.isGstFree ? priceData.formattedCurrent : `${priceData.label}: ${priceData.formattedCurrent}`}
             </p>
 
             {priceData.isOnSale && (

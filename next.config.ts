@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import bundleAnalyzer from '@next/bundle-analyzer';
  
 // Optionally include a domain from the WooCommerce API URL if provided
-const wcApiUrl = process.env.NEXT_PUBLIC_WP_URL;
+const wcApiUrl = process.env.WC_API_URL;
 let wcHost: string | undefined;
 try {
   if (wcApiUrl) {
@@ -167,25 +167,25 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       // Add known WooCommerce media hosts here
-      // {
-      //   protocol: "https",
-      //   hostname: "wordpress-1496507-5718895.cloudwaysapps.com",
-      //   pathname: "/wp-content/uploads/**",
-      // },
       {
         protocol: "https",
-        hostname: "**.wordpress-1513595-6089575.cloudwaysapps.com",
+        hostname: "live.joyamedicalsupplies.com.au",
         pathname: "/wp-content/uploads/**",
       },
-      // Placeholder image host used in development/demo sliders
       {
         protocol: "https",
-        hostname: "picsum.photos",
+        hostname: "stage.joyamedicalsupplies.com.au", // ✅ ADD THIS
+        pathname: "/wp-content/uploads/**",
       },
-      // Unsplash images for NDIS and other sections
       {
         protocol: "https",
-        hostname: "images.unsplash.com",
+        hostname: wcHost,
+        pathname: "/wp-content/uploads/**",
+      },  
+      {
+        protocol: "https",
+        hostname: wcHost,
+        pathname: "/wp-content/uploads/**",
       },
       // Optionally allow the host derived from NEXT_PUBLIC_WC_API_URL
       // (common when media is served from the same domain)
@@ -203,11 +203,11 @@ const nextConfig: NextConfig = {
       ...(process.env.NODE_ENV === 'development' ? [
         {
           protocol: "https" as const,
-          hostname: "**.wordpress.com",
+          hostname: wcHost,
         },
         {
           protocol: "https" as const,
-          hostname: "**.wp.com",
+          hostname: wcHost,
         },
       ] : []),
     ],

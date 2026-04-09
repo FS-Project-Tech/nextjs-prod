@@ -4,6 +4,7 @@ import {
   trackPurchaseServerSide,
 } from "@/lib/analytics/server-track-purchase";
 import wcAPI from "@/lib/woocommerce";
+import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import { readJsonBody } from "@/utils/api-parse";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,13 @@ function mapLineItems(raw: unknown): { ok: true; items: object[] } | { ok: false
  */
 export async function POST(req: NextRequest) {
   try {
+    if (!validateTrustedBrowserOrigin(req)) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
+
+    const limit = await rateLimit(API_RATE_LIMITS.ORDER_WRITE)(req);
+    if (limit) return limit;
+
     const body = (await readJsonBody(req)) as Record<string, unknown>;
 
     const billingResult = requireBilling(body);

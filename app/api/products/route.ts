@@ -3,6 +3,7 @@ import { fetchProducts } from "@/lib/woocommerce";
 import type { WooCommerceProduct } from "@/lib/woocommerce";
 import { cached, productsKey, CACHE_TTL, CACHE_TAGS, PRODUCT_CACHE_HEADERS } from "@/lib/cache";
 import { dedupeProductsById } from "@/lib/utils/product";
+import { API_RATE_LIMITS, rateLimit } from "@/lib/api-security";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -28,6 +29,9 @@ function parseIncludeParam(raw: string | null): number[] {
  */
 export async function GET(request: NextRequest) {
   try {
+    const limit = await rateLimit(API_RATE_LIMITS.PRODUCTS_READ)(request);
+    if (limit) return limit;
+
     const searchParams = request.nextUrl.searchParams;
     const includeIds = parseIncludeParam(searchParams.get("include"));
 

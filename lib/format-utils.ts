@@ -38,8 +38,14 @@ export function getTaxDisplayType(
   tax_class?: string | null,
   tax_status?: string | null
 ): TaxDisplayType {
-  const slug = (tax_class || "").toLowerCase().replace(/\s+/g, "-");
-  const status = (tax_status || "").toLowerCase();
+  const slug = (tax_class || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
+  const status = (tax_status || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
 
   if (slug === "gst-free" || slug === "gstfree" || status === "none") {
     return "gst_free";

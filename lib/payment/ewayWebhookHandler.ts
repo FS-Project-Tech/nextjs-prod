@@ -3,6 +3,9 @@ import crypto from "crypto";
 import { processEwayWebhookPayload } from "@/lib/services/paymentService";
 import { timingSafeEqualHex } from "@/lib/timing-safe";
 
+const WEBHOOK_REPLAY_WINDOW_MS = 10 * 60 * 1000;
+const webhookReplayCache = new Map<string, number>();
+
 /** HMAC-SHA256(rawBody, secret), compared to x-eway-signature (hex, optional sha256= prefix). */
 function isValidEwaySignature(
   rawBody: string,
@@ -45,6 +48,25 @@ function parseBodyRecordFromRaw(raw: string, contentType: string): Record<string
   }
 }
 
+function rememberAndCheckReplay(signatureOrFingerprint: string): boolean {
+  const now = Date.now();
+
+  // Opportunistic cleanup for expired replay keys.
+  for (const [key, expiresAt] of webhookReplayCache) {
+    if (expiresAt <= now) webhookReplayCache.delete(key);
+  }
+
+  if (!signatureOrFingerprint) return false;
+
+  const existingExpiry = webhookReplayCache.get(signatureOrFingerprint);
+  if (existingExpiry && existingExpiry > now) {
+    return true;
+  }
+
+  webhookReplayCache.set(signatureOrFingerprint, now + WEBHOOK_REPLAY_WINDOW_MS);
+  return false;
+}
+
 export function ewayWebhookGet(): NextResponse {
   if (process.env.NODE_ENV === "production") {
     return new NextResponse(null, { status: 404 });
@@ -77,6 +99,16 @@ export async function ewayWebhookPost(req: NextRequest): Promise<NextResponse> {
     if (!isValidEwaySignature(rawBody, secret, sig)) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+  }
+
+  const replayFingerprint =
+    sig ||
+    crypto.createHash("sha256").update(rawBody, "utf8").digest("hex");
+  if (rememberAndCheckReplay(replayFingerprint)) {
+    return NextResponse.json({
+      success: true,
+      data: { message: "Duplicate webhook ignored." },
+    });
   }
 
   const ct = req.headers.get("content-type") || "";

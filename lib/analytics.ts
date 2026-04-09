@@ -61,7 +61,7 @@ export function trackPageView(pagePath: string) {
 // ==============================
 // META PIXEL
 // ==============================
-export function initMetaPixel(pixelId: string) {
+export function initMetaPixel(pixelId: string, nonce: string) {
   if (typeof window === "undefined") return;
 
   // جلوگیری duplicate load
@@ -82,7 +82,7 @@ export function initMetaPixel(pixelId: string) {
     t.src = v;
     s = b.getElementsByTagName(e)[0];
     s.parentNode!.insertBefore(t, s);
-  })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+  })(window, document, "script", `https://connect.facebook.net/en_US/fbevents.js?nonce=${nonce}`);
 
   window.fbq("init", pixelId);
   window.fbq("track", "PageView");

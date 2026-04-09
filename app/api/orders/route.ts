@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
+import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 
 /**
  * Create order in WooCommerce
@@ -9,6 +10,13 @@ import { getAuthToken } from "@/lib/auth-server";
  */
 export async function POST(req: NextRequest) {
   try {
+    if (!validateTrustedBrowserOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const limit = await rateLimit(API_RATE_LIMITS.ORDER_WRITE)(req);
+    if (limit) return limit;
+
     const body = await req.json();
     const paymentMethod = body.payment_method || "";
     const paymentIntentId = body.payment_intent_id || body.transaction_id || null;

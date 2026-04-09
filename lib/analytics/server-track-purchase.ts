@@ -130,7 +130,7 @@ async function sendGa4Purchase(payload: ServerPurchasePayload): Promise<void> {
   }
 }
 
-async function sendMetaPurchase(payload: ServerPurchasePayload): Promise<void> {
+async function sendMetaPurchase(payload: ServerPurchasePayload, nonce: string): Promise<void> {
   const pixelId = process.env.META_PIXEL_ID?.trim();
   const accessToken = process.env.META_ACCESS_TOKEN?.trim();
   if (!pixelId || !accessToken) {
@@ -140,6 +140,7 @@ async function sendMetaPurchase(payload: ServerPurchasePayload): Promise<void> {
 
   const eventUrl = new URL(`https://graph.facebook.com/v18.0/${pixelId}/events`);
   eventUrl.searchParams.set("access_token", accessToken);
+  eventUrl.searchParams.set("nonce", nonce);
 
   const eventTime = Math.floor(Date.now() / 1000);
   const contentIds = payload.items.map((it) => String(it.id));
@@ -190,12 +191,12 @@ async function sendMetaPurchase(payload: ServerPurchasePayload): Promise<void> {
  * Sends purchase to GA4 (Measurement Protocol) and Meta (Conversion API) in parallel.
  * Never throws; logs failures. Missing env vars skip the corresponding sender.
  */
-export async function trackPurchaseServerSide(payload: ServerPurchasePayload): Promise<void> {
+export async function trackPurchaseServerSide(payload: ServerPurchasePayload, nonce: string): Promise<void> {
   await Promise.all([
     sendGa4Purchase(payload).catch((err) => {
       console.error("[analytics] GA4 purchase failed", err);
     }),
-    sendMetaPurchase(payload).catch((err) => {
+    sendMetaPurchase(payload, nonce).catch((err) => {
       console.error("[analytics] Meta purchase failed", err);
     }),
   ]);

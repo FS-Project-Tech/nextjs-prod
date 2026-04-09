@@ -36,23 +36,24 @@ export function proxy(request: NextRequest) {
     https://stats.g.doubleclick.net
     https://maps.googleapis.com/maps-api-v3
     https://connect.facebook.net
-    
     https://maps.googleapis.com
+    https://www.google-analytics.com
+    https://analytics.google.com
+    https://stats.g.doubleclick.net
     https://embed.tawk.to;
   
-  style-src 'self' 'nonce-${nonce}'
-    https://embed.tawk.to;
+  style-src 'self' 'unsafe-inline'
+    https://embed.tawk.to
+    https://fonts.googleapis.com;
   
-  style-src-elem 'self' 'nonce-${nonce}'
-    https://embed.tawk.to;
   
   connect-src 'self'
     https://www.googletagmanager.com
     https://www.google-analytics.com
     https://maps.googleapis.com
-  https://maps.gstatic.com
-  https://www.facebook.com/tr
-  https://maps.googleapis.com/maps-api-v3
+    https://maps.gstatic.com
+    https://www.facebook.com/tr
+    https://maps.googleapis.com/maps-api-v3
     https://stats.g.doubleclick.net
     https://region1.google-analytics.com
     https://analytics.google.com
@@ -89,10 +90,6 @@ export function proxy(request: NextRequest) {
   font-src 'self' data:
   https://fonts.gstatic.com;
 
-style-src 'self' 'nonce-${nonce}'
-  https://embed.tawk.to
-  https://fonts.googleapis.com;
-  
   frame-src 'self'
     https://www.googletagmanager.com
     https://tagmanager.google.com

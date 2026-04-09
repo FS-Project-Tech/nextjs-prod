@@ -8,6 +8,7 @@ import { initGA4, initMetaPixel } from "@/lib/analytics";
  * initGA4 here is only a fallback if gtag is missing (e.g. env added client-only).
  */
 export default function AnalyticsInitializer() {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   useEffect(() => {
     const gaId = process.env.NEXT_PUBLIC_GA4_ID?.trim();
     if (gaId && typeof window !== "undefined" && !window.gtag) {
@@ -16,7 +17,7 @@ export default function AnalyticsInitializer() {
 
     // Initialize Meta Pixel
     if (process.env.NEXT_PUBLIC_META_PIXEL_ID) {
-      initMetaPixel(process.env.NEXT_PUBLIC_META_PIXEL_ID);
+      initMetaPixel(process.env.NEXT_PUBLIC_META_PIXEL_ID, nonce as string);
     }
   }, []);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthToken } from "@/lib/auth-server";
 import { syncCartAfterLogin } from "@/lib/graphql/auth-server";
+import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 
 /**
  * POST /api/cart/merge
@@ -10,6 +11,19 @@ import { syncCartAfterLogin } from "@/lib/graphql/auth-server";
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!validateTrustedBrowserOrigin(request)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: "FORBIDDEN", message: "Forbidden" },
+        },
+        { status: 403 }
+      );
+    }
+
+    const limit = await rateLimit(API_RATE_LIMITS.CART_MERGE)(request);
+    if (limit) return limit;
+
     // Verify authentication
     const authToken = await getAuthToken();
     if (!authToken) {
