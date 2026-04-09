@@ -5,7 +5,6 @@ import {
   corsResponse,
   validateTrustedBrowserOrigin,
   rateLimit,
-  requireAuth,
 } from "@/lib/api-security";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +36,9 @@ export async function POST(req: NextRequest) {
   const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
   if (limit) return limit;
 
-  // ✅ 3. Authentication (ensure user is logged in)
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
-
-  // ✅ 4. Business logic (your checkout)
+  // ✅ 3. Business logic (guests allowed; COD/on-account gated inside handleCheckoutPost)
   const res = await handleCheckoutPost(req);
 
-  // ✅ 5. Apply CORS headers
+  // ✅ 4. Apply CORS headers
   return corsResponse(req, res);
 }
