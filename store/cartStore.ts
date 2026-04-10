@@ -184,6 +184,13 @@ export function useCartStoreItems(): CartItem[] {
   );
 }
 
+/** Read current cart lines imperatively (e.g. bulk add + `/api/cart` sync without stale React closures). */
+export function getActiveCartSnapshot(): CartItem[] {
+  const s = useCartStore.getState();
+  const uid = s.activeUserId;
+  return !uid ? s.guestItems : (s.userCarts[uid] ?? EMPTY_ITEMS);
+}
+
 export function useCartStoreTotalString(): string {
   const items = useCartStoreItems();
   return calculateSubtotal(items).toFixed(2);

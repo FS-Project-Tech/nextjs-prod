@@ -43,20 +43,6 @@ export async function GET(req: NextRequest) {
 
     const user = await userResponse.json();
 
-    // Link guest orders to customer (for users who registered after placing guest order)
-    try {
-      await fetch(`${wpBase}/wp-json/custom/v1/link-guest-orders`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${wpToken}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      });
-    } catch {
-      // Non-blocking - continue even if link fails
-    }
-
     // Initialize stats
     let ordersCount = 0;
     let totalSpent = "0";

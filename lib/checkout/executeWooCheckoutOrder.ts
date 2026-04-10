@@ -1,13 +1,17 @@
 import { INSURANCE_OPTION_META_KEY, PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import {
-  createValidatedCheckoutOrder,
   extractWooOrderId,
   extractWooOrderKey,
   getWooOrder,
   type OrderExtensionTiming,
 } from "@/lib/services/wooService";
 import { handlePayment } from "@/lib/services/paymentService";
-import type { CheckoutActor, CheckoutInitiatePayload } from "@/types/checkout";
+import type { CheckoutActor, CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
+import {
+  upsertValidatedCheckoutOrder,
+  assertWooOrderPayable,
+} from "@/lib/checkout/upsertWooCheckoutOrder";
+import type { WooCreateOrderInput, WooLineItem } from "@/services/woocommerce";
 
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
@@ -67,7 +71,20 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
 
 export type WooCheckoutExecuteResult =
   | { kind: "cod"; orderIdRaw: string | number | bigint; orderKey: string }
-  | { kind: "eway"; orderIdRaw: string | number | bigint; orderKey: string; redirectUrl: string };
+  | {
+      kind: "eway";
+      orderIdRaw: string | number | bigint;
+      orderKey: string;
+      redirectUrl: string;
+      paymentReused?: boolean;
+    }
+  | {
+      kind: "eway_error";
+      message: string;
+      action?: "resume_payment";
+      orderIdRaw: string | number | bigint;
+      orderKey: string;
+    };
 
 /**
  * Creates the WooCommerce order, optional parcel protection fee, then eWAY redirect or COD completion.
@@ -75,52 +92,91 @@ export type WooCheckoutExecuteResult =
  */
 export async function executeWooCheckoutOrder(input: {
   payload: CheckoutInitiatePayload;
-  validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
+  wooLineItems: WooLineItem[];
   shippingLine: { method_id: string; method_title: string; total: string };
   actor: CheckoutActor;
   customerIp?: string;
   /** COD: defer shipping/meta/fees PUT until after the HTTP response (Next `after`). eWAY: inline before payment URL. */
   orderExtensionTiming: OrderExtensionTiming;
+  checkoutSessionId: string;
+  /** Optional UI estimate from {@link validateAndRecalculateCheckout}; payment still uses Woo `order.total`. */
+  totals?: CheckoutTotals;
 }): Promise<WooCheckoutExecuteResult> {
-  const { payload, validatedLineItems, shippingLine, actor, customerIp, orderExtensionTiming } =
-    input;
+  const {
+    payload,
+    wooLineItems,
+    shippingLine,
+    actor,
+    customerIp,
+    orderExtensionTiming,
+    checkoutSessionId,
+  } = input;
   const isCod = payload.payment_method === "cod";
   const paymentTitle = isCod ? "On Account" : "Credit Card (eWAY)";
   /** Phase 1: always `pending` + `set_paid: false`. COD → `processing` is applied in phase-2 PUT. */
   const orderStatus = "pending";
 
-  const order = await createValidatedCheckoutOrder(
-    {
-      payment_method: payload.payment_method,
-      payment_method_title: paymentTitle,
-      set_paid: false,
-      status: orderStatus,
-      customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
-      line_items: validatedLineItems,
-      billing: {
-        ...payload.billing,
-        country: normalizeCountry(payload.billing.country),
-      },
-      shipping: {
-        ...payload.shipping,
-        country: normalizeCountry(payload.shipping.country),
-      },
-      shipping_line: shippingLine,
-      coupon_code: payload.coupon_code,
-      fee_lines:
-        payload.insurance_option === "yes"
-          ? [
-              {
-                name: "Parcel Protection",
-                total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
-                tax_status: "none" as const,
-              },
-            ]
-          : undefined,
-      meta_data: checkoutOrderMeta(payload),
+  const wooInput: WooCreateOrderInput = {
+    payment_method: payload.payment_method,
+    payment_method_title: paymentTitle,
+    set_paid: false,
+    status: orderStatus,
+    customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
+    line_items: wooLineItems,
+    billing: {
+      ...payload.billing,
+      country: normalizeCountry(payload.billing.country),
     },
-    orderExtensionTiming,
-  );
+    shipping: {
+      ...payload.shipping,
+      country: normalizeCountry(payload.shipping.country),
+    },
+    shipping_line: shippingLine,
+    coupon_code: payload.coupon_code,
+    fee_lines:
+      payload.insurance_option === "yes"
+        ? [
+            {
+              name: "Parcel Protection",
+              total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
+              tax_status: "none" as const,
+            },
+          ]
+        : undefined,
+    meta_data: checkoutOrderMeta(payload),
+  };
+
+  let order = await upsertValidatedCheckoutOrder({
+    payload,
+    input: wooInput,
+    timing: orderExtensionTiming,
+    checkoutSessionId,
+    actor,
+    customerIp,
+  });
+
+  if (orderExtensionTiming.mode === "after_response" && payload.payment_method === "cod") {
+    const postIdRaw = extractWooOrderId(order);
+    const postIdNum =
+      typeof postIdRaw === "number" ? postIdRaw : Number.parseInt(String(postIdRaw), 10);
+    if (Number.isFinite(postIdNum) && postIdNum > 0) {
+      let validatedDeferred = false;
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          const refreshed = await getWooOrder(String(postIdNum));
+          assertWooOrderPayable(refreshed);
+          order = refreshed;
+          validatedDeferred = true;
+          break;
+        } catch (e) {
+          lastErr = e;
+          await new Promise((r) => setTimeout(r, 350 + attempt * 150));
+        }
+      }
+      if (!validatedDeferred && lastErr != null) throw lastErr;
+    }
+  }
 
   const orderIdRaw = extractWooOrderId(order);
   if (orderIdRaw == null) {
@@ -169,7 +225,13 @@ export async function executeWooCheckoutOrder(input: {
   });
 
   if (paymentResult.type === "error") {
-    throw new Error(paymentResult.message);
+    return {
+      kind: "eway_error",
+      message: paymentResult.message,
+      action: paymentResult.action,
+      orderIdRaw,
+      orderKey,
+    };
   }
 
   return {
@@ -177,5 +239,6 @@ export async function executeWooCheckoutOrder(input: {
     orderIdRaw,
     orderKey,
     redirectUrl: paymentResult.url,
+    paymentReused: paymentResult.reused === true,
   };
 }

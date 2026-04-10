@@ -8,7 +8,7 @@ import Link from "next/link";
 /** CMS images use <img> so WordPress host always works without next/image remotePatterns. */
 
 const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1556740758-90de374c12ad?w=800&h=1200&fit=crop&q=80";
+  "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2026/04/ndis-homepage.avif?w=800&h=1200&fit=crop&q=80";
 
 /**
  * Banner bounds — embedded layout;-size with login/register right column (min 54%, max 640px).

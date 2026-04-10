@@ -11,9 +11,15 @@ import {
 import {
   extractWooOrderId,
   extractWooOrderKey,
+  getWooOrder,
   resolveOrderPostId,
   updateWooOrder,
 } from "@/lib/services/wooService";
+import {
+  mergeEwayPaymentSessionMeta,
+  readStoredPaymentUrl,
+  shouldReuseEwayPayment,
+} from "@/lib/woo/orderPaymentLock";
 
 export type HandlePaymentContext = {
   method: "eway";
@@ -27,8 +33,8 @@ export type HandlePaymentContext = {
 export type PostOrderPaymentContext = HandlePaymentContext;
 
 export type HandlePaymentResult =
-  | { type: "redirect"; url: string }
-  | { type: "error"; message: string };
+  | { type: "redirect"; url: string; reused?: boolean }
+  | { type: "error"; message: string; action?: "resume_payment" };
 
 /** @deprecated use HandlePaymentResult */
 export type PostOrderPaymentResult = HandlePaymentResult;
@@ -55,7 +61,6 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     return { type: "error", message: "Order was created but has no ID." };
   }
 
-  const o = ctx.order as Record<string, unknown>;
   const billing = ctx.payload.billing;
   const sp = ctx.payload.shipping;
   const ship = {
@@ -76,17 +81,48 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     };
   }
 
-  const total =
-    typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0";
-  const currency = typeof o.currency === "string" && o.currency.trim() ? o.currency.trim() : "AUD";
+  let latest: unknown = ctx.order;
+  try {
+    latest = await getWooOrder(String(postId));
+  } catch (e) {
+    console.warn("[payment] getWooOrder before eWAY failed; using ctx.order", {
+      postId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 
-  const orderKey = extractWooOrderKey(ctx.order);
+  const existingPayUrl = readStoredPaymentUrl(latest);
+  if (shouldReuseEwayPayment(latest) && existingPayUrl) {
+    console.log({
+      tag: "[payment] eWAY reuse existing payment_url from Woo meta",
+      postId,
+      reused: true,
+    });
+    return { type: "redirect", url: existingPayUrl, reused: true };
+  }
+
+  const lo = latest as Record<string, unknown>;
+  const total =
+    typeof lo.total === "string" ? lo.total : typeof lo.total === "number" ? String(lo.total) : "0";
+  const currency =
+    typeof lo.currency === "string" && lo.currency.trim() ? lo.currency.trim() : "AUD";
+
+  const orderKey = extractWooOrderKey(latest);
   if (!orderKey) {
     return {
       type: "error",
       message: "WooCommerce order is missing order_key; cannot build payment return URL.",
     };
   }
+
+  const wooParsed = Number.parseFloat(total);
+  const ewayAmountCents = Math.round(wooParsed * 100);
+  console.log({
+    tag: "[payment] eway amounts (Woo is source of truth)",
+    postId,
+    woo_total: total,
+    eway_amount: ewayAmountCents,
+  });
 
   console.log("[payment] eway: creating hosted payment", { postId });
   const eway = await createEwayHostedPayment({
@@ -101,7 +137,19 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
 
   if (eway.ok === false) {
     console.error("[payment] eWAY hosted payment failed", eway.error);
-    return { type: "error", message: eway.error };
+    return { type: "error", message: eway.error, action: "resume_payment" };
+  }
+
+  try {
+    const fresh = await getWooOrder(String(postId));
+    await updateWooOrder(postId, {
+      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl),
+    });
+  } catch (e) {
+    console.error("[payment] failed to store payment_url / payment_initiated on order", {
+      postId,
+      e,
+    });
   }
 
   console.log("[payment] eway: SharedPaymentUrl issued", { postId });
@@ -173,6 +221,29 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       transactionId: v.transactionId ?? null,
       responseCode: v.responseCode ?? null,
     };
+  }
+
+  try {
+    const existing = (await getWooOrder(String(postId))) as {
+      status?: string;
+      date_paid?: string | null;
+      transaction_id?: string;
+    };
+    const st = String(existing?.status || "").toLowerCase();
+    const alreadyPaid =
+      Boolean(existing?.date_paid) && (st === "processing" || st === "completed");
+    if (alreadyPaid) {
+      console.log("[payment] Woo order already marked paid (idempotent skip)", { postId });
+      return {
+        ok: true,
+        paid: true,
+        orderPostId: postId,
+        transactionId: existing.transaction_id ?? v.transactionId ?? null,
+        responseCode: v.responseCode ?? null,
+      };
+    }
+  } catch (e) {
+    console.warn("[payment] pre-update order read failed; continuing with verify", { postId, e });
   }
 
   try {
@@ -266,13 +337,16 @@ export async function processEwayWebhookPayload(
   const invoiceRef = pickString(body, ["InvoiceReference", "invoice_reference", "order_id"]);
 
   if (txOk === true && invoiceRef) {
-    const postId = await resolveOrderPostId(invoiceRef);
-    if (postId) {
-      await updateWooOrder(postId, { status: "processing", set_paid: true });
-      console.warn(
-        "[payment-webhook] paid via TransactionStatus without AccessCode — configure webhook to send AccessCode when possible"
-      );
-      return { handled: true, message: "Order marked paid (webhook fields only)." };
+    const allowInvoiceOnly = process.env.EWAY_WEBHOOK_ALLOW_INVOICE_STATUS_ONLY === "true";
+    if (allowInvoiceOnly) {
+      const postId = await resolveOrderPostId(invoiceRef);
+      if (postId) {
+        await updateWooOrder(postId, { status: "processing", set_paid: true });
+        console.warn(
+          "[payment-webhook] paid via TransactionStatus without AccessCode — insecure; prefer AccessCode + verify API",
+        );
+        return { handled: true, message: "Order marked paid (webhook fields only)." };
+      }
     }
   }
 

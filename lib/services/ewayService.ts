@@ -154,9 +154,11 @@ export async function createEwayHostedPayment(
     ...(input.customerIp ? { CustomerIP: input.customerIp } : {}),
   };
 
-  console.log("[eway] AccessCodesShared request", {
+  console.log({
+    tag: "[eway] AccessCodesShared request",
+    woo_total: String(input.orderTotal),
+    eway_amount: totalAmount,
     wooOrderId: input.wooOrderId,
-    totalCents: totalAmount,
     currency: body.Payment.CurrencyCode,
   });
 

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import type { CheckoutFormData } from "./schema";
-import { CHECKOUT_INSURANCE_STORAGE_KEY, type InsuranceOption } from "@/lib/checkout-parcel-protection";
 import type { CartItem } from "@/lib/types/cart";
 import { parseCartTotal } from "@/lib/cart/parseCartTotal";
 
@@ -11,37 +10,6 @@ export function useMountFlag(setMounted: (v: boolean) => void): void {
   useEffect(() => {
     setMounted(true);
   }, [setMounted]);
-}
-
-export function useInsuranceHydration(
-  isMounted: boolean,
-  setValue: UseFormSetValue<CheckoutFormData>
-): void {
-  useEffect(() => {
-    if (!isMounted || typeof window === "undefined") return;
-    try {
-      const stored = localStorage.getItem(CHECKOUT_INSURANCE_STORAGE_KEY);
-      if (stored === "yes" || stored === "no") {
-        setValue("insurance_option", stored, { shouldDirty: false });
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [isMounted, setValue]);
-}
-
-export function useInsurancePersistence(
-  isMounted: boolean,
-  insuranceResolved: InsuranceOption
-): void {
-  useEffect(() => {
-    if (!isMounted || typeof window === "undefined") return;
-    try {
-      localStorage.setItem(CHECKOUT_INSURANCE_STORAGE_KEY, insuranceResolved);
-    } catch {
-      /* ignore */
-    }
-  }, [isMounted, insuranceResolved]);
 }
 
 function stripCheckoutErrorQueryParamsFromAddressBar(): void {

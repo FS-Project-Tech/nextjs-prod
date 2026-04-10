@@ -10,7 +10,9 @@ import {
   getTypesenseFacetBy,
   mapSortToTypesense,
   TS_FIELDS,
+  TYPESENSE_DEFAULT_QUERY_BY,
   typesenseHitToListingProduct,
+  typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
 
 function sanitizeSlug(input: string | null, max = 200): string {
@@ -33,6 +35,30 @@ function parseBrands(raw: string | null): string[] {
     out.push(s);
   }
   return out;
+}
+
+/** Allow only safe Typesense field names for `group_by`. */
+function sanitizeGroupByField(raw: string | null): string {
+  if (!raw?.trim()) return "";
+  const s = raw.trim().slice(0, 64);
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : "";
+}
+
+type TypesenseHitLike = { document?: Record<string, unknown> };
+
+function flattenTypesenseHits(result: {
+  hits?: TypesenseHitLike[];
+  grouped_hits?: { hits?: TypesenseHitLike[] }[];
+}): TypesenseHitLike[] {
+  const groups = result.grouped_hits;
+  if (groups && groups.length > 0) {
+    const out: TypesenseHitLike[] = [];
+    for (const g of groups) {
+      for (const h of g.hits || []) out.push(h);
+    }
+    return out;
+  }
+  return result.hits || [];
 }
 
 export async function GET(request: NextRequest) {
@@ -102,16 +128,26 @@ export async function GET(request: NextRequest) {
     const client = getTypesenseClient();
     const collection = getTypesenseCollectionName();
 
+    const groupByParam = sanitizeGroupByField(sp.get("group_by"));
+    const groupLimitRaw = parseInt(sp.get("group_limit") || "10", 10);
+    const groupLimit = Math.min(50, Math.max(1, Number.isFinite(groupLimitRaw) ? groupLimitRaw : 10));
+
     // Typesense requires per_page >= 1; use 1 for facet-only to minimize payload.
     const searchParams: Record<string, unknown> = {
       q,
-      query_by: process.env.TYPESENSE_QUERY_BY || "name,description",
+      query_by:
+        (process.env.TYPESENSE_QUERY_BY || "").trim() || TYPESENSE_DEFAULT_QUERY_BY,
       per_page: facetsOnly ? 1 : perPage,
       page: facetsOnly ? 1 : page,
       sort_by,
     };
 
     if (filter_by) searchParams.filter_by = filter_by;
+
+    if (groupByParam && !facetsOnly) {
+      searchParams.group_by = groupByParam;
+      searchParams.group_limit = groupLimit;
+    }
 
     if (facetsOnly || sp.get("include_facets") === "1") {
       searchParams.facet_by =
@@ -133,11 +169,15 @@ export async function GET(request: NextRequest) {
     const found = result.found ?? 0;
     const totalPages = facetsOnly ? 1 : Math.max(1, Math.ceil(found / perPage));
 
-    const products = dedupeProductsById(
-      (result.hits || []).map((h) =>
-        typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
-      )
-    );
+    const hits = flattenTypesenseHits(result as Parameters<typeof flattenTypesenseHits>[0]);
+    const useSearchShape = sp.get("search_ui") === "1";
+    const products = useSearchShape
+      ? hits.map((h) => typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>))
+      : dedupeProductsById(
+          hits.map((h) =>
+            typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
+          )
+        );
 
     return NextResponse.json(
       {

@@ -1,6 +1,7 @@
 // lib/nextAuthOptions.ts
 import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { linkGuestOrdersAfterLogin } from "@/lib/auth/linkGuestOrders";
 
 interface WPJwtResponse {
   token: string;
@@ -104,6 +105,8 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name;
         token.email = user.email;
         token.sub = user.id as string;
+        // Guest → customer order linking once per sign-in (do not await — keep login responsive)
+        void linkGuestOrdersAfterLogin((user as any).wpToken as string | undefined);
       }
       return token;
     },

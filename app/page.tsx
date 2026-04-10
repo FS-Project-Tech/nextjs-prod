@@ -34,7 +34,6 @@ import MarketingUpdatesSection from "@/components/MarketingUpdatesSection";
 import NDISCTASection from "@/components/NDISCTASection";
 import TrendingSection from "@/components/TrendingSection";
 import NewsletterSection from "@/components/NewsletterSection";
-import AnimatedSection from "@/components/AnimatedSection";
 import HomePageClient from "@/components/HomePageClient";
 import FeatureStrip from "@/components/FeaturedSection";
 
@@ -64,12 +63,12 @@ export default async function Home({
       <OrganizationStructuredData siteUrl={siteUrl} />
 
       <div className="min-h-screen relative">
-         {/* Hero */}
-         <AnimatedSection>
-          <div className="py-4">
+        {/* Hero — no Framer transform wrapper (breaks viewport-width breakout). */}
+        <div className="w-full max-w-none min-w-0">
+          <div className="w-full pb-4">
             <HeroDualSliderServer />
           </div>
-        </AnimatedSection>
+        </div>
         {/* Categories */}
         <Suspense fallback={<div className="h-64 bg-gray-100 rounded mb-10 animate-pulse" />}>
           <CategoriesSection />

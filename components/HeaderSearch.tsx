@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Typesense from "typesense";
+import { TYPESENSE_DEFAULT_QUERY_BY } from "@/lib/typesense-products";
+import {
+  cleanAttributeValuesForDisplay,
+  cleanSearchResultTitle,
+  cleanVariationOptionLine,
+} from "@/lib/search-display-name";
 
 const client = new Typesense.Client({
   nodes: [
@@ -92,6 +98,199 @@ function SearchSpinner() {
   );
 }
 
+const MAX_VARIATION_ROWS_PER_PRODUCT = 8;
+
+type VariationDropdownItem = { id: number; label: string; sku?: string; price?: number };
+
+type FlatSearchRow =
+  | { kind: "parent"; doc: Record<string, unknown> }
+  | { kind: "variation"; doc: Record<string, unknown>; variation: VariationDropdownItem };
+
+function formatDocPrice(doc: Record<string, unknown>): string {
+  const n = Number(doc.price ?? doc.current_price ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return `$${n.toFixed(2)}`;
+}
+
+/** Parent variable products: use catalog price or derive From $x / range from variation_dropdown. */
+function parentPriceDisplay(doc: Record<string, unknown>): string {
+  const direct = formatDocPrice(doc);
+  if (direct) return direct;
+  const vars = parseVariationDropdown(doc);
+  const prices = vars
+    .map((v) => v.price)
+    .filter((p): p is number => p != null && Number.isFinite(p) && p > 0);
+  if (prices.length === 0) return "—";
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (min === max) return `$${min.toFixed(2)}`;
+  return `From $${min.toFixed(2)}`;
+}
+
+function variationPriceDisplay(row: FlatSearchRow): string {
+  if (row.kind !== "variation") return "—";
+  if (row.variation.price != null && row.variation.price > 0) {
+    return `$${Number(row.variation.price).toFixed(2)}`;
+  }
+  if (String(row.doc.type || "").toLowerCase() === "variation") {
+    const p = formatDocPrice(row.doc);
+    if (p) return p;
+  }
+  return "—";
+}
+
+/** Stronger matches (e.g. exact SKU) sort above generic parent rows from the same Typesense hit. */
+function rowQueryBoost(row: FlatSearchRow, rawQuery: string): number {
+  const raw = rawQuery.trim().toLowerCase();
+  if (!raw) return 0;
+  const tokens = raw
+    .split(/[\s,\/&]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 1);
+
+  let score = 0;
+  if (row.kind === "variation") {
+    const sk = (row.variation.sku || "").toLowerCase();
+    if (sk) {
+      if (sk === raw) score += 1_000_000;
+      else if (sk.includes(raw) || (raw.length >= 3 && raw.includes(sk))) score += 500_000;
+      for (const t of tokens) {
+        if (t.length < 2) continue;
+        if (sk === t) score += 800_000;
+        else if (sk.includes(t)) score += 200_000;
+      }
+    }
+    const lab = (row.variation.label || "").toLowerCase();
+    if (lab && lab.includes(raw)) score += 50_000;
+  }
+  if (row.kind === "parent") {
+    const name = String(row.doc.name || "").toLowerCase();
+    if (name.includes(raw)) score += 120_000;
+    for (const t of tokens) {
+      if (t.length >= 3 && name.includes(t)) score += 40_000;
+    }
+  }
+  return score;
+}
+
+type TypesenseHitLite = {
+  document?: Record<string, unknown>;
+  text_match?: number;
+};
+
+function buildRankedFlatRows(
+  hits: TypesenseHitLite[],
+  maxVariations: number,
+  queryTrimmed: string
+): FlatSearchRow[] {
+  const tagged: { row: FlatSearchRow; textMatch: number; seq: number }[] = [];
+  let seq = 0;
+  const textMatchOf = (h: TypesenseHitLite) =>
+    typeof h.text_match === "number" && Number.isFinite(h.text_match) ? h.text_match : 0;
+
+  for (const item of hits) {
+    const doc = item.document;
+    if (!doc) continue;
+    const tm = textMatchOf(item);
+    const docType = String(doc.type || "parent").toLowerCase();
+
+    if (docType === "variation") {
+      const id = Number(doc.id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const sku = String(doc.sku || "").trim();
+      const label = variationLabelFromVariationDoc(doc);
+      tagged.push({
+        row: {
+          kind: "variation",
+          doc,
+          variation: {
+            id,
+            label: label || sku || `Variation #${id}`,
+            sku: sku || undefined,
+            price: Number.isFinite(Number(doc.price)) ? Number(doc.price) : undefined,
+          },
+        },
+        textMatch: tm,
+        seq: seq++,
+      });
+      continue;
+    }
+
+    tagged.push({ row: { kind: "parent", doc }, textMatch: tm, seq: seq++ });
+    for (const variation of parseVariationDropdown(doc).slice(0, maxVariations)) {
+      tagged.push({
+        row: { kind: "variation", doc, variation },
+        textMatch: tm,
+        seq: seq++,
+      });
+    }
+  }
+
+  tagged.sort((a, b) => {
+    if (b.textMatch !== a.textMatch) return b.textMatch - a.textMatch;
+    const qb = rowQueryBoost(b.row, queryTrimmed);
+    const qa = rowQueryBoost(a.row, queryTrimmed);
+    if (qb !== qa) return qb - qa;
+    return a.seq - b.seq;
+  });
+
+  return tagged.map((t) => t.row);
+}
+
+function productPathWithOptionalVariation(slug: string, variationId?: number): string {
+  const s = encodeURIComponent(slug);
+  if (variationId != null && Number.isFinite(variationId) && variationId > 0) {
+    return `/product/${s}?variation_id=${variationId}`;
+  }
+  return `/product/${s}`;
+}
+
+/** Human label for a Typesense variation row (uses indexed attributes, not raw val_*). */
+function variationLabelFromVariationDoc(doc: Record<string, unknown>): string {
+  const attrs = doc.attributes;
+  if (attrs && typeof attrs === "object" && !Array.isArray(attrs)) {
+    const vals = cleanAttributeValuesForDisplay(
+      Object.values(attrs as Record<string, unknown>)
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean)
+    );
+    if (vals.length) return vals.join(" · ");
+  }
+  const name = String(doc.name || "").trim();
+  if (!name) return "";
+  const idx = name.indexOf(" - ");
+  if (idx > 0) return name.slice(idx + 3).trim();
+  return name;
+}
+
+function parseVariationDropdown(doc: Record<string, unknown>): VariationDropdownItem[] {
+  const raw = doc.variation_dropdown_json;
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    const out: VariationDropdownItem[] = [];
+    for (const el of arr) {
+      if (!el || typeof el !== "object") continue;
+      const o = el as Record<string, unknown>;
+      const id = Number(o.id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const rawLabel = String(o.label || "").trim();
+      const label =
+        cleanVariationOptionLine(rawLabel) ||
+        (!/val_[0-9_]+/i.test(rawLabel) ? rawLabel : "") ||
+        `Variation #${id}`;
+      const skuRaw = String(o.sku || "").trim();
+      const priceNum = Number(o.price);
+      const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : undefined;
+      out.push({ id, label, sku: skuRaw || undefined, price });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 function MagnifierIcon() {
   return (
     <svg
@@ -124,6 +323,21 @@ export default function HeaderSearch() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const searchGenerationRef = useRef(0);
+
+  const closePanel = useCallback(() => {
+    setShow(false);
+    setActiveIndex(-1);
+  }, []);
+
+  const flatRows = useMemo(
+    () =>
+      buildRankedFlatRows(
+        results as TypesenseHitLite[],
+        MAX_VARIATION_ROWS_PER_PRODUCT,
+        query.trim()
+      ),
+    [results, query]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -170,10 +384,9 @@ export default function HeaderSearch() {
       inputRef.current?.focus();
       return;
     }
-    setShow(false);
-    setActiveIndex(-1);
+    closePanel();
     router.push(`/search?q=${encodeURIComponent(q)}`);
-  }, [query, router]);
+  }, [query, router, closePanel]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -202,9 +415,10 @@ export default function HeaderSearch() {
           .documents()
           .search({
             q: formattedQuery,
-            query_by: "sku,name,category,brand",
-            per_page: 5,
+            query_by: TYPESENSE_DEFAULT_QUERY_BY,
+            per_page: 10,
             facet_by: "category,brand",
+            sort_by: "_text_match:desc",
           });
 
         if (searchGenerationRef.current !== gen) return;
@@ -237,27 +451,35 @@ export default function HeaderSearch() {
   }, [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const totalItems = results.length;
+    const n = flatRows.length;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((prev) => Math.min(prev + 1, totalItems - 1));
+      if (n === 0) return;
+      setActiveIndex((prev) => (prev < 0 ? 0 : Math.min(prev + 1, n - 1)));
     }
 
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActiveIndex((prev) => Math.max(prev - 1, 0));
+      setActiveIndex((prev) => Math.max(prev - 1, -1));
     }
 
     if (e.key === "Escape") {
-      setShow(false);
+      closePanel();
       return;
     }
 
     if (e.key === "Enter") {
-      if (activeIndex >= 0 && results[activeIndex]) {
-        const hit = results[activeIndex].document;
-        router.push(`/product/${hit.slug}`);
+      const row = activeIndex >= 0 ? flatRows[activeIndex] : undefined;
+      if (row) {
+        closePanel();
+        const slug = String(row.doc.slug || "");
+        router.push(
+          productPathWithOptionalVariation(
+            slug,
+            row.kind === "variation" ? row.variation.id : undefined
+          )
+        );
       } else {
         submitSearch();
       }
@@ -334,7 +556,12 @@ export default function HeaderSearch() {
                     key={cat.value}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => router.push(`/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(cat.value)}`)}
+                    onClick={() => {
+                      closePanel();
+                      router.push(
+                        `/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(cat.value)}`
+                      );
+                    }}
                     className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600"
                   >
                     <span className="whitespace-nowrap">{categoryLabel(cat.value)}</span>
@@ -358,7 +585,12 @@ export default function HeaderSearch() {
                     key={brand.value}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => router.push(`/search?q=${encodeURIComponent(query)}&brand=${encodeURIComponent(brand.value)}`)}
+                    onClick={() => {
+                      closePanel();
+                      router.push(
+                        `/search?q=${encodeURIComponent(query)}&brand=${encodeURIComponent(brand.value)}`
+                      );
+                    }}
                     className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600"
                   >
                     <span className="whitespace-nowrap">{prettyFacetValue(brand.value)}</span>
@@ -385,46 +617,69 @@ export default function HeaderSearch() {
             </div>
 
             <div role="listbox" aria-labelledby={productListId}>
-              {results.map((item, index) => {
-                const hit = item.document;
+              {flatRows.map((row, index) => {
+                const hit = row.doc;
+                const slug = String(hit.slug || "");
+                const isVariation = row.kind === "variation";
 
                 return (
                   <div
-                    key={hit.id}
+                    key={isVariation ? `v-${hit.id}-${row.variation.id}` : `p-${hit.id}`}
                     role="option"
                     aria-selected={index === activeIndex}
                     id={`header-search-option-${index}`}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => router.push(`/product/${hit.slug}`)}
-                    className={`flex min-h-[52px] cursor-pointer gap-3 rounded-lg p-3 text-left focus-within:ring-2 focus-within:ring-teal-600 ${
+                    onClick={() => {
+                      closePanel();
+                      router.push(
+                        productPathWithOptionalVariation(
+                          slug,
+                          isVariation ? row.variation.id : undefined
+                        )
+                      );
+                    }}
+                    className={`flex min-h-[44px] cursor-pointer gap-3 rounded-lg p-3 text-left focus-within:ring-2 focus-within:ring-teal-600 ${
                       index === activeIndex ? "bg-gray-100 ring-2 ring-teal-600 ring-offset-2" : "hover:bg-gray-50"
-                    }`}
+                    } ${isVariation ? "border-l-2 border-teal-500/40 pl-4" : ""}`}
                   >
                     <img
-                      src={hit.image}
+                      src={String(hit.image || "")}
                       alt=""
-                      className="h-14 w-14 shrink-0 object-contain"
+                      className={`shrink-0 object-contain ${
+                        isVariation ? "mt-0.5 h-10 w-10 opacity-80" : "h-14 w-14"
+                      }`}
                     />
 
                     <div className="min-w-0 flex-1">
+                      {isVariation ? (
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
+                          Variant
+                        </p>
+                      ) : null}
                       <p
                         className="text-base font-semibold leading-snug text-gray-900"
                         dangerouslySetInnerHTML={{
-                          __html: highlight(hit.name, query),
+                          __html: highlight(cleanSearchResultTitle(String(hit.name || "")), query),
                         }}
                       />
-
-                      <p className="mt-0.5 text-sm leading-snug text-gray-600">
-                        {categoryLabel(String(Array.isArray(hit.category) ? hit.category[0] : hit.category || ""))}
-                        {hit.brand ? ` • ${prettyFacetValue(String(hit.brand))}` : ""}
-                      </p>
-
                       <p
-                        className="mt-0.5 text-sm text-gray-600"
+                        className="mt-1 text-sm text-gray-600"
                         dangerouslySetInnerHTML={{
-                          __html: highlight(Array.isArray(hit.sku) ? hit.sku[0] : hit.sku, query),
+                          __html: highlight(
+                            isVariation
+                              ? String(row.variation.sku || "")
+                              : String(
+                                  Array.isArray(hit.sku)
+                                    ? hit.sku[0] || ""
+                                    : hit.sku || ""
+                                ),
+                            query
+                          ),
                         }}
                       />
+                      <p className="mt-0.5 text-sm font-semibold text-teal-800">
+                        {isVariation ? variationPriceDisplay(row) : parentPriceDisplay(hit)}
+                      </p>
                     </div>
                   </div>
                 );

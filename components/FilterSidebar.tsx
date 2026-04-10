@@ -888,11 +888,6 @@ export default function FilterSidebar({
             style={{ marginLeft: `${level * 10}px` }}
           >
             <span className="truncate">{category.name}</span>
-            {typeof category.count === "number" && (
-              <span className={`ml-2 text-xs ${isActive ? "text-teal-100" : "text-gray-600"}`}>
-                {category.count}
-              </span>
-            )}
           </button>
         </div>
 
@@ -974,13 +969,6 @@ export default function FilterSidebar({
                   } disabled:opacity-50 disabled:pointer-events-none`}
                 >
                   <span className="truncate">{cat.name}</span>
-                  {typeof cat.count === "number" && cat.count > 0 && (
-                    <span
-                      className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-600"}`}
-                    >
-                      {cat.count}
-                    </span>
-                  )}
                 </button>
               ))
             )}
@@ -1006,13 +994,6 @@ export default function FilterSidebar({
               style={{ marginLeft: `${level * 10}px` }}
             >
               <span className="truncate">{cat.name}</span>
-              {typeof cat.count === "number" && (
-                <span
-                  className={`ml-2 text-xs ${activeCategory === cat.slug ? "text-teal-100" : "text-gray-600"}`}
-                >
-                  {cat.count}
-                </span>
-              )}
             </button>
           ))
         )}
@@ -1122,10 +1103,7 @@ export default function FilterSidebar({
                 onChange={() => handleBrandToggle(b.slug)}
                 className="h-4 w-4 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
               />
-              <span className="truncate">
-                {b.name}
-                {typeof count === "number" ? ` (${count})` : ""}
-              </span>
+              <span className="truncate">{b.name}</span>
             </div>
           </label>
         );

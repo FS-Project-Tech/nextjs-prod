@@ -8,6 +8,9 @@ export type CheckoutCartItem = {
   quantity: number;
   /** Preferred for resolution — mapped to Woo `product_id` / `variation_id` before order creation. */
   sku?: string;
+  /** Set by token redeem when headless locked line amounts (no cart coupon). */
+  subtotal?: string;
+  total?: string;
 };
 
 export type CheckoutAddress = {
@@ -24,12 +27,21 @@ export type CheckoutAddress = {
   country: string;
 };
 
+export type CheckoutResumePayload = {
+  order_id: number;
+  order_key: string;
+};
+
 export type CheckoutInitiatePayload = {
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
   line_items: CheckoutCartItem[];
   shipping_method_id: string;
   payment_method: PaymentMethod;
+  /** Client-generated UUID for idempotent checkout (stored on Woo order meta). */
+  checkout_session_id?: string;
+  /** Guest (or client): resume a specific pending order after a prior create response. */
+  checkout_resume?: CheckoutResumePayload;
   /** Woo Store API checkout field; optional on REST payloads. */
   payment_data?: unknown[];
   coupon_code?: string;

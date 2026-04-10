@@ -5,11 +5,11 @@ import { memo } from "react";
 import { Controller, useWatch, type Control, type FieldErrors } from "react-hook-form";
 import type { CartItem } from "@/lib/types/cart";
 import ShippingOptions from "@/components/ShippingOptions";
-import ParcelProtection from "@/components/ParcelProtection";
 import type { CheckoutFormData, ShippingMethodType } from "@/lib/checkout/schema";
 import { normalizeCountryCode } from "@/lib/checkout/normalizeCountry";
 import { FOCUS_RING, FOCUS_RING_BTN, FOCUS_RING_LINK } from "@/lib/checkout/uiConstants";
 import RequiredMark from "./RequiredMark";
+import AcceptedCardBrands from "./AcceptedCardBrands";
 import { getPaymentMethodOptionLabel } from "@/lib/checkout/paymentDisplay";
 
 export type PaymentSectionProps = {
@@ -132,21 +132,6 @@ function PaymentSectionInner({
         items={items}
       />
 
-      <div className="mt-6 border-t pt-4">
-        <Controller
-          name="insurance_option"
-          control={control}
-          render={({ field }) => (
-            <ParcelProtection
-              insurance_option={
-                field.value === "yes" || field.value === "no" ? field.value : "no"
-              }
-              onInsuranceChange={field.onChange}
-            />
-          )}
-        />
-      </div>
-
       <div className="mt-6 border-t border-gray-200 pt-4">
         <h3 id="checkout-payment-heading" className="mb-4 text-base font-semibold text-gray-900">
           Payment method
@@ -172,6 +157,7 @@ function PaymentSectionInner({
                   {getPaymentMethodOptionLabel({ id: "eway", title: "Credit card (eWAY)" })}
                 </div>
                 <p className="mt-1 text-xs text-gray-700">Secure hosted payment via eWAY.</p>
+                <AcceptedCardBrands className="mt-2.5 rounded-md px-2 py-1.5" />
               </div>
             </label>
             {canUseOnAccount && (

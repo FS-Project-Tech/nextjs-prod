@@ -8,7 +8,12 @@
  * - TYPESENSE_FIELD_ON_SALE — if unset/empty, `on_sale=true` branch is skipped (no field in schema)
  * - TYPESENSE_FIELD_SALE_PRICE — optional; default `sale_price`. Clearance uses `(on_sale:true || sale_price>0)` when both exist.
  * - TYPESENSE_FIELD_POPULARITY / DATE_CREATED / RATING — if unset, sort falls back to `price:desc`
+ * - TYPESENSE_QUERY_BY — comma-separated fields for full-text search (default below)
  */
+
+/** Default `query_by` when `TYPESENSE_QUERY_BY` is unset; keep in sync with `HeaderSearch`. */
+export const TYPESENSE_DEFAULT_QUERY_BY =
+  "name,description,sku,category,brand,tags";
 
 export const TS_FIELDS = {
   categorySlug: process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
@@ -241,7 +246,9 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     toBooleanLike(doc.is_gst_free) ??
     toBooleanLike(doc.gstFree) ??
     null;
-  const taxStatus = normalizeTaxStatus(taxStatusFromDoc) ?? (isGstFree === true ? "none" : undefined);
+  // Prefer explicit gst_free from index over tax_status when they disagree (Woo can send both).
+  const taxStatus =
+    isGstFree === true ? "none" : normalizeTaxStatus(taxStatusFromDoc) ?? undefined;
 
   return {
     id,
@@ -259,6 +266,46 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     rating_count: Number(doc.rating_count ?? 0),
     tax_class: taxClass,
     tax_status: taxStatus,
+    /** Explicit index flag — use for UI when tax_class/status are missing on older documents. */
+    gstFree: isGstFree === true,
     brand_name: brandName,
   };
 }
+
+/** Search / listing row with parent vs variation metadata (Typesense `type`, `parent_id`, `attributes`). */
+export function typesenseHitToSearchProduct(doc: Record<string, unknown>) {
+  const base = typesenseHitToListingProduct(doc);
+  const t = String(doc.type ?? "").toLowerCase();
+  const docType: "parent" | "variation" = t === "variation" ? "variation" : "parent";
+  const parentRaw = doc.parent_id ?? doc.parentId;
+  const parentId =
+    parentRaw != null && String(parentRaw).trim() !== ""
+      ? String(parentRaw).trim()
+      : String(base.id);
+
+  const attributes: Record<string, string> = {};
+  const rawAttr = doc.attributes;
+  if (rawAttr && typeof rawAttr === "object" && !Array.isArray(rawAttr)) {
+    for (const [k, v] of Object.entries(rawAttr as Record<string, unknown>)) {
+      if (!k) continue;
+      attributes[k] = String(v ?? "").trim();
+    }
+  }
+
+  const inStock =
+    typeof doc.in_stock === "boolean"
+      ? doc.in_stock
+      : typeof doc.inStock === "boolean"
+        ? doc.inStock
+        : true;
+
+  return {
+    ...base,
+    docType,
+    parentId,
+    attributes,
+    inStock,
+  };
+}
+
+export type TypesenseSearchProduct = ReturnType<typeof typesenseHitToSearchProduct>;

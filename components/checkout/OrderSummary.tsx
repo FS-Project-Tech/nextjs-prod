@@ -4,7 +4,6 @@ import Image from "next/image";
 import { memo } from "react";
 import CouponInput from "@/components/CouponInput";
 import { formatPrice } from "@/lib/format-utils";
-import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import type { CartItem } from "@/lib/types/cart";
 
 export type OrderSummaryProps = {
@@ -13,7 +12,6 @@ export type OrderSummaryProps = {
   couponDiscount: number;
   appliedCoupon: { code: string } | null;
   shippingCost: number;
-  parcelProtectionFee: number;
   gst: number;
   orderTotal: number;
 };
@@ -24,7 +22,6 @@ function OrderSummary({
   couponDiscount,
   appliedCoupon,
   shippingCost,
-  parcelProtectionFee,
   gst,
   orderTotal,
 }: OrderSummaryProps) {
@@ -89,14 +86,6 @@ function OrderSummary({
           <span className="text-gray-800">Shipping</span>
           <span className="font-medium text-gray-900">{formatPrice(shippingCost)}</span>
         </div>
-        {parcelProtectionFee > 0 && (
-          <div className="flex animate-in fade-in slide-in-from-top-1 duration-200 items-center justify-between">
-            <span className="text-gray-800">Parcel protection</span>
-            <span className="font-medium text-gray-900">
-              {formatPrice(PARCEL_PROTECTION_FEE_AUD)}
-            </span>
-          </div>
-        )}
         <div className="flex items-center justify-between">
           <span className="text-gray-800">GST (10%)</span>
           <span className="font-medium text-gray-900">{formatPrice(gst)}</span>

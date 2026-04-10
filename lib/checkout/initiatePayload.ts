@@ -42,6 +42,13 @@ export const checkoutInitiateSchema = z.object({
   line_items: z.array(cartLineSchema).min(1),
   shipping_method_id: z.string().trim().min(1),
   payment_method: paymentMethodSchema,
+  checkout_session_id: z.string().uuid().optional(),
+  checkout_resume: z
+    .object({
+      order_id: z.number().int().positive(),
+      order_key: z.string().trim().min(8),
+    })
+    .optional(),
   /** Matches Woo Store API; optional on headless REST checkout. */
   payment_data: z.array(z.unknown()).optional(),
   coupon_code: z.string().trim().optional(),

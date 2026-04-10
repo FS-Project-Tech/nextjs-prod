@@ -60,18 +60,25 @@ function OrderReviewContent() {
         return;
       }
 
+      if (accessCodeFromUrl?.trim() && !orderKeyFromUrl?.trim()) {
+        setError(
+          "This payment return is missing the order key. Use the full return link from checkout (it includes key=…), or open the order from your account.",
+        );
+        setLoading(false);
+        return;
+      }
+
       try {
         const hasKey = Boolean(orderKeyFromUrl?.trim());
-        const ac = accessCodeFromUrl?.trim()
-          ? `&AccessCode=${encodeURIComponent(accessCodeFromUrl.trim())}`
-          : "";
-        const orderApiUrl = hasKey
-          ? `/api/checkout/get-order?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKeyFromUrl!.trim())}${ac}`
-          : accessCodeFromUrl
-            ? `/api/orders/${encodeURIComponent(orderId)}?AccessCode=${encodeURIComponent(accessCodeFromUrl)}`
-            : `/api/orders/${encodeURIComponent(orderId)}`;
+        const acTrim = accessCodeFromUrl?.trim() || "";
+        const orderApiBase = hasKey
+          ? `/api/checkout/get-order?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKeyFromUrl!.trim())}`
+          : `/api/orders/${encodeURIComponent(orderId)}`;
+        /** First hit with AccessCode schedules one deferred eWAY verify; polls use base URL only to avoid duplicate verify work. */
+        const orderApiUrlFirst =
+          hasKey && acTrim ? `${orderApiBase}&AccessCode=${encodeURIComponent(acTrim)}` : orderApiBase;
 
-        const maxAttempts = accessCodeFromUrl ? 6 : hasKey ? 2 : 3;
+        const maxAttempts = acTrim ? 14 : hasKey ? 2 : 3;
         let data: { order?: OrderReviewOrder } | null = null;
         let lastError: Error | null = null;
 
@@ -80,6 +87,7 @@ function OrderReviewContent() {
             await sleep(180 + attempt * 220);
           }
 
+          const orderApiUrl = attempt === 0 ? orderApiUrlFirst : orderApiBase;
           const res = await fetch(orderApiUrl, {
             cache: "no-store",
             credentials: "same-origin",
@@ -128,6 +136,20 @@ function OrderReviewContent() {
 
           if (!parsed.order || typeof parsed.order !== "object") {
             lastError = new Error("Order details were missing from the server response.");
+            continue;
+          }
+
+          const ord = parsed.order;
+          const st = String(ord.status || "").toLowerCase();
+          const pm = String(ord.payment_method || "").toLowerCase();
+          const waitForEwayConfirm =
+            Boolean(acTrim) &&
+            st === "pending" &&
+            pm === "eway" &&
+            attempt < maxAttempts - 1;
+
+          if (waitForEwayConfirm) {
+            await sleep(320 + attempt * 180);
             continue;
           }
 

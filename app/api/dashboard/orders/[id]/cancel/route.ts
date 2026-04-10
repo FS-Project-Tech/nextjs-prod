@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
 import wcAPI from "@/lib/woocommerce";
+import { orderBelongsToDashboardUser } from "@/lib/dashboard/orderOwnership";
 
 /**
  * POST /api/dashboard/orders/[id]/cancel
@@ -56,19 +57,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       throw error;
     }
 
-    // Verify order belongs to user
-    const orderEmail = order.billing?.email || order.customer_id;
-    const userEmail = user.email;
-    const customerId = order.customer_id;
-
-    // Get WooCommerce customer ID for comparison using optimized approach
+    const userEmail = typeof user.email === "string" ? user.email : "";
     const { getCustomerIdWithFallback } = await import("@/lib/customer");
-    const wcCustomerId = await getCustomerIdWithFallback(userEmail, token);
+    const wooCustomerId = await getCustomerIdWithFallback(userEmail, token);
 
-    const isOwner =
-      orderEmail === userEmail || customerId === user.id || customerId === wcCustomerId;
-
-    if (!isOwner) {
+    if (
+      !orderBelongsToDashboardUser({
+        order,
+        userEmail,
+        wooCustomerId,
+      })
+    ) {
       return NextResponse.json(
         { error: "You do not have permission to cancel this order" },
         { status: 403 }

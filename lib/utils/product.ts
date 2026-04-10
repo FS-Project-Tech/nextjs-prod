@@ -125,6 +125,26 @@ export function matchVariation(
 }
 
 /**
+ * Build `ProductVariations` selected map from `?variation_id=` (Woo variation post id).
+ */
+export function selectedAttributesForVariationId(
+  variationId: number,
+  variations: WooCommerceVariation[],
+  productAttributeDefs: { name: string; options?: string[] }[]
+): Record<string, string> | null {
+  const v = variations.find((x) => x.id === variationId);
+  if (!v) return null;
+  const out: Record<string, string> = {};
+  for (const def of productAttributeDefs) {
+    const va = v.attributes.find((a) => variationAttributeNamesMatch(a.name, def.name));
+    if (va && !isVariationAnyOption(va.option)) {
+      out[def.name] = va.option;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * Find brand from product_brand taxonomy or attributes
  * WooCommerce REST API may include brands in the product response similar to categories
  */

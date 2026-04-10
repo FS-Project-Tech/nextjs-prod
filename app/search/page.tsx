@@ -6,8 +6,9 @@ import { useSearchParams } from "next/navigation";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Container from "@/components/Container";
 import ListingMobileSortFilter from "@/components/ListingMobileSortFilter";
-import ProductGrid from "@/components/ProductGrid";
+import SearchResults from "@/components/search/SearchResults";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
+import { SearchProvider } from "@/hooks/useSearch";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 import ShopListingLayout from "@/components/ShopListingLayout";
 
@@ -21,46 +22,37 @@ function SearchResultsContent() {
   const q = useMemo(() => (searchParams.get("q") || "").trim(), [searchParams]);
 
   return (
-    <ShopListingLayout>
-      <div className="min-h-screen py-4">
-        <Container>
-          <Breadcrumbs
-            items={[
-              { label: "Home", href: "/" },
-              { label: "Shop", href: "/shop" },
-              { label: q ? `Search: ${q}` : "Search" },
-            ]}
-          />
+    <SearchProvider urlQuery={q}>
+      <ShopListingLayout>
+        <div className="min-h-screen py-4">
+          <Container>
+            <Breadcrumbs
+              items={[
+                { label: "Home", href: "/" },
+                { label: "Shop", href: "/shop" },
+                { label: q ? `Search: ${q}` : "Search" },
+              ]}
+            />
 
-          <div className="mb-4 lg:mb-6">
-            <h1 className="text-xl font-semibold text-gray-900 lg:text-2xl">
-              {q ? `Search results for “${q}”` : "Search"}
-            </h1>
-            {!q && (
-              <p className="mt-1 text-sm text-gray-600">
-                Enter a term in the header search to find products.
-              </p>
-            )}
-          </div>
+            <div className="flex flex-col gap-6 pt-2 lg:flex-row lg:pt-4">
+              <ListingMobileSortFilter />
 
-          <div className="flex flex-col gap-6 lg:flex-row">
-            <ListingMobileSortFilter />
+              <aside className="hidden shrink-0 lg:block lg:w-64">
+                <div className="sticky top-24">
+                  <FilterSidebar />
+                </div>
+              </aside>
 
-            <aside className="hidden shrink-0 lg:block lg:w-64">
-              <div className="sticky top-24">
-                <FilterSidebar />
+              <div className="min-w-0 flex-1">
+                <Suspense fallback={<ProductGridSkeleton />}>
+                  <SearchResults />
+                </Suspense>
               </div>
-            </aside>
-
-            <div className="min-w-0 flex-1">
-              <Suspense fallback={<ProductGridSkeleton />}>
-                <ProductGrid />
-              </Suspense>
             </div>
-          </div>
-        </Container>
-      </div>
-    </ShopListingLayout>
+          </Container>
+        </div>
+      </ShopListingLayout>
+    </SearchProvider>
   );
 }
 

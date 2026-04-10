@@ -5,7 +5,7 @@ export default function NDISCTASection() {
   // Placeholder image - replace with your actual NDIS image
   const ndisImage =
     process.env.NEXT_PUBLIC_NDIS_IMAGE_URL ||
-    "https://images.unsplash.com/photo-1543269664-7eef42226a21?w=800&h=600&fit=crop";
+    "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2026/04/ndis-homepage.avif?w=800&h=600&fit=crop";
 
   return (
     <section id="ndis" className="mb-16">

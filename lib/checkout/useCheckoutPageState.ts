@@ -10,15 +10,13 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useUser } from "@/hooks/useUser";
 import { useCoupon } from "@/components/CouponProvider";
 import { useCheckoutTotals } from "@/hooks/useCheckoutTotals";
-import type { InsuranceOption } from "@/lib/checkout-parcel-protection";
 import { parseCartTotal } from "@/lib/cart/parseCartTotal";
 import { calculateTaxableSubtotal } from "@/lib/cart/pricing";
 import { submitCheckoutOrder } from "@/lib/payment/submitCheckoutOrder";
+import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
 import {
-  useInsuranceHydration,
-  useInsurancePersistence,
   useMountFlag,
   useCheckoutQueryToasts,
   useRecalculateCouponWhenCartChanges,
@@ -38,6 +36,23 @@ export function useCheckoutPageState() {
   const [placing, setPlacing] = useState(false);
   const submitGuardRef = useRef(false);
   const redirectPendingRef = useRef(false);
+  const checkoutSessionIdRef = useRef("");
+
+  const ensureCheckoutSessionId = useCallback((): string => {
+    if (checkoutSessionIdRef.current.trim()) return checkoutSessionIdRef.current.trim();
+    try {
+      let v = sessionStorage.getItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
+      if (!v && typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        v = crypto.randomUUID();
+        sessionStorage.setItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY, v);
+      }
+      checkoutSessionIdRef.current = v?.trim() || "";
+    } catch {
+      checkoutSessionIdRef.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "";
+    }
+    return checkoutSessionIdRef.current;
+  }, []);
   const [selectedBillingAddressId, setSelectedBillingAddressId] = useState("");
   const [selectedShippingAddressId, setSelectedShippingAddressId] = useState("");
   const [openNdisSection, setOpenNdisSection] = useState(false);
@@ -66,7 +81,8 @@ export function useCheckoutPageState() {
       : [];
     const isAdmin = roles.includes("administrator");
     const isNdisApprovedRole = roles.includes("ndis-approved");
-    return isAdmin || isNdisApprovedRole;
+    const isB2bUser = roles.includes("b2b_user");
+    return isAdmin || isNdisApprovedRole || isB2bUser;
   }, [user?.roles]);
 
   useEffect(() => {
@@ -83,13 +99,11 @@ export function useCheckoutPageState() {
   const { control, register, handleSubmit, setValue, formState: { errors } } = form;
   // Scoped useWatch fields only — avoids subscribing to the entire form (no watch() snapshot).
   const watchedShippingMethod = useWatch({ control, name: "shippingMethod" });
-  const watchedInsurance = useWatch({ control, name: "insurance_option", defaultValue: "no" });
   const shipToDifferentAddress = useWatch({
     control,
     name: "shipToDifferentAddress",
     defaultValue: false,
   });
-  const insuranceResolved: InsuranceOption = watchedInsurance === "yes" ? "yes" : "no";
 
   /** One-shot apply of first saved address per section (returning customers). */
   const savedAddressHydrationRef = useRef({ billing: false, shipping: false });
@@ -150,17 +164,14 @@ export function useCheckoutPageState() {
     ? Number((watchedShippingMethod as ShippingMethodType)?.cost || 0)
     : 0;
   const couponDiscount = couponDiscountAmount || 0;
-  const { parcelProtectionFee, gst, orderTotal } = useCheckoutTotals(
+  const { gst, orderTotal } = useCheckoutTotals(
     subtotal,
     taxableSubtotal,
     shippingCost,
-    couponDiscount,
-    insuranceResolved
+    couponDiscount
   );
 
   useMountFlag(setIsMounted);
-  useInsuranceHydration(isMounted, setValue);
-  useInsurancePersistence(isMounted, insuranceResolved);
   useCheckoutQueryToasts(isMounted, searchParams, showError);
 
   /** Warm checkout API + prefetch order review so post-submit navigation is instant. */
@@ -192,9 +203,11 @@ export function useCheckoutPageState() {
 
   const onSubmit = useCallback(
     async (data: CheckoutFormData) => {
+      if (placing) return;
       await submitCheckoutOrder({
         data,
         cartLines,
+        checkoutSessionId: ensureCheckoutSessionId(),
         selectedPaymentMethod,
         ewayTokenFlowEnabled,
         appliedCoupon,
@@ -211,6 +224,7 @@ export function useCheckoutPageState() {
       });
     },
     [
+      placing,
       cartLines,
       selectedPaymentMethod,
       ewayTokenFlowEnabled,
@@ -221,6 +235,7 @@ export function useCheckoutPageState() {
       clearLocalCart,
       user?.id,
       replaceInternalCheckoutPath,
+      ensureCheckoutSessionId,
     ]
   );
 
@@ -241,7 +256,6 @@ export function useCheckoutPageState() {
     couponDiscount,
     appliedCoupon,
     shippingCost,
-    parcelProtectionFee,
     gst,
     orderTotal,
     postSubmitNavigation,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import wcAPI from "@/lib/woocommerce";
-import { verifyEwayPayment } from "@/lib/services/ewayService";
+import { keysMatchWooOrder } from "@/lib/order/orderKeyVerify";
+import { scheduleEwayOrderReturnVerify } from "@/lib/payment/scheduleEwayOrderReturnVerify";
 import { resolveOrderPostId } from "@/lib/services/wooService";
 
 /**
@@ -28,19 +28,6 @@ function orderReviewReadTimeoutMs(): number {
 function wooCheckoutMutationTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_WRITE_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 90_000;
-}
-
-function keysMatch(wooKey: string, provided: string): boolean {
-  const a = String(wooKey || "");
-  const b = String(provided || "");
-  try {
-    const ba = Buffer.from(a, "utf8");
-    const bb = Buffer.from(b, "utf8");
-    if (ba.length !== bb.length) return false;
-    return timingSafeEqual(ba, bb);
-  } catch {
-    return false;
-  }
 }
 
 export async function GET(req: NextRequest) {
@@ -86,7 +73,7 @@ export async function GET(req: NextRequest) {
     }
 
     const wooKey = typeof order.order_key === "string" ? order.order_key : "";
-    if (!wooKey || !keysMatch(wooKey, keyParam)) {
+    if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
       return NextResponse.json({ error: "Invalid order key" }, { status: 403 });
     }
 
@@ -95,93 +82,12 @@ export async function GET(req: NextRequest) {
       String(order.status || "").toLowerCase() === "pending" &&
       String(order.payment_method || "").toLowerCase() === "eway"
     ) {
-      const verification = await verifyEwayPayment(accessCode);
-      if (verification.ok && verification.success) {
-        try {
-          const patch: Record<string, unknown> = {
-            status: "processing",
-            set_paid: true,
-          };
-          if (verification.transactionId) {
-            patch.transaction_id = verification.transactionId;
-          }
-          await wcAPI.put(`/orders/${order.id}`, patch, { timeout: mutationTimeout });
-          let refreshed: Record<string, unknown> | null = null;
-          for (let r = 0; r < 4; r++) {
-            try {
-              const { data: again } = await wcAPI.get(`/orders/${order.id}`, {
-                timeout: mutationTimeout,
-                params: lean,
-              });
-              if (again && typeof again === "object") {
-                refreshed = again as Record<string, unknown>;
-                break;
-              }
-            } catch (getErr) {
-              if (r === 3) throw getErr;
-            }
-            await new Promise((res) => setTimeout(res, 400 + r * 250));
-          }
-          if (!refreshed || typeof refreshed !== "object") {
-            return NextResponse.json(
-              { error: "Order was updated but details could not be loaded. Please refresh." },
-              { status: 502 }
-            );
-          }
-          try {
-            const note = [
-              "eWAY payment verified from order-review return.",
-              verification.transactionId
-                ? `TransactionID: ${verification.transactionId}.`
-                : null,
-              verification.responseCode
-                ? `ResponseCode: ${verification.responseCode}.`
-                : null,
-              "Order moved to Processing and marked paid.",
-            ]
-              .filter(Boolean)
-              .join(" ");
-            await wcAPI.post(
-              `/orders/${order.id}/notes`,
-              {
-                note,
-                customer_note: false,
-              },
-              { timeout: mutationTimeout },
-            );
-          } catch (noteErr) {
-            console.warn("[checkout/get-order] eWAY note write failed", noteErr);
-          }
-          order = refreshed;
-        } catch (updateErr) {
-          console.warn("[checkout/get-order] eWAY verified but Woo update failed", updateErr);
-        }
-      } else {
-        try {
-          const note = [
-            "eWAY payment verification attempt was not successful.",
-            verification.ok
-              ? "Verification response indicates payment is not complete."
-              : `Verification error: ${verification.ok === false ? verification.error : "Unknown"}`,
-            verification.ok && verification.responseCode
-              ? `ResponseCode: ${verification.responseCode}.`
-              : null,
-            "Order remains Pending.",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          await wcAPI.post(
-            `/orders/${order.id}/notes`,
-            {
-              note,
-              customer_note: false,
-            },
-            { timeout: mutationTimeout },
-          );
-        } catch (noteErr) {
-          console.warn("[checkout/get-order] eWAY unsuccessful note write failed", noteErr);
-        }
-      }
+      scheduleEwayOrderReturnVerify({
+        accessCode,
+        orderId: order.id as number | string,
+        mutationTimeoutMs: mutationTimeout,
+        logTag: "[checkout/get-order]",
+      });
     }
 
     return NextResponse.json(

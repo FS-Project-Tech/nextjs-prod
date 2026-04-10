@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { validatedLineItems, shippingLine, totals } =
+    const { validatedLineItems, wooLineItems, shippingLine, totals } =
       await validateAndRecalculateCheckout(payload);
 
     const session = await getServerSession(authOptions);
@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
       payment_method: payload.payment_method,
       payload,
       validatedLineItems,
+      wooLineItems,
       shippingLine,
       totals,
     };

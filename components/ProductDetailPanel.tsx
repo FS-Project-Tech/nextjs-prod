@@ -2,6 +2,7 @@
 
 import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
 import { useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProductVariationGallery } from "@/components/product/ProductVariationGalleryProvider";
 import ProductVariations from "@/components/ProductVariations";
 import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
@@ -13,6 +14,7 @@ import {
   matchVariation,
   findBrand,
   extractProductBrands,
+  selectedAttributesForVariationId,
 } from "@/lib/utils/product";
 import { useViewedProduct } from "@/hooks/useViewedProducts";
 import ConsultationFormModal from "@/components/ConsultationFormModal";
@@ -49,6 +51,14 @@ export default function ProductDetailPanel({
   product: WooCommerceProduct;
   variations: WooCommerceVariation[];
 }) {
+  const searchParams = useSearchParams();
+  const variationIdFromUrl = useMemo(() => {
+    const raw = searchParams.get("variation_id");
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+
   const [plan, setPlan] = useState<RecurringPlan>("none");
   const [selected, setSelected] = useState<{ [name: string]: string }>({});
   const [selectedSimpleAttributes, setSelectedSimpleAttributes] = useState<{ [name: string]: string }>(
@@ -89,6 +99,14 @@ export default function ProductDetailPanel({
       .filter((a: any) => (a?.variation ?? false) && Array.isArray(a.options))
       .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
   }, [product.attributes]);
+
+  const urlVariationSelected = useMemo(() => {
+    if (!variationIdFromUrl || !attributes.length || !variations.length) return {};
+    return (
+      selectedAttributesForVariationId(variationIdFromUrl, variations, attributes) ?? {}
+    );
+  }, [variationIdFromUrl, variations, attributes]);
+
   const simpleAttributes = useMemo(() => {
     return (product.attributes || [])
       .filter((a: any) => !(a?.variation ?? false) && Array.isArray(a.options) && a.options.length > 0)
@@ -382,6 +400,7 @@ export default function ProductDetailPanel({
           <ProductVariations
             attributes={attributes}
             variations={variations}
+            defaultSelected={urlVariationSelected}
             onVariationChange={(variation, selectedAttributes) => {
               setMatchedVariation(variation);
               setSelected(selectedAttributes);

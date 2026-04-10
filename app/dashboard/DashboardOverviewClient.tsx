@@ -75,7 +75,7 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
       {/* Welcome Section */}
       <div className="bg-gradient-to-r from-teal-500 to-teal-700 rounded-lg p-8 text-white">
         <h1 className="text-3xl font-bold mb-2" suppressHydrationWarning>
-          Welcome back, {mounted && effectiveUser?.name ? effectiveUser.name : "User"}!
+          Welcome {mounted && effectiveUser?.name ? effectiveUser.name : "User"}!
         </h1>
         <p className="text-teal-100">Here&apos;s an overview of your account activity</p>
       </div>

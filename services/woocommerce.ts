@@ -6,6 +6,12 @@ export type WooLineItem = {
   product_id: number;
   variation_id?: number;
   quantity: number;
+  /**
+   * When set, Woo uses these line amounts instead of recalculating from catalog/plugins
+   * (must match the same REST `price` values used in headless checkout).
+   */
+  subtotal?: string;
+  total?: string;
 };
 
 export type WooFeeLineInput = {
@@ -40,7 +46,10 @@ export type WooMinimalOrderInput = Pick<
   | "billing"
   | "shipping"
   | "customer_id"
->;
+> & {
+  /** Optional (e.g. checkout session UUID for idempotent creates). */
+  meta_data?: Array<{ key: string; value: unknown }>;
+};
 
 /**
  * Single axios config object per request (timeout + optional AbortSignal).
@@ -77,6 +86,7 @@ export async function createWooOrderMinimal(
     line_items: input.line_items,
     billing: input.billing,
     shipping: input.shipping,
+    ...(input.meta_data && input.meta_data.length > 0 ? { meta_data: input.meta_data } : {}),
   };
 
   const config = buildWooOrderWriteConfig(opts);

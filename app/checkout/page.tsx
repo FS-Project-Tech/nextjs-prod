@@ -38,7 +38,6 @@ function CheckoutPageInner() {
     couponDiscount,
     appliedCoupon,
     shippingCost,
-    parcelProtectionFee,
     gst,
     orderTotal,
     placing,
@@ -156,7 +155,6 @@ function CheckoutPageInner() {
                 couponDiscount={couponDiscount}
                 appliedCoupon={appliedCoupon}
                 shippingCost={shippingCost}
-                parcelProtectionFee={parcelProtectionFee}
                 gst={gst}
                 orderTotal={orderTotal}
               />

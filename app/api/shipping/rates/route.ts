@@ -1,30 +1,36 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
 
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    let country = (searchParams.get("country") || "AU").trim().toUpperCase();
-    if (country === "AUSTRALIA") country = "AU";
-    const state = (searchParams.get("state") || "").trim();
-    const postcode = (searchParams.get("postcode") || "").trim();
-    const city = (searchParams.get("city") || "").trim();
-    const subtotal = searchParams.get("subtotal");
-    const cartSubtotal = subtotal ? parseFloat(subtotal) : 0;
+export const dynamic = "force-dynamic";
 
+/**
+ * GET — server-side Woo zone/method resolution (same engine as checkout order pricing).
+ */
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+
+  const country = searchParams.get("country") || "AU";
+  const state = searchParams.get("state") || "";
+  const postcode = searchParams.get("postcode") || "";
+  const city = searchParams.get("city") || "";
+  const subtotalRaw = searchParams.get("subtotal");
+  const cartSubtotal = Number.parseFloat(subtotalRaw || "0");
+  const cartSubtotalSafe = Number.isFinite(cartSubtotal) ? cartSubtotal : 0;
+
+  try {
     const { rates } = await computeShippingRates({
       country,
       state,
       postcode,
       city,
-      cartSubtotal,
+      cartSubtotal: cartSubtotalSafe,
     });
-
-    return NextResponse.json({ rates });
-  } catch (error) {
-    const axiosLike = error as { response?: { status?: number; data?: unknown } };
-    const status = axiosLike.response?.status || 500;
-    const message = axiosLike.response?.data || { message: "Failed to fetch shipping rates" };
-    return NextResponse.json(message, { status });
+    return NextResponse.json({ rates }, { status: 200 });
+  } catch (e) {
+    console.error("[api/shipping/rates]", e);
+    return NextResponse.json(
+      { error: "Shipping fetch failed", rates: [] },
+      { status: 500 },
+    );
   }
 }

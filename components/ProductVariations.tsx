@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { WooCommerceVariation } from "@/lib/woocommerce";
+import { matchVariation } from "@/lib/utils/product";
 
 interface VariationAttribute {
   name: string;
@@ -184,6 +185,16 @@ export default function ProductVariations({
   const [selectedAttributes, setSelectedAttributes] = useState<{ [name: string]: string }>(
     defaultSelected
   );
+  const defaultSelectedKey = JSON.stringify(defaultSelected);
+  const onVariationChangeRef = useRef(onVariationChange);
+  onVariationChangeRef.current = onVariationChange;
+
+  useEffect(() => {
+    if (Object.keys(defaultSelected).length === 0) return;
+    setSelectedAttributes(defaultSelected);
+    const m = matchVariation(variations, defaultSelected);
+    onVariationChangeRef.current?.(m, defaultSelected);
+  }, [defaultSelectedKey, variations]);
 
   // Determine main and secondary attributes (first attribute is main, rest are secondary)
   const mainAttribute = attributes.length > 0 ? attributes[0] : null;

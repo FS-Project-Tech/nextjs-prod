@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { extractWooOrderKey, getWooOrder } from "@/lib/services/wooService";
+import { extractWooOrderKey, getWooOrder, resolveOrderPostId } from "@/lib/services/wooService";
 import { createEwayHostedPayment, isEwayConfigured } from "@/lib/services/ewayService";
+import { updateWooOrder } from "@/services/woocommerce";
 import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import {
+  mergeEwayPaymentSessionMeta,
+  readStoredPaymentUrl,
+  shouldReuseEwayPayment,
+} from "@/lib/woo/orderPaymentLock";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -41,6 +47,14 @@ export async function POST(req: NextRequest) {
   }
 
   const orderIdStr = String(parsed.order_id);
+  const postIdNum =
+    typeof parsed.order_id === "number" && Number.isFinite(parsed.order_id) && parsed.order_id > 0
+      ? parsed.order_id
+      : ((await resolveOrderPostId(orderIdStr)) ?? 0);
+  if (!Number.isFinite(postIdNum) || postIdNum <= 0) {
+    return NextResponse.json({ success: false, error: "Invalid order id." }, { status: 400 });
+  }
+
   let order: unknown;
   try {
     order = await getWooOrder(orderIdStr);
@@ -61,13 +75,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const existingUrl = readStoredPaymentUrl(order);
+  if (shouldReuseEwayPayment(order) && existingUrl) {
+    console.log({
+      tag: "[api/eway] reuse payment_url from Woo meta",
+      orderId: orderIdStr,
+      reused: true,
+    });
+    return NextResponse.json({
+      success: true,
+      payment_reused: true,
+      data: {
+        redirect_url: existingUrl,
+        access_code: "",
+      },
+      redirect_url: existingUrl,
+    });
+  }
+
   const billing = (o.billing as Record<string, string | undefined>) || {};
   const shipping = (o.shipping as Record<string, string | undefined>) || {};
+
+  const totalStr =
+    typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0";
+  const wooParsed = Number.parseFloat(totalStr);
+  const ewayAmountCents = Math.round(wooParsed * 100);
+  console.log({
+    tag: "[api/eway] amounts (Woo is source of truth)",
+    orderId: orderIdStr,
+    woo_total: totalStr,
+    eway_amount: ewayAmountCents,
+  });
 
   const eway = await createEwayHostedPayment({
     wooOrderId: orderIdStr,
     orderKey: key,
-    orderTotal: String(o.total ?? "0"),
+    orderTotal: totalStr,
     currencyCode: typeof o.currency === "string" ? o.currency : "AUD",
     billing: {
       first_name: String(billing.first_name || ""),
@@ -94,7 +137,26 @@ export async function POST(req: NextRequest) {
   });
 
   if (eway.ok === false) {
-    return NextResponse.json({ success: false, error: eway.error }, { status: 502 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: eway.error,
+        message: eway.error,
+        action: "resume_payment" as const,
+        order_id: orderIdStr,
+        order_key: key,
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const fresh = await getWooOrder(orderIdStr);
+    await updateWooOrder(postIdNum, {
+      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl),
+    });
+  } catch (e) {
+    console.error("[api/eway] failed to store payment_url on order", { orderId: orderIdStr, e });
   }
 
   return NextResponse.json({

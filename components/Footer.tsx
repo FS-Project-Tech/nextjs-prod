@@ -127,14 +127,14 @@ export default async function Footer() {
               NDIS participants with premium care solutions.
             </p>
 
-            <a
+            {/* <a
               href="https://calendly.com/joyamedicalsupplies-info/30min"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 bg-white text-teal transition-all duration-200 rounded-xl shadow-md hover:shadow-lg"
             >
               Request a Call
-            </a>
+            </a> */}
 
             <FollowUsSocial links={socialLinks} />
           </div>

@@ -1,4 +1,5 @@
 import type { MutableRefObject } from "react";
+import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
 import {
   readResponseBodyText,
   pickCreateOrderIdFromHeaders,
@@ -186,6 +187,11 @@ export function recoverPlacedCodOrderFromHeaders(res: Response, deps: CheckoutOu
     /* ignore */
   }
   deps.toast.success("Order placed successfully.");
+  try {
+    sessionStorage.removeItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
   goToOrderReview(orderId, undefined, deps, orderKey);
   return true;
 }
@@ -218,6 +224,11 @@ export function handleCashOnDeliveryCompleteJson(
     /* ignore */
   }
   deps.toast.success("Order placed successfully.");
+  try {
+    sessionStorage.removeItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
   goToOrderReview(String(orderIdRaw), undefined, deps, orderKey);
   return true;
 }

@@ -173,7 +173,10 @@ function orderCreateRetriable(e: unknown): boolean {
 }
 
 /** Shipping, fees, coupons, meta — phase-2 PUT only. COD → `processing` after extras are applied. */
-export function buildCheckoutExtensionPatch(input: WooCreateOrderInput): Record<string, unknown> {
+export function buildCheckoutExtensionPatch(
+  input: WooCreateOrderInput,
+  options?: { omitMeta?: boolean },
+): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (String(input.payment_method || "").toLowerCase() === "cod") {
     patch.status = "processing";
@@ -192,7 +195,7 @@ export function buildCheckoutExtensionPatch(input: WooCreateOrderInput): Record<
   if (input.fee_lines && input.fee_lines.length > 0) {
     patch.fee_lines = input.fee_lines;
   }
-  if (input.meta_data && input.meta_data.length > 0) {
+  if (!options?.omitMeta && input.meta_data && input.meta_data.length > 0) {
     patch.meta_data = input.meta_data;
   }
   if (input.coupon_code?.trim()) {
@@ -201,7 +204,7 @@ export function buildCheckoutExtensionPatch(input: WooCreateOrderInput): Record<
   return patch;
 }
 
-async function applyOrderExtensionWithRetry(
+export async function applyOrderExtensionWithRetry(
   orderId: number,
   patch: Record<string, unknown>,
 ): Promise<unknown> {
@@ -236,12 +239,18 @@ export type OrderExtensionTiming =
   | { mode: "inline" }
   | { mode: "after_response"; schedule: (task: () => Promise<void>) => void };
 
-function validateCreatedLineItems(order: unknown): void {
+export function validateCreatedLineItems(order: unknown): void {
   const lineItems = Array.isArray((order as { line_items?: unknown })?.line_items)
     ? ((order as { line_items: Array<Record<string, unknown>> }).line_items as Array<
         Record<string, unknown>
       >)
     : [];
+
+  if (lineItems.length === 0) {
+    const err = new Error("Cart is empty");
+    (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
+    throw err;
+  }
 
   logWooOrderLineItems(
     lineItems.map((li) => ({
@@ -273,7 +282,14 @@ function validateCreatedLineItems(order: unknown): void {
 export async function createValidatedCheckoutOrder(
   input: WooCreateOrderInput,
   timing: OrderExtensionTiming,
+  options?: { checkoutSessionMeta?: Array<{ key: string; value: unknown }> },
 ): Promise<unknown> {
+  if (!input.line_items?.length) {
+    const err = new Error("Cart is empty");
+    (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
+    throw err;
+  }
+
   logValidatedItems(
     input.line_items.map((li) => ({
       product_id: li.product_id,
@@ -293,6 +309,9 @@ export async function createValidatedCheckoutOrder(
     line_items: input.line_items,
     billing: input.billing,
     shipping: input.shipping,
+    ...(options?.checkoutSessionMeta?.length
+      ? { meta_data: options.checkoutSessionMeta }
+      : {}),
   };
 
   console.log("[checkout] start", {

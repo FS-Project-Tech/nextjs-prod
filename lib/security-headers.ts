@@ -26,22 +26,66 @@ const GOOGLE_MAPS_SCRIPT_SRC =
   "https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:";
 
 /**
+ * Google Tag Manager + gtag / GA4 (script + network beacons).
+ * @see https://developers.google.com/tag-platform/security/guides/csp
+ */
+const GOOGLE_TAG_GA_SCRIPT_SRC =
+  "https://www.googletagmanager.com https://www.google-analytics.com";
+
+const GOOGLE_TAG_GA_CONNECT_SRC =
+  "https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://analytics.google.com https://*.analytics.google.com";
+
+const GOOGLE_TAG_GA_IMG_SRC =
+  "https://www.google-analytics.com https://www.googletagmanager.com";
+
+/**
+ * Meta Pixel (Facebook) — fbevents.js + event endpoints.
+ * @see https://developers.facebook.com/docs/facebook-pixel/advanced/
+ */
+const META_PIXEL_SCRIPT_SRC = "https://connect.facebook.net";
+
+const META_PIXEL_CONNECT_SRC =
+  "https://connect.facebook.net https://www.facebook.com https://graph.facebook.com https://*.facebook.com https://*.fbcdn.net";
+
+const META_PIXEL_IMG_SRC = "https://www.facebook.com";
+
+/**
+ * Tawk.to live chat widget.
+ * @see https://help.tawk.to/article/why-are-images-not-showing-up-in-the-widget
+ */
+const TAWK_SCRIPT_SRC = "https://*.tawk.to https://cdn.jsdelivr.net";
+
+const TAWK_STYLE_SRC = "https://*.tawk.to https://cdn.jsdelivr.net";
+
+const TAWK_FRAME_SRC = "https://*.tawk.to";
+
+const TAWK_FONT_SRC = "https://*.tawk.to";
+
+const TAWK_IMG_SRC =
+  "https://*.tawk.to https://cdn.jsdelivr.net https://tawk.link https://s3.amazonaws.com https://*.s3.amazonaws.com";
+
+const TAWK_CONNECT_SRC = "https://*.tawk.to wss://*.tawk.to";
+
+const TAWK_FORM_ACTION = "https://*.tawk.to";
+
+/**
  * Content Security Policy
  * Note: 'unsafe-inline' for styles is needed for Next.js
  * Maps allowlist includes 'unsafe-eval' per Google's documented example (required for some API paths).
  */
 export const CSP_HEADER = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC}`,
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com",
-  "font-src 'self' data: https: https://fonts.gstatic.com",
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob:`.trim(),
-  "frame-src *.google.com",
-  "worker-src blob:",
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC} ${GOOGLE_TAG_GA_SCRIPT_SRC} ${META_PIXEL_SCRIPT_SRC} ${TAWK_SCRIPT_SRC}`,
+  `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${TAWK_STYLE_SRC}`,
+  `img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com ${GOOGLE_TAG_GA_IMG_SRC} ${META_PIXEL_IMG_SRC} ${TAWK_IMG_SRC}`,
+  `font-src 'self' data: https: https://fonts.gstatic.com ${TAWK_FONT_SRC}`,
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC}`.trim(),
+  `frame-src *.google.com ${TAWK_FRAME_SRC}`,
+  /** Same-origin service workers (e.g. /sw.js); blob for bundled/worklet-style workers. */
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  `form-action 'self' ${TAWK_FORM_ACTION}`,
   "object-src 'none'",
   "upgrade-insecure-requests",
 ].join("; ");

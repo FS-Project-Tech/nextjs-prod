@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
 import wcAPI from "@/lib/woocommerce";
+import { orderBelongsToDashboardUser } from "@/lib/dashboard/orderOwnership";
 
 /**
  * POST /api/dashboard/orders/[id]/pay
@@ -56,27 +57,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       throw error;
     }
 
-    // Verify order belongs to user
-    const orderEmail = order.billing?.email || order.customer_id;
-    const userEmail = user.email;
-    const customerId = order.customer_id;
-
-    // Get WooCommerce customer ID for comparison using optimized approach
+    const userEmail = typeof user.email === "string" ? user.email : "";
     const { getCustomerIdWithFallback } = await import("@/lib/customer");
-    const wcCustomerId = await getCustomerIdWithFallback(userEmail, token);
+    const wooCustomerId = await getCustomerIdWithFallback(userEmail, token);
 
-    const isOwner =
-      orderEmail === userEmail || customerId === user.id || customerId === wcCustomerId;
-
-    if (!isOwner) {
+    if (
+      !orderBelongsToDashboardUser({
+        order,
+        userEmail,
+        wooCustomerId,
+      })
+    ) {
       return NextResponse.json(
         { error: "You do not have permission to pay for this order" },
         { status: 403 }
       );
     }
 
-    // Check if order is pending payment
-    if (order.status !== "pending") {
+    // Pending = unpaid checkout; failed = payment attempt failed (retry eWAY / order-pay)
+    const payRetryStatuses = new Set(["pending", "failed"]);
+    if (!payRetryStatuses.has(String(order.status || "").toLowerCase())) {
       return NextResponse.json(
         { error: `This order cannot be paid. Current status: ${order.status}` },
         { status: 400 }

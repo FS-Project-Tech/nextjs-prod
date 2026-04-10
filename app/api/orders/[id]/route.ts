@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/wp-utils";
-import { verifyEwayPayment } from "@/lib/services/ewayService";
+import { scheduleEwayOrderReturnVerify } from "@/lib/payment/scheduleEwayOrderReturnVerify";
+import { keysMatchWooOrder } from "@/lib/order/orderKeyVerify";
  
 /**
  * GET - Fetch order details by ID (post ID) or order number
@@ -20,6 +21,7 @@ export async function GET(
       reqUrl.searchParams.get("AccessCode") ||
       reqUrl.searchParams.get("accessCode") ||
       "";
+    const keyParam = (reqUrl.searchParams.get("key") || "").trim();
  
     // Await params (Next.js 15+ requires this)
     const resolvedParams = await params;
@@ -45,89 +47,25 @@ export async function GET(
           String(order.status || "").toLowerCase() === "pending" &&
           String(order.payment_method || "").toLowerCase() === "eway"
         ) {
-          const verification = await verifyEwayPayment(accessCode);
-          if (verification.ok && verification.success) {
-            try {
-              const patch: Record<string, unknown> = {
-                status: "processing",
-                set_paid: true,
-              };
-              if (verification.transactionId) {
-                patch.transaction_id = verification.transactionId;
-              }
-              await wcAPI.put(`/orders/${order.id}`, patch);
-              // Woo PUT / indexing can lag; refetch a few times so the client never lands on an empty 200.
-              let refreshed: Record<string, unknown> | null = null;
-              for (let r = 0; r < 6; r++) {
-                const { data: again } = await wcAPI.get(`/orders/${order.id}`);
-                if (again && typeof again === "object") {
-                  refreshed = again as Record<string, unknown>;
-                  break;
-                }
-                await new Promise((res) => setTimeout(res, 350 + r * 120));
-              }
-              if (!refreshed || typeof refreshed !== "object") {
-                console.error("Order API: eWAY verified but refetch returned no order body after retries");
-                return NextResponse.json(
-                  { error: "Order was updated but details could not be loaded. Please refresh." },
-                  { status: 502 }
-                );
-              }
-              const updatedOrder = refreshed;
-              // Best-effort: add payment verification audit trail in Woo order notes.
-              try {
-                const note = [
-                  "eWAY payment verified from order-review return.",
-                  verification.transactionId
-                    ? `TransactionID: ${verification.transactionId}.`
-                    : null,
-                  verification.responseCode
-                    ? `ResponseCode: ${verification.responseCode}.`
-                    : null,
-                  "Order moved to Processing and marked paid.",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                await wcAPI.post(`/orders/${order.id}/notes`, {
-                  note,
-                  customer_note: false,
-                });
-              } catch (noteErr) {
-                console.warn("Order API: eWAY verified but note write failed", noteErr);
-              }
-              console.log(
-                `Order API: eWAY verified. Updated order ${order.id} to processing`
-              );
-              return NextResponse.json({ order: updatedOrder });
-            } catch (updateErr) {
-              console.warn("Order API: eWAY verified but order update failed", updateErr);
-            }
-          } else {
-            // Best-effort: keep an audit note for failed/unsuccessful verification attempts.
-            try {
-              const note = [
-                "eWAY payment verification attempt was not successful.",
-                verification.ok
-                  ? "Verification response indicates payment is not complete."
-                  : `Verification error: ${verification.ok === false ? verification.error : "Unknown"}`,
-                verification.ok && verification.responseCode
-                  ? `ResponseCode: ${verification.responseCode}.`
-                  : null,
-                "Order remains Pending.",
-              ]
-                .filter(Boolean)
-                .join(" ");
-              await wcAPI.post(`/orders/${order.id}/notes`, {
-                note,
-                customer_note: false,
-              });
-            } catch (noteErr) {
-              console.warn(
-                "Order API: eWAY unsuccessful verification note write failed",
-                noteErr
-              );
-            }
+          if (!keyParam) {
+            return NextResponse.json(
+              { error: "Order key is required for payment verification." },
+              { status: 403 },
+            );
           }
+          const wooKey = typeof order.order_key === "string" ? order.order_key : "";
+          if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
+            return NextResponse.json({ error: "Invalid order key" }, { status: 403 });
+          }
+
+          const mutationTimeout = Number(process.env.WOOCOMMERCE_CHECKOUT_WRITE_TIMEOUT_MS);
+          scheduleEwayOrderReturnVerify({
+            accessCode,
+            orderId: order.id as number | string,
+            mutationTimeoutMs:
+              Number.isFinite(mutationTimeout) && mutationTimeout > 0 ? mutationTimeout : 90_000,
+            logTag: "[orders/id]",
+          });
         }
         console.log(`Order API: Successfully fetched order ${orderId} (post ID: ${order.id})`);
         return NextResponse.json({ order });

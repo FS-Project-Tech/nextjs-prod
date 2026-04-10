@@ -2,6 +2,35 @@
 @import "swiper/css";
 @import "swiper/css/navigation";
 
+html {
+  overflow-x: hidden;
+}
+
+/* Homepage hero slider: full viewport width (breaks out of .app-shell max-width). */
+.hero-banner-root {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.hero-banner-root .swiper,
+.hero-banner-root .swiper-wrapper {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.hero-banner-root .swiper-slide {
+  width: 100% !important;
+}
+
+/* Next.js <Link> is inline; full-bleed slides must stretch inside SwiperSlide. */
+.hero-banner-root .swiper-slide > a {
+  display: block !important;
+  width: 100% !important;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -221,45 +250,10 @@ main {
   animation: navigation-progress 1.8s ease-in-out infinite;
 }
 
-/* .container {
-  width: 100%;
-    @media (width >= 40rem) {
-      max-width: 44rem;
-    }
-    @media (width >= 48rem) {
-      max-width: 44rem;
-    }
-    @media (width >= 64rem) {
-      max-width: 60rem;
-    }
-    @media (width >= 80rem) {
-      max-width: 76rem;
-    }
-    @media (width >= 96rem) {
-      max-width: 86rem;
-    }
-} */
-
+/* Site-wide content width: full width minus 3% (≈1.5% inset each side when centered). */
 .container {
-  width: 100%;
-    @media (width >= 40rem) {
-      max-width: 44rem;
-    }
-    @media (width >= 48rem) {
-      max-width: 44rem;
-    }
-    @media (width >= 64rem) {
-      max-width: 60rem;
-    }
-    @media (width >= 80rem) {
-      max-width: 76rem;
-    }
-    @media (width >= 96rem) {
-      max-width: 86rem;
-    }
-    @media (width >= 112rem) {
-      max-width: 104rem;
-    }
+  width: calc(100% - 3%);
+  max-width: calc(100% - 3%);
 }
 /* Header */
 main{background-color: #fff;}

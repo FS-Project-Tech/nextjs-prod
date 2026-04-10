@@ -12,6 +12,11 @@ jest.mock("@/lib/woocommerce/wc-fetch", () => ({
   wcGet: jest.fn(),
 }));
 
+jest.mock("@/lib/woo/stockCheck", () => ({
+  assertCheckoutLineItemsStock: jest.fn().mockResolvedValue(undefined),
+  CheckoutStockError: class CheckoutStockError extends Error {},
+}));
+
 const { resolveWooLineItems } = jest.requireMock("@/lib/woo/resolveLineItems") as {
   resolveWooLineItems: jest.Mock;
 };

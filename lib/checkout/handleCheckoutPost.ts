@@ -4,6 +4,7 @@
  * COD defers the extension PUT via Next `after()` so the JSON response is not blocked on meta/shipping/fees.
  */
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import { after, NextRequest, NextResponse } from "next/server";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
@@ -87,7 +88,11 @@ function serializeOrderId(orderIdRaw: string | number | bigint): number | string
   return String(orderIdRaw);
 }
 
-function jsonCodOrderPlaced(orderIdRaw: string | number | bigint, orderKey: string): NextResponse {
+function jsonCodOrderPlaced(
+  orderIdRaw: string | number | bigint,
+  orderKey: string,
+  checkoutSessionId: string,
+): NextResponse {
   const oid = serializeOrderId(orderIdRaw);
   const data = {
     success: true as const,
@@ -96,6 +101,7 @@ function jsonCodOrderPlaced(orderIdRaw: string | number | bigint, orderKey: stri
     orderId: oid,
     order_ref: String(orderIdRaw),
     order_key: orderKey,
+    checkout_session_id: checkoutSessionId,
   };
   return checkoutJsonResponse(
     {
@@ -103,6 +109,7 @@ function jsonCodOrderPlaced(orderIdRaw: string | number | bigint, orderKey: stri
       data,
       order_id: oid,
       order_key: orderKey,
+      checkout_session_id: checkoutSessionId,
     },
     orderIdRaw,
     orderKey,
@@ -114,6 +121,8 @@ function jsonEwayRedirect(
   url: string,
   orderIdRaw: string | number | bigint,
   orderKey: string,
+  checkoutSessionId: string,
+  options?: { paymentReused?: boolean },
 ): NextResponse {
   const oid = serializeOrderId(orderIdRaw);
   const body = {
@@ -122,7 +131,9 @@ function jsonEwayRedirect(
     orderId: oid,
     order_ref: String(orderIdRaw),
     order_key: orderKey,
+    checkout_session_id: checkoutSessionId,
     url,
+    ...(options?.paymentReused === true ? { payment_reused: true as const } : {}),
   };
   return checkoutJsonResponse(
     {
@@ -130,7 +141,9 @@ function jsonEwayRedirect(
       data: body,
       order_id: oid,
       order_key: orderKey,
+      checkout_session_id: checkoutSessionId,
       redirect_url: url,
+      ...(options?.paymentReused === true ? { payment_reused: true } : {}),
     },
     orderIdRaw,
     orderKey,
@@ -186,7 +199,13 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
   } catch (error: unknown) {
     const zod = zodFail(error);
     if (zod) return NextResponse.json(zod, { status: 400 });
-    throw error;
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Invalid checkout payload",
+      },
+      { status: 400 },
+    );
   }
 
   console.log("[checkout] start", {
@@ -205,12 +224,16 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     const actorRoles = Array.isArray(actor.roles)
       ? actor.roles.map((r) => String(r || "").trim().toLowerCase())
       : [];
-    const canUseOnAccount = actorRoles.includes("administrator") || Boolean(actor.ndisApproved);
+    const canUseOnAccount =
+      actorRoles.includes("administrator") ||
+      actorRoles.includes("b2b_user") ||
+      Boolean(actor.ndisApproved);
     if (payload.payment_method === "cod" && !canUseOnAccount) {
       return NextResponse.json(
         {
           success: false,
-          error: "On account payment is only available for administrator and NDIS-approved users.",
+          error:
+            "On account payment is only available for administrators, B2B users, and NDIS Approved Customers.",
         },
         { status: 403 },
       );
@@ -225,7 +248,11 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
         });
       }
     });
-    const { validatedLineItems, shippingLine } = await validateAndRecalculateCheckout(payload);
+    const { wooLineItems, shippingLine } = await validateAndRecalculateCheckout(payload);
+    const checkoutSessionId =
+      typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
+        ? payload.checkout_session_id.trim()
+        : randomUUID();
 
     const orderExtensionTiming =
       payload.payment_method === "cod"
@@ -241,13 +268,32 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
       restCheckoutTimeoutMs(),
       executeWooCheckoutOrder({
         payload,
-        validatedLineItems,
+        wooLineItems,
         shippingLine,
         actor,
         customerIp: clientIpFromRequest(req) || undefined,
         orderExtensionTiming,
+        checkoutSessionId,
       }),
     );
+
+    if (result.kind === "eway_error") {
+      console.warn("[checkout] eWAY payment error (structured response)", {
+        action: result.action,
+        ms: Date.now() - started,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          message: result.message,
+          error: result.message,
+          action: result.action ?? "resume_payment",
+          order_id: serializeOrderId(result.orderIdRaw),
+          order_key: result.orderKey,
+        },
+        { status: 400 },
+      );
+    }
 
     console.log("[checkout] ok", {
       kind: result.kind,
@@ -255,9 +301,15 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     });
 
     if (result.kind === "cod") {
-      return jsonCodOrderPlaced(result.orderIdRaw, result.orderKey);
+      return jsonCodOrderPlaced(result.orderIdRaw, result.orderKey, checkoutSessionId);
     }
-    return jsonEwayRedirect(result.redirectUrl, result.orderIdRaw, result.orderKey);
+    return jsonEwayRedirect(
+      result.redirectUrl,
+      result.orderIdRaw,
+      result.orderKey,
+      checkoutSessionId,
+      { paymentReused: result.paymentReused === true },
+    );
   } catch (error: unknown) {
     const timeoutBody = {
       success: false as const,
@@ -296,6 +348,17 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
         { status: 409 },
       );
     }
+    if (cartErrData?.type === "insufficient_stock") {
+      console.error("[checkout] insufficient_stock", cartErrData);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "One or more products do not have enough stock.",
+          code: "INSUFFICIENT_STOCK",
+        },
+        { status: 409 },
+      );
+    }
     if (cartErrData?.type === "woo_invalid_product_mapping") {
       return NextResponse.json(
         {
@@ -307,6 +370,13 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
       );
     }
 
+    const errCode = (error as { code?: string }).code;
+    if (errCode === "EMPTY_LINE_ITEMS") {
+      return NextResponse.json({ success: false, error: "Cart is empty" }, { status: 400 });
+    }
+    if (errCode === "INVALID_TOTAL") {
+      return NextResponse.json({ success: false, error: "Invalid total" }, { status: 400 });
+    }
     console.error("[checkout] error", error);
     const msg = error instanceof Error ? error.message : "Order creation failed";
     const status = hasAxiosStatus(error) ? Number((error as { response?: { status?: number } }).response?.status) : 0;

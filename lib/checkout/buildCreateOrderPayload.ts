@@ -84,14 +84,17 @@ export function buildCreateOrderPayload(params: {
   paymentMethod: "eway" | "cod";
   appliedCouponCode?: string | null;
   couponFromUrl?: string | null;
+  /** Stable UUID per browser tab/session for idempotent Woo checkout. */
+  checkoutSessionId?: string | null;
 }): Record<string, unknown> {
-  const { data, cartLines, paymentMethod, appliedCouponCode, couponFromUrl } = params;
+  const { data, cartLines, paymentMethod, appliedCouponCode, couponFromUrl, checkoutSessionId } =
+    params;
   const billing = billingBlock(data);
   const shippingRaw = shippingBlock(data);
   const destination = data.shipToDifferentAddress ? shippingRaw : billing;
   const shippingMethod = data.shippingMethod as ShippingMethodType | undefined;
 
-  return {
+  const body: Record<string, unknown> = {
     billing,
     shipping: {
       first_name: destination.first_name || "",
@@ -122,4 +125,11 @@ export function buildCreateOrderPayload(params: {
     newsletter: data.subscribe_newsletter === true,
     delivery_notes: data.deliveryInstructions?.trim() || undefined,
   };
+
+  const sid = typeof checkoutSessionId === "string" ? checkoutSessionId.trim() : "";
+  if (sid) {
+    body.checkout_session_id = sid;
+  }
+
+  return body;
 }

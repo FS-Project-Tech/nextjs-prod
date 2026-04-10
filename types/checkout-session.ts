@@ -5,6 +5,7 @@ import type {
   CheckoutTotals,
   PaymentMethod,
 } from "@/types/checkout";
+import type { WooLineItem } from "@/services/woocommerce";
 
 /**
  * Persisted checkout session for token-based headless → Woo handoff.
@@ -23,6 +24,8 @@ export type CheckoutSessionRecord = {
   payment_method: PaymentMethod;
   payload: CheckoutInitiatePayload;
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
+  /** Present for new sessions; omit on older stored tokens. */
+  wooLineItems?: WooLineItem[];
   shippingLine: { method_id: string; method_title: string; total: string };
   totals: CheckoutTotals;
 };

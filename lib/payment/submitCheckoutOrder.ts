@@ -8,12 +8,15 @@ import {
   handleHostedRedirectJson,
   handleCashOnDeliveryCompleteJson,
   reportCreateOrderFailure,
+  goToOrderReview,
   type CheckoutOutcomeDeps,
 } from "./checkoutOutcomeHandlers";
+import { messageFromCreateOrderError } from "./createOrderHttp";
 
 export type SubmitCheckoutOrderArgs = {
   data: CheckoutFormData;
   cartLines: CartItem[];
+  checkoutSessionId: string;
   selectedPaymentMethod: "eway" | "cod";
   ewayTokenFlowEnabled: boolean;
   appliedCoupon: { code: string } | null;
@@ -41,6 +44,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
   const {
     data,
     cartLines,
+    checkoutSessionId,
     selectedPaymentMethod,
     ewayTokenFlowEnabled,
     appliedCoupon,
@@ -102,19 +106,23 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       paymentMethod: selectedPaymentMethod,
       appliedCouponCode: appliedCoupon?.code ?? null,
       couponFromUrl: couponSearchParam,
+      checkoutSessionId,
     });
 
     const requestUrl =
       typeof window !== "undefined" ? new URL(endpoint, window.location.origin).href : endpoint;
+
+    const idempotencyKey =
+      checkoutSessionId.trim() ||
+      (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "");
 
     const res = await fetch(requestUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        ...(useTokenHandoff && typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? { "Idempotency-Key": crypto.randomUUID() }
-          : {}),
+        /** Stable per tab — aligns with `checkout_session_id` on the Woo order. */
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
       cache: "no-store",
@@ -136,6 +144,22 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     }
 
     if (!res.ok || apiJson.success === false || apiJson.success === "false") {
+      if (apiJson.action === "resume_payment") {
+        const oidRaw = apiJson.order_id ?? apiJson.orderId;
+        const oid = oidRaw != null && String(oidRaw).trim() !== "" ? String(oidRaw).trim() : "";
+        const key =
+          typeof apiJson.order_key === "string" && apiJson.order_key.trim()
+            ? apiJson.order_key.trim()
+            : null;
+        if (oid) {
+          outcomeDeps.toast.error(
+            messageFromCreateOrderError(apiJson) ||
+              "Payment could not start. Opening order review so you can try again.",
+          );
+          goToOrderReview(oid, "eway", outcomeDeps, key);
+          return;
+        }
+      }
       reportCreateOrderFailure(res, apiJson, outcomeDeps.toast);
       return;
     }
