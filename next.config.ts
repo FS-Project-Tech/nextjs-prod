@@ -177,6 +177,18 @@ const nextConfig: NextConfig = {
         hostname: "stage.joyamedicalsupplies.com.au", // ✅ ADD THIS
         pathname: "/wp-content/uploads/**",
       },
+      // WordPress on Cloudways (legacy/staging media URLs from order line items)
+      {
+        protocol: "https",
+        hostname: "wordpress-1367895-5625982.cloudwaysapps.com",
+        pathname: "/wp-content/uploads/**",
+      },
+      // WordPress media served by raw host / IP (some migrations or CDN bypass)
+      {
+        protocol: "https",
+        hostname: "35.244.73.143",
+        pathname: "/wp-content/uploads/**",
+      },
       {
         protocol: "https",
         hostname: wcHost,

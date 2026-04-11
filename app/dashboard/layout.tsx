@@ -84,7 +84,7 @@ const TabIcon = ({ iconId, className = "h-5 w-5" }: { iconId: string; className?
 
 const tabs = [
   { id: "overview", label: "Overview", href: "/dashboard", iconId: "overview" },
-  // { id: "orders", label: "Orders", href: "/dashboard/orders", iconId: "orders" },
+  { id: "orders", label: "Orders", href: "/dashboard/orders", iconId: "orders" },
   { id: "wishlist", label: "Wishlist", href: "/dashboard/wishlist", iconId: "wishlist" },
   { id: "addresses", label: "Addresses", href: "/dashboard/addresses", iconId: "addresses" },
   // { id: 'quotes', label: 'Quotes', href: '/dashboard/quotes', iconId: 'quotes' },

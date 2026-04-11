@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useToast } from "@/components/ToastProvider";
 import CancelOrderModal from "@/components/dashboard/CancelOrderModal";
 import OrderStatusBadge from "@/components/dashboard/OrderStatusBadge";
+import { formatDateDdMmYyyy } from "@/lib/format-dates";
 
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "All statuses" },
@@ -25,15 +26,17 @@ export default function DashboardOrders() {
   const [dateTo, setDateTo] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput, 400);
+  const debouncedDateFrom = useDebouncedValue(dateFrom, 500);
+  const debouncedDateTo = useDebouncedValue(dateTo, 500);
 
   const listFilters = useMemo<OrdersListFilters>(
     () => ({
       status: statusFilter,
-      dateFrom,
-      dateTo,
+      dateFrom: debouncedDateFrom,
+      dateTo: debouncedDateTo,
       search: debouncedSearch,
     }),
-    [statusFilter, dateFrom, dateTo, debouncedSearch],
+    [statusFilter, debouncedDateFrom, debouncedDateTo, debouncedSearch],
   );
 
   const {
@@ -56,7 +59,7 @@ export default function DashboardOrders() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const hasActiveFilters = Boolean(
-    statusFilter || dateFrom || dateTo || debouncedSearch.trim(),
+    statusFilter || dateFrom || dateTo || searchInput.trim(),
   );
 
   useEffect(() => {
@@ -216,7 +219,7 @@ export default function DashboardOrders() {
                       <div>
                         <p className="text-xs text-gray-500">Date</p>
                         <p className="text-sm font-medium text-gray-900">
-                          {new Date(order.date_created).toLocaleDateString()}
+                          {formatDateDdMmYyyy(order.date_created)}
                         </p>
                       </div>
                       <div>
@@ -327,7 +330,10 @@ function OrdersFiltersBar({
   isRefetching: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      lang="en-AU"
+      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+    >
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
         <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
           <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Status</span>

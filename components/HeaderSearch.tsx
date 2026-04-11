@@ -323,6 +323,8 @@ export default function HeaderSearch() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const searchGenerationRef = useRef(0);
+  /** After redirecting to search/product from this box, skip reopening when the in-flight Typesense response returns. */
+  const suppressAutoOpenAfterNavigationRef = useRef(false);
 
   const closePanel = useCallback(() => {
     setShow(false);
@@ -384,6 +386,7 @@ export default function HeaderSearch() {
       inputRef.current?.focus();
       return;
     }
+    suppressAutoOpenAfterNavigationRef.current = true;
     closePanel();
     router.push(`/search?q=${encodeURIComponent(q)}`);
   }, [query, router, closePanel]);
@@ -431,7 +434,11 @@ export default function HeaderSearch() {
         const brandFacet = res.facet_counts?.find((f) => f.field_name === "brand");
         setBrands(brandFacet?.counts || []);
 
-        setShow(true);
+        if (suppressAutoOpenAfterNavigationRef.current) {
+          suppressAutoOpenAfterNavigationRef.current = false;
+        } else {
+          setShow(true);
+        }
         setActiveIndex(-1);
       } catch (err) {
         console.error(err);
@@ -472,6 +479,7 @@ export default function HeaderSearch() {
     if (e.key === "Enter") {
       const row = activeIndex >= 0 ? flatRows[activeIndex] : undefined;
       if (row) {
+        suppressAutoOpenAfterNavigationRef.current = true;
         closePanel();
         const slug = String(row.doc.slug || "");
         router.push(
@@ -508,7 +516,10 @@ export default function HeaderSearch() {
           value={query}
           onKeyDown={handleKeyDown}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => query && setShow(true)}
+          onFocus={() => {
+            suppressAutoOpenAfterNavigationRef.current = false;
+            if (query) setShow(true);
+          }}
           onBlur={() => setTimeout(() => setShow(false), 200)}
           placeholder="Search"
           className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-500 focus:ring-0"
@@ -557,6 +568,7 @@ export default function HeaderSearch() {
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      suppressAutoOpenAfterNavigationRef.current = true;
                       closePanel();
                       router.push(
                         `/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(cat.value)}`
@@ -586,6 +598,7 @@ export default function HeaderSearch() {
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      suppressAutoOpenAfterNavigationRef.current = true;
                       closePanel();
                       router.push(
                         `/search?q=${encodeURIComponent(query)}&brand=${encodeURIComponent(brand.value)}`
@@ -630,6 +643,7 @@ export default function HeaderSearch() {
                     id={`header-search-option-${index}`}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      suppressAutoOpenAfterNavigationRef.current = true;
                       closePanel();
                       router.push(
                         productPathWithOptionalVariation(

@@ -18,6 +18,8 @@ export interface Order {
     product_id: number;
     variation_id?: number;
     image?: string;
+    /** Product or variation SKU when provided by WooCommerce / legacy API */
+    sku?: string;
   }>;
   billing: {
     first_name: string;
@@ -76,7 +78,7 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
     queryFn: async ({ pageParam }): Promise<OrdersPagePayload> => {
       const usp = new URLSearchParams();
       usp.set("page", String(pageParam));
-      usp.set("per_page", "15");
+      usp.set("per_page", "10");
       const st = filters.status.trim().toLowerCase();
       if (st) usp.set("status", st);
       const df = filters.dateFrom.trim();
@@ -120,6 +122,7 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
       return p.page + 1;
     },
     staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: process.env.NODE_ENV === "production" ? 1 : 0,
   });
 

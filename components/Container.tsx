@@ -17,7 +17,7 @@ export default function Container({
 }: ContainerProps) {
   return (
     <div
-      className={`mx-auto container px-3 sm:px-4 lg:px-6 ${className}`}
+      className={`mx-auto container ${className}`}
       suppressHydrationWarning={suppressHydrationWarning}
     >
       {children}
