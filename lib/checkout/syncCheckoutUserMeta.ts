@@ -1,5 +1,9 @@
 import wcAPI from "@/lib/woocommerce";
 import type { CheckoutActor, CheckoutInitiatePayload } from "@/types/checkout";
+import {
+  hasSubstantiveHcpRecord,
+  hasSubstantiveNdisRecord,
+} from "@/lib/checkout/ndisHcpPayload";
 
 function trimOrEmpty(v: unknown, max = 500): string {
   const s = String(v ?? "").trim();
@@ -31,24 +35,34 @@ export async function syncCheckoutUserMeta(
 
   const ndisInfo = parseInfoJson(payload.ndis_info);
   const hcpInfo = parseInfoJson(payload.hcp_info);
+  const ndisSubstantive = hasSubstantiveNdisRecord(ndisInfo);
+  const hcpSubstantive = hasSubstantiveHcpRecord(hcpInfo);
 
   const meta_data: Array<{ key: string; value: unknown }> = [
-    { key: "cust_woo_ndis_number", value: trimOrEmpty(ndisInfo.number, 120) },
-    { key: "cust_woo_ndis_participant_name", value: trimOrEmpty(ndisInfo.participant_name, 180) },
-    { key: "cust_woo_ndis_dob", value: trimOrEmpty(ndisInfo.dob, 40) },
-    {
-      key: "cust_woo_ndis_funding_type",
-      value: trimOrEmpty(payload.ndis_type ?? ndisInfo.funding_type, 80),
-    },
-    { key: "cust_woo_invoice_email", value: trimOrEmpty(ndisInfo.invoice_email, 180) },
-    { key: "cust_woo_ndis_approval", value: yesNo(Boolean(ndisInfo.approval)) },
-    {
-      key: "cust_woo_hcp_participant_name",
-      value: trimOrEmpty(hcpInfo.participant_name, 180),
-    },
-    { key: "cust_woo_hcp_number", value: trimOrEmpty(hcpInfo.number, 120) },
-    { key: "cust_woo_provider_email", value: trimOrEmpty(hcpInfo.provider_email, 180) },
-    { key: "cust_woo_hcp_approval", value: yesNo(Boolean(hcpInfo.approval)) },
+    ...(ndisSubstantive
+      ? [
+          { key: "cust_woo_ndis_number", value: trimOrEmpty(ndisInfo.number, 120) },
+          { key: "cust_woo_ndis_participant_name", value: trimOrEmpty(ndisInfo.participant_name, 180) },
+          { key: "cust_woo_ndis_dob", value: trimOrEmpty(ndisInfo.dob, 40) },
+          {
+            key: "cust_woo_ndis_funding_type",
+            value: trimOrEmpty(payload.ndis_type ?? ndisInfo.funding_type, 80),
+          },
+          { key: "cust_woo_invoice_email", value: trimOrEmpty(ndisInfo.invoice_email, 180) },
+          { key: "cust_woo_ndis_approval", value: yesNo(Boolean(ndisInfo.approval)) },
+        ]
+      : []),
+    ...(hcpSubstantive
+      ? [
+          {
+            key: "cust_woo_hcp_participant_name",
+            value: trimOrEmpty(hcpInfo.participant_name, 180),
+          },
+          { key: "cust_woo_hcp_number", value: trimOrEmpty(hcpInfo.number, 120) },
+          { key: "cust_woo_provider_email", value: trimOrEmpty(hcpInfo.provider_email, 180) },
+          { key: "cust_woo_hcp_approval", value: yesNo(Boolean(hcpInfo.approval)) },
+        ]
+      : []),
     { key: "delivery_authority", value: trimOrEmpty(payload.delivery_authority, 120) },
     { key: "no_paperwork", value: yesNo(payload.no_paperwork === true) },
     { key: "discreet_packaging", value: yesNo(payload.discreet_packaging === true) },

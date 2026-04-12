@@ -7,11 +7,16 @@ import {
 } from "@/lib/services/wooService";
 import { handlePayment } from "@/lib/services/paymentService";
 import type { CheckoutActor, CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
+import { readWooOrderTotal } from "@/lib/checkout/readWooOrderTotal";
 import {
   upsertValidatedCheckoutOrder,
   assertWooOrderPayable,
 } from "@/lib/checkout/upsertWooCheckoutOrder";
 import type { WooCreateOrderInput, WooLineItem } from "@/services/woocommerce";
+import { updateWooOrder } from "@/services/woocommerce";
+import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
+import { HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY } from "@/lib/checkout/checkoutSessionConstants";
+import { flatHcpOrderMetaRowsFromHcpInfoJson } from "@/lib/checkout/ndisHcpPayload";
 
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
@@ -53,7 +58,10 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
   const ndisInfo = safeJsonMetaValue(payload.ndis_info, META_MAX_JSON_BLOB);
   if (ndisInfo) rows.push({ key: "ndis_info", value: ndisInfo });
   const hcpInfo = safeJsonMetaValue(payload.hcp_info, META_MAX_JSON_BLOB);
-  if (hcpInfo) rows.push({ key: "hcp_info", value: hcpInfo });
+  if (hcpInfo) {
+    rows.push({ key: "hcp_info", value: hcpInfo });
+    rows.push(...flatHcpOrderMetaRowsFromHcpInfoJson(payload.hcp_info));
+  }
   const deliveryAuth = trimMetaString(payload.delivery_authority ?? "", META_MAX_SHORT);
   if (deliveryAuth) rows.push({ key: "delivery_authority", value: deliveryAuth });
   if (payload.no_paperwork === true) rows.push({ key: "no_paperwork", value: "yes" });
@@ -70,13 +78,14 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
 }
 
 export type WooCheckoutExecuteResult =
-  | { kind: "cod"; orderIdRaw: string | number | bigint; orderKey: string }
+  | { kind: "cod"; orderIdRaw: string | number | bigint; orderKey: string; wooOrderTotal: string | null }
   | {
       kind: "eway";
       orderIdRaw: string | number | bigint;
       orderKey: string;
       redirectUrl: string;
       paymentReused?: boolean;
+      wooOrderTotal: string | null;
     }
   | {
       kind: "eway_error";
@@ -84,6 +93,7 @@ export type WooCheckoutExecuteResult =
       action?: "resume_payment";
       orderIdRaw: string | number | bigint;
       orderKey: string;
+      wooOrderTotal: string | null;
     };
 
 /**
@@ -99,7 +109,7 @@ export async function executeWooCheckoutOrder(input: {
   /** COD: defer shipping/meta/fees PUT until after the HTTP response (Next `after`). eWAY: inline before payment URL. */
   orderExtensionTiming: OrderExtensionTiming;
   checkoutSessionId: string;
-  /** Optional UI estimate from {@link validateAndRecalculateCheckout}; payment still uses Woo `order.total`. */
+  /** Required for eWAY: server quote used for the gateway amount (not Woo session / stale `order.total`). */
   totals?: CheckoutTotals;
 }): Promise<WooCheckoutExecuteResult> {
   const {
@@ -110,8 +120,12 @@ export async function executeWooCheckoutOrder(input: {
     customerIp,
     orderExtensionTiming,
     checkoutSessionId,
+    totals: checkoutTotals,
   } = input;
   const isCod = payload.payment_method === "cod";
+  if (!isCod && !checkoutTotals) {
+    throw new Error("Validated checkout totals are required for card (eWAY) payment.");
+  }
   const paymentTitle = isCod ? "On Account" : "Credit Card (eWAY)";
   /** Phase 1: always `pending` + `set_paid: false`. COD → `processing` is applied in phase-2 PUT. */
   const orderStatus = "pending";
@@ -208,12 +222,34 @@ export async function executeWooCheckoutOrder(input: {
     throw new Error("WooCommerce did not return order_key for this order.");
   }
 
+  const validatedEwayTotalStr =
+    !isCod && checkoutTotals ? checkoutTotals.total.toFixed(2) : null;
+
+  const wooOrderTotal =
+    validatedEwayTotalStr ?? readWooOrderTotal(orderForPayment);
+
   if (isCod) {
-    return { kind: "cod", orderIdRaw, orderKey };
+    return { kind: "cod", orderIdRaw, orderKey, wooOrderTotal: readWooOrderTotal(orderForPayment) };
   }
 
   if (payload.payment_method !== "eway") {
     throw new Error("Invalid payment method.");
+  }
+
+  if (postId != null && validatedEwayTotalStr) {
+    const om = orderForPayment as {
+      meta_data?: Array<{ id?: number; key: string; value: unknown }>;
+    };
+    try {
+      await updateWooOrder(postId, {
+        meta_data: mergeWooOrderMetaByKey(om.meta_data, [
+          { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: validatedEwayTotalStr },
+        ]),
+      });
+      orderForPayment = await getWooOrder(String(postId));
+    } catch (e) {
+      console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
+    }
   }
 
   const paymentResult = await handlePayment({
@@ -222,6 +258,7 @@ export async function executeWooCheckoutOrder(input: {
     payload,
     customerIp,
     actorUserId: typeof actor.userId === "number" ? actor.userId : undefined,
+    validatedCheckoutTotalStr: validatedEwayTotalStr ?? undefined,
   });
 
   if (paymentResult.type === "error") {
@@ -231,6 +268,7 @@ export async function executeWooCheckoutOrder(input: {
       action: paymentResult.action,
       orderIdRaw,
       orderKey,
+      wooOrderTotal,
     };
   }
 
@@ -240,5 +278,6 @@ export async function executeWooCheckoutOrder(input: {
     orderKey,
     redirectUrl: paymentResult.url,
     paymentReused: paymentResult.reused === true,
+    wooOrderTotal,
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import type { HcpInfoDisplay } from "@/lib/checkout/ndisHcpPayload";
 import type { OrderReviewOrder } from "./types";
 
 export type PaymentStatusProps = {
@@ -16,7 +17,8 @@ export type PaymentStatusProps = {
   orderStatusLabel: string;
   orderStatusToneClass: string;
   ndisNumber: string | null;
-  hcpNumber: string | null;
+  /** Parsed HCP block for receipt / PDF (participant, number, provider email, approval). */
+  hcpDetails: HcpInfoDisplay | null;
   deliveryAuthority: string | null;
   deliveryInstructions: unknown;
   doNotSendPaperwork: boolean;
@@ -37,7 +39,7 @@ function PaymentStatusInner({
   orderStatusLabel,
   orderStatusToneClass,
   ndisNumber,
-  hcpNumber,
+  hcpDetails,
   deliveryAuthority,
   deliveryInstructions,
   doNotSendPaperwork,
@@ -46,7 +48,10 @@ function PaymentStatusInner({
 }: PaymentStatusProps) {
   const showAdditional =
     ndisNumber ||
-    hcpNumber ||
+    hcpDetails?.participantName ||
+    hcpDetails?.number ||
+    hcpDetails?.providerEmail ||
+    hcpDetails?.fundingApproved !== null ||
     deliveryAuthority ||
     deliveryInstructions ||
     doNotSendPaperwork ||
@@ -126,10 +131,38 @@ function PaymentStatusInner({
                 <span className="text-gray-900">{ndisNumber}</span>
               </div>
             )}
-            {hcpNumber && (
-              <div>
-                <span className="font-medium text-gray-700">HCP Number:</span>{" "}
-                <span className="text-gray-900">{hcpNumber}</span>
+            {(hcpDetails?.participantName ||
+              hcpDetails?.number ||
+              hcpDetails?.providerEmail ||
+              hcpDetails?.fundingApproved !== null) && (
+              <div className="md:col-span-2">
+                <p className="mb-2 font-medium text-gray-800">Home Care Package (HCP)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {hcpDetails?.participantName ? (
+                    <div>
+                      <span className="font-medium text-gray-700">Participant name:</span>{" "}
+                      <span className="text-gray-900">{hcpDetails.participantName}</span>
+                    </div>
+                  ) : null}
+                  {hcpDetails?.number ? (
+                    <div>
+                      <span className="font-medium text-gray-700">HCP number:</span>{" "}
+                      <span className="text-gray-900">{hcpDetails.number}</span>
+                    </div>
+                  ) : null}
+                  {hcpDetails?.providerEmail ? (
+                    <div className="sm:col-span-2">
+                      <span className="font-medium text-gray-700">Provider payment email:</span>{" "}
+                      <span className="text-gray-900">{hcpDetails.providerEmail}</span>
+                    </div>
+                  ) : null}
+                  {hcpDetails?.fundingApproved !== null ? (
+                    <div className="sm:col-span-2">
+                      <span className="font-medium text-gray-700">HCP funding approved:</span>{" "}
+                      <span className="text-gray-900">{hcpDetails.fundingApproved ? "Yes" : "No"}</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )}
             {deliveryAuthority && (

@@ -15,6 +15,49 @@ function normalizeItems(raw: unknown[]): CartItem[] {
   }));
 }
 
+/** Variation-safe merge key (matches cart line id rules). */
+export function cartLineMergeKey(productId: number, variationId?: number): string {
+  const v = variationId != null && variationId > 0 ? variationId : 0;
+  return `${productId}:${v}`;
+}
+
+function stableLineId(productId: number, variationId?: number): string {
+  return variationId != null && variationId > 0 ? `${productId}:${variationId}` : String(productId);
+}
+
+function mergeTwoLines(primary: CartItem, secondary: CartItem): CartItem {
+  const qty = primary.qty + secondary.qty;
+  return {
+    ...primary,
+    ...secondary,
+    id: primary.id,
+    productId: primary.productId,
+    variationId: primary.variationId,
+    qty,
+    price: Number(secondary.price) > Number(primary.price) ? secondary.price : primary.price,
+  };
+}
+
+function mergeCartLinesByProduct(existing: CartItem[], incoming: CartItem[]): CartItem[] {
+  const map = new Map<string, CartItem>();
+  for (const it of existing) {
+    map.set(cartLineMergeKey(it.productId, it.variationId), { ...it });
+  }
+  for (const g of incoming) {
+    const k = cartLineMergeKey(g.productId, g.variationId);
+    const cur = map.get(k);
+    if (!cur) {
+      map.set(k, {
+        ...g,
+        id: stableLineId(g.productId, g.variationId),
+      });
+    } else {
+      map.set(k, mergeTwoLines(cur, g));
+    }
+  }
+  return Array.from(map.values());
+}
+
 function sliceItems(state: CartStoreState): CartItem[] {
   const uid = state.activeUserId;
   if (!uid) return state.guestItems;
@@ -32,7 +75,8 @@ function areItemsShallowEqual(a: CartItem[], b: CartItem[]): boolean {
       x.qty !== y.qty ||
       x.price !== y.price ||
       x.productId !== y.productId ||
-      x.variationId !== y.variationId
+      x.variationId !== y.variationId ||
+      x.wc_store_item_key !== y.wc_store_item_key
     ) {
       return false;
     }
@@ -55,12 +99,24 @@ type CartStoreState = {
   /** `null` = guest cart bucket */
   activeUserId: string | null;
   setActiveUserId: (userId: string | null) => void;
-  /** One-time import from legacy `cart:v1:*` keys when the Zustand slice is still empty. */
-  migrateFromLegacyKey: (legacyStorageKey: string) => void;
+  /**
+   * Merge `guestItems` into `userCarts[userId]` by product_id + variation_id (sum qty).
+   * Clears `guestItems` only. Does **not** change `activeUserId` — caller sets it after merge.
+   */
+  mergeGuestIntoUserBucket: (userId: string) => void;
+  /** Clear only the guest bucket (never touches user carts). */
+  clearGuestCartOnly: () => void;
+  /** Clear a specific user's bucket (does not change activeUserId). */
+  clearUserCartBucket: (userId: string) => void;
+  /** If `userCarts[userId]` is empty, import from legacy `cart:v1:user:{id}` in localStorage. */
+  hydrateUserBucketFromLegacyIfEmpty: (userId: string) => void;
+  /** If guest bucket is empty, import from legacy `cart:v1:guest`. */
+  hydrateGuestBucketFromLegacyIfEmpty: () => void;
   setItems: (updater: CartItem[] | ((prev: CartItem[]) => CartItem[])) => void;
   addItem: (item: Omit<CartItem, "id"> & { id?: string }) => void;
   removeItem: (id: string) => void;
   updateItemQty: (id: string, qty: number) => void;
+  /** Clears only the **active** bucket (guest or current user). */
   clear: () => void;
   replaceItems: (items: CartItem[]) => void;
 };
@@ -75,26 +131,82 @@ export const useCartStore = create<CartStoreState>()(
       setActiveUserId: (userId) =>
         set((state) => (state.activeUserId === userId ? state : { activeUserId: userId })),
 
-      migrateFromLegacyKey: (legacyStorageKey) => {
-        if (typeof window === "undefined" || !legacyStorageKey) return;
+      mergeGuestIntoUserBucket: (userId) => {
+        if (!userId) return;
+        set((state) => {
+          const guest = state.guestItems;
+          if (guest.length === 0) {
+            return state;
+          }
+          const existing = state.userCarts[userId] ?? [];
+          const merged = mergeCartLinesByProduct(existing, guest);
+          if (process.env.NODE_ENV === "development") {
+            console.log("[cartStore] mergeGuestIntoUserBucket", {
+              userId,
+              guestCount: guest.length,
+              existingCount: existing.length,
+              mergedCount: merged.length,
+            });
+          }
+          return {
+            guestItems: [],
+            userCarts: { ...state.userCarts, [userId]: merged },
+          };
+        });
+      },
+
+      clearGuestCartOnly: () => {
+        set((state) => (state.guestItems.length === 0 ? state : { guestItems: [] }));
+      },
+
+      clearUserCartBucket: (userId) => {
+        if (!userId) return;
+        set((state) => {
+          if (!state.userCarts[userId]?.length) return state;
+          const next = { ...state.userCarts };
+          delete next[userId];
+          return { userCarts: next };
+        });
+      },
+
+      hydrateUserBucketFromLegacyIfEmpty: (userId) => {
+        if (typeof window === "undefined" || !userId) return;
         const state = get();
-        if (sliceItems(state).length > 0) return;
+        const bucket = state.userCarts[userId] ?? [];
+        if (bucket.length > 0) return;
         try {
-          const raw = localStorage.getItem(legacyStorageKey);
+          const raw = localStorage.getItem(`cart:v1:user:${userId}`);
           if (!raw) return;
           const parsed = JSON.parse(raw) as unknown;
           if (!Array.isArray(parsed) || parsed.length === 0) return;
           const items = normalizeItems(parsed);
-          const isGuest = legacyStorageKey === "cart:v1:guest";
-          const m = legacyStorageKey.match(/^cart:v1:user:(.+)$/);
-          const legacyUserId = m?.[1];
-          if (isGuest) {
-            set({ guestItems: items });
-          } else if (legacyUserId) {
-            set({ userCarts: { ...state.userCarts, [legacyUserId]: items } });
+          set({
+            userCarts: { ...state.userCarts, [userId]: items },
+          });
+          if (process.env.NODE_ENV === "development") {
+            console.log("[cartStore] hydrateUserBucketFromLegacyIfEmpty", { userId, count: items.length });
           }
         } catch {
-          /* ignore corrupt legacy */
+          /* ignore */
+        }
+      },
+
+      hydrateGuestBucketFromLegacyIfEmpty: () => {
+        if (typeof window === "undefined") return;
+        const state = get();
+        if (state.guestItems.length > 0) return;
+        try {
+          const raw = localStorage.getItem("cart:v1:guest");
+          if (!raw) return;
+          const parsed = JSON.parse(raw) as unknown;
+          if (!Array.isArray(parsed) || parsed.length === 0) return;
+          const items = normalizeItems(parsed);
+          set({ guestItems: items });
+          if (process.env.NODE_ENV === "development") {
+            console.log("[cartStore] hydrateGuestBucketFromLegacyIfEmpty", { count: items.length });
+          }
+        } catch {
+          /* ignore */
         }
       },
 
@@ -184,11 +296,16 @@ export function useCartStoreItems(): CartItem[] {
   );
 }
 
-/** Read current cart lines imperatively (e.g. bulk add + `/api/cart` sync without stale React closures). */
+/** Read current cart lines imperatively (active bucket). */
 export function getActiveCartSnapshot(): CartItem[] {
   const s = useCartStore.getState();
   const uid = s.activeUserId;
   return !uid ? s.guestItems : (s.userCarts[uid] ?? EMPTY_ITEMS);
+}
+
+/** Read a user's bucket without switching active user (for dashboard / merge guards). */
+export function getUserCartBucketSnapshot(userId: string): CartItem[] {
+  return useCartStore.getState().userCarts[userId] ?? EMPTY_ITEMS;
 }
 
 export function useCartStoreTotalString(): string {

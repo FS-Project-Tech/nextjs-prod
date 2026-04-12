@@ -104,7 +104,7 @@ export async function createEwayHostedPayment(
 
   const total = Number.parseFloat(String(input.orderTotal));
   if (!Number.isFinite(total) || total <= 0) {
-    return { ok: false, error: "Invalid Woo order total for eWAY." };
+    return { ok: false, error: "Invalid payment total for eWAY." };
   }
   const totalAmount = Math.round(total * 100);
   const oid = String(input.wooOrderId);

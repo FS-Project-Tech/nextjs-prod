@@ -89,4 +89,98 @@ describe("validateAndRecalculateCheckout", () => {
       })
     ).rejects.toThrow(/no longer available/i);
   });
+
+  it("sets Woo line subtotal/total from REST unit price × qty", async () => {
+    resolveWooLineItems.mockResolvedValue({
+      ok: true,
+      line_items: [{ product_id: 5, quantity: 3 }],
+    });
+    wcGet.mockResolvedValue({
+      data: { price: "12.50", tax_class: "", tax_status: "taxable" },
+    });
+
+    const r = await validateAndRecalculateCheckout({
+      billing: {
+        first_name: "A",
+        last_name: "B",
+        email: "a@example.com",
+        phone: "0400000000",
+        company: "",
+        address_1: "1 Test St",
+        address_2: "",
+        city: "Gold Coast",
+        state: "QLD",
+        postcode: "4209",
+        country: "AU",
+      },
+      shipping: {
+        first_name: "A",
+        last_name: "B",
+        email: "a@example.com",
+        phone: "0400000000",
+        company: "",
+        address_1: "1 Test St",
+        address_2: "",
+        city: "Gold Coast",
+        state: "QLD",
+        postcode: "4209",
+        country: "AU",
+      },
+      line_items: [{ product_id: 5, quantity: 3 }],
+      shipping_method_id: "flat_rate:1",
+      payment_method: "eway",
+      insurance_option: "no",
+    });
+
+    expect(r.wooLineItems).toHaveLength(1);
+    expect(r.wooLineItems[0].subtotal).toBe("37.50");
+    expect(r.wooLineItems[0].total).toBe("37.50");
+  });
+
+  it("uses client unit_price over Woo REST when provided (PDP multipliers)", async () => {
+    resolveWooLineItems.mockResolvedValue({
+      ok: true,
+      line_items: [{ product_id: 5, quantity: 2 }],
+    });
+    wcGet.mockResolvedValue({
+      data: { price: "10.00", tax_class: "gst-free", tax_status: "none" },
+    });
+
+    const r = await validateAndRecalculateCheckout({
+      billing: {
+        first_name: "A",
+        last_name: "B",
+        email: "a@example.com",
+        phone: "0400000000",
+        company: "",
+        address_1: "1 Test St",
+        address_2: "",
+        city: "Gold Coast",
+        state: "QLD",
+        postcode: "4209",
+        country: "AU",
+      },
+      shipping: {
+        first_name: "A",
+        last_name: "B",
+        email: "a@example.com",
+        phone: "0400000000",
+        company: "",
+        address_1: "1 Test St",
+        address_2: "",
+        city: "Gold Coast",
+        state: "QLD",
+        postcode: "4209",
+        country: "AU",
+      },
+      line_items: [{ product_id: 5, quantity: 2, unit_price: 148.6 }],
+      shipping_method_id: "flat_rate:1",
+      payment_method: "eway",
+      insurance_option: "no",
+    });
+
+    expect(r.totals.subtotal).toBeCloseTo(297.2, 5);
+    expect(r.wooLineItems[0].subtotal).toBe("297.20");
+    expect(r.wooLineItems[0].total).toBe("297.20");
+  });
 });

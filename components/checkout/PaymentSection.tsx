@@ -234,7 +234,7 @@ function PaymentSectionInner({
         type="submit"
         disabled={placing}
         aria-busy={placing}
-        className={`mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING_BTN} focus:ring-offset-white`}
+        className={`mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING_BTN} focus:ring-offset-white cursor-pointer`}
       >
         {placing
           ? selectedPaymentMethod === "eway"

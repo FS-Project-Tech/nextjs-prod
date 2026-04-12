@@ -203,6 +203,7 @@
 //D:\stage-joya\nextjs-stage\utils\checkout-pricing.ts
 
 import type { CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
+import type { CheckoutQuoteTotalsInput } from "@/lib/checkout/initiatePayload";
 import { calculateGST, calculateTotal } from "@/lib/cart/pricing";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
@@ -220,6 +221,46 @@ function normCountry(v?: string): string {
   return c;
 }
 
+/** Placeholder billing/shipping so {@link validateAndRecalculateCheckout} can run for quote-only (rates need a locale). */
+function checkoutPayloadForQuote(input: CheckoutQuoteTotalsInput): CheckoutInitiatePayload {
+  const country = normCountry(input.shipping.country);
+  const city = String(input.shipping.city || "").trim() || "Sydney";
+  const state = String(input.shipping.state || "").trim();
+  const postcode = String(input.shipping.postcode || "").trim();
+  const base = {
+    first_name: "Quote",
+    last_name: "Totals",
+    email: "quote@invalid.local",
+    phone: "",
+    company: "",
+    address_1: "1 Quote Street",
+    address_2: "",
+    city,
+    state,
+    postcode,
+    country,
+  };
+  return {
+    billing: base,
+    shipping: base,
+    line_items: input.line_items as CheckoutInitiatePayload["line_items"],
+    shipping_method_id: input.shipping_method_id,
+    payment_method: "eway",
+    coupon_code: input.coupon_code?.trim() || undefined,
+    insurance_option: input.insurance_option ?? "no",
+  };
+}
+
+/** Same numbers as order creation / eWAY path — for checkout UI preview. */
+export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Promise<{
+  validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
+  wooLineItems: WooLineItem[];
+  shippingLine: { method_id: string; method_title: string; total: string };
+  totals: CheckoutTotals;
+}> {
+  return validateAndRecalculateCheckout(checkoutPayloadForQuote(input));
+}
+
 export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePayload): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
@@ -235,6 +276,7 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
       product_id: li.product_id,
       variation_id: li.variation_id,
       quantity: li.quantity,
+      unit_price: li.unit_price,
     }))
   );
 
@@ -268,13 +310,18 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   }));
 
   const unitPrices = await Promise.all(
-    validatedLineItems.map(async (li) => {
+    validatedLineItems.map(async (li, idx) => {
+      const clientUnit = payload.line_items[idx]?.unit_price;
       const path = li.variation_id
         ? `/products/${li.product_id}/variations/${li.variation_id}`
         : `/products/${li.product_id}`;
       const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
       const p = data || {};
-      const unit = Number.parseFloat(String(p.price ?? "0")) || 0;
+      const wooUnit = Number.parseFloat(String(p.price ?? "0")) || 0;
+      const unit =
+        typeof clientUnit === "number" && Number.isFinite(clientUnit) && clientUnit > 0
+          ? clientUnit
+          : wooUnit;
       const taxClass = String(p.tax_class ?? "");
       const taxStatus = String(p.tax_status ?? "");
       const cls = taxClass.trim().toLowerCase().replace(/[\s_]+/g, "-");
@@ -360,10 +407,17 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     );
   }
 
-  const wooLineItems: WooLineItem[] = validatedLineItems.map((li) => {
+  const wooLineItems: WooLineItem[] = validatedLineItems.map((li, idx) => {
+    const up = unitPrices[idx];
+    const unit = up?.unit ?? 0;
+    const lineAmount = Number((unit * li.quantity).toFixed(2));
+    const lineStr = lineAmount.toFixed(2);
     const base: WooLineItem = {
       product_id: li.product_id,
       quantity: li.quantity,
+      /** Align Woo line math with the same REST catalog prices used for `totals` / UI. */
+      subtotal: lineStr,
+      total: lineStr,
     };
     if (li.variation_id != null && li.variation_id > 0) {
       base.variation_id = li.variation_id;

@@ -1,37 +1,10 @@
 import type { CartItem } from "@/lib/types/cart";
+import {
+  buildHcpInfoJsonFromForm,
+  buildNdisInfoJsonFromForm,
+  normalizeNdisFundingType,
+} from "@/lib/checkout/ndisHcpPayload";
 import type { CheckoutFormData, ShippingMethodType } from "./schema";
-
-function jsonInfoBlock(record: Record<string, unknown>): string | undefined {
-  const entries = Object.entries(record).filter(
-    ([, v]) => v !== undefined && v !== "" && v !== false && v !== null,
-  );
-  if (entries.length === 0) return undefined;
-  try {
-    return JSON.stringify(Object.fromEntries(entries));
-  } catch {
-    return undefined;
-  }
-}
-
-function ndisInfoFromForm(data: CheckoutFormData): string | undefined {
-  return jsonInfoBlock({
-    number: data.cust_woo_ndis_number || data.ndis_number,
-    participant_name: data.cust_woo_ndis_participant_name || data.ndis_participant_name,
-    dob: data.cust_woo_ndis_dob || data.ndis_dob,
-    funding_type: data.cust_woo_ndis_funding_type || data.ndis_funding_type,
-    invoice_email: data.cust_woo_invoice_email || data.billing_ndis_invoice_email,
-    approval: data.cust_woo_ndis_approval ?? data.ndis_approval,
-  });
-}
-
-function hcpInfoFromForm(data: CheckoutFormData): string | undefined {
-  return jsonInfoBlock({
-    participant_name: data.cust_woo_hcp_participant_name || data.hcp_participant_name,
-    number: data.cust_woo_hcp_number || data.hcp_number,
-    provider_email: data.cust_woo_provider_email || data.hcp_provider_email,
-    approval: data.cust_woo_hcp_approval ?? data.hcp_approval,
-  });
-}
 
 function billingBlock(data: CheckoutFormData) {
   return {
@@ -63,19 +36,46 @@ function shippingBlock(data: CheckoutFormData) {
   };
 }
 
-function lineItemsFromCart(cartLines: CartItem[]) {
+export function lineItemsFromCart(cartLines: CartItem[]) {
   return cartLines.map((line) => {
     const sku =
       line.sku != null && String(line.sku).trim() !== "" ? String(line.sku).trim() : undefined;
     const productId = Number(line.productId);
     const variationRaw = line.variationId != null ? Number(line.variationId) : NaN;
+    const unitFromCart = Number.parseFloat(String(line.price ?? "").trim());
+    const unit_price =
+      Number.isFinite(unitFromCart) && unitFromCart > 0 ? unitFromCart : undefined;
     return {
       ...(sku ? { sku } : {}),
       ...(Number.isFinite(productId) && productId > 0 ? { product_id: productId } : {}),
       ...(Number.isFinite(variationRaw) && variationRaw > 0 ? { variation_id: variationRaw } : {}),
       quantity: line.qty,
+      ...(unit_price != null ? { unit_price } : {}),
     };
   });
+}
+
+export function buildCheckoutQuoteTotalsBody(params: {
+  data: CheckoutFormData;
+  cartLines: CartItem[];
+  appliedCoupon: { code: string } | null;
+}): Record<string, unknown> | null {
+  const { data, cartLines, appliedCoupon } = params;
+  const sm = data.shippingMethod as ShippingMethodType | undefined;
+  if (!sm?.id) return null;
+  const destination = data.shipToDifferentAddress ? shippingBlock(data) : billingBlock(data);
+  return {
+    line_items: lineItemsFromCart(cartLines),
+    shipping_method_id: sm.id,
+    shipping: {
+      country: destination.country || "AU",
+      state: destination.state || "",
+      postcode: destination.postcode || "",
+      city: destination.city || "",
+    },
+    coupon_code: appliedCoupon?.code?.trim() || undefined,
+    insurance_option: data.insurance_option === "yes" ? "yes" : "no",
+  };
 }
 
 export function buildCreateOrderPayload(params: {
@@ -110,15 +110,16 @@ export function buildCreateOrderPayload(params: {
       country: destination.country || "AU",
     },
     line_items: lineItemsFromCart(cartLines),
+    ...(paymentMethod === "eway" ? { cart_items: cartLines } : {}),
     shipping_method_id: shippingMethod?.id,
     payment_method: paymentMethod,
     /** Store API COD expects `payment_data: []`; kept on payload for parity and future direct Store calls. */
     payment_data: [] as unknown[],
     coupon_code: appliedCouponCode || couponFromUrl || undefined,
     insurance_option: data.insurance_option === "yes" ? "yes" : "no",
-    ndis_type: (data.cust_woo_ndis_funding_type ?? data.ndis_funding_type) || undefined,
-    ndis_info: ndisInfoFromForm(data),
-    hcp_info: hcpInfoFromForm(data),
+    ndis_type: normalizeNdisFundingType(data.cust_woo_ndis_funding_type ?? data.ndis_funding_type),
+    ndis_info: buildNdisInfoJsonFromForm(data),
+    hcp_info: buildHcpInfoJsonFromForm(data),
     delivery_authority: data.deliveryAuthority || undefined,
     no_paperwork: data.doNotSendPaperwork === true,
     discreet_packaging: data.discreetPackaging === true,

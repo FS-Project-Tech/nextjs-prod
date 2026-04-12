@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useCart } from "@/components/CartProvider";
+import { getActiveCartSnapshot } from "@/store/cartStore";
 import { useToast } from "@/components/ToastProvider";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useUser } from "@/hooks/useUser";
@@ -14,6 +15,8 @@ import { parseCartTotal } from "@/lib/cart/parseCartTotal";
 import { calculateTaxableSubtotal } from "@/lib/cart/pricing";
 import { submitCheckoutOrder } from "@/lib/payment/submitCheckoutOrder";
 import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
+import { buildCheckoutQuoteTotalsBody } from "@/lib/checkout/buildCreateOrderPayload";
+import type { CheckoutTotals } from "@/types/checkout";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
 import {
@@ -22,14 +25,18 @@ import {
   useRecalculateCouponWhenCartChanges,
 } from "./useCheckoutSideEffects";
 import { applySavedBillingAddress, applySavedShippingAddress } from "./savedAddressPatch";
+import { cartLinesFingerprint } from "./cartFingerprint";
 
 export function useCheckoutPageState() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { items: cartLines, clear: clearLocalCart, total: cartTotalString } = useCart();
+  const { items: cartLines, clear: clearLocalCart, total: cartTotalString, validateCart } = useCart();
+  const cartLinesRef = useRef(cartLines);
+  cartLinesRef.current = cartLines;
+  const quoteEpochRef = useRef(0);
   const { success, error: showError } = useToast();
   const { appliedCoupon, discount: couponDiscountAmount, calculateDiscount } = useCoupon();
-  const { user } = useUser();
+  const { user, sessionStatus } = useUser();
   const { addresses } = useAddresses();
 
   const [isMounted, setIsMounted] = useState(false);
@@ -75,28 +82,19 @@ export function useCheckoutPageState() {
     [addresses]
   );
 
-  const canUseOnAccount = useMemo(() => {
-    const roles = Array.isArray(user?.roles)
-      ? user.roles.map((r: unknown) => String(r || "").trim().toLowerCase())
-      : [];
-    const isAdmin = roles.includes("administrator");
-    const isNdisApprovedRole = roles.includes("ndis-approved");
-    const isB2bUser = roles.includes("b2b_user");
-    return isAdmin || isNdisApprovedRole || isB2bUser;
-  }, [user?.roles]);
-
-  useEffect(() => {
-    if (!canUseOnAccount && selectedPaymentMethod === "cod") {
-      setSelectedPaymentMethod("eway");
-    }
-  }, [canUseOnAccount, selectedPaymentMethod]);
-
   const form = useForm<CheckoutFormData>({
     resolver: yupResolver(checkoutSchema) as never,
     defaultValues: CHECKOUT_FORM_DEFAULTS,
   });
 
-  const { control, register, handleSubmit, setValue, formState: { errors } } = form;
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    getValues,
+    formState: { errors },
+  } = form;
   // Scoped useWatch fields only — avoids subscribing to the entire form (no watch() snapshot).
   const watchedShippingMethod = useWatch({ control, name: "shippingMethod" });
   const shipToDifferentAddress = useWatch({
@@ -104,6 +102,43 @@ export function useCheckoutPageState() {
     name: "shipToDifferentAddress",
     defaultValue: false,
   });
+  const watchedInsurance = useWatch({ control, name: "insurance_option", defaultValue: "no" });
+  const watchedBillingCountry = useWatch({ control, name: "billing_country", defaultValue: "AU" });
+  const watchedBillingState = useWatch({ control, name: "billing_state", defaultValue: "" });
+  const watchedBillingPostcode = useWatch({ control, name: "billing_postcode", defaultValue: "" });
+  const watchedBillingCity = useWatch({ control, name: "billing_city", defaultValue: "" });
+  const watchedShippingCountry = useWatch({ control, name: "shipping_country", defaultValue: "AU" });
+  const watchedShippingState = useWatch({ control, name: "shipping_state", defaultValue: "" });
+  const watchedShippingPostcode = useWatch({ control, name: "shipping_postcode", defaultValue: "" });
+  const watchedShippingCity = useWatch({ control, name: "shipping_city", defaultValue: "" });
+  const watchedCustNdis = useWatch({ control, name: "cust_woo_ndis_number", defaultValue: "" }) ?? "";
+  const watchedLegacyNdis = useWatch({ control, name: "ndis_number", defaultValue: "" }) ?? "";
+
+  const canUseOnAccount = useMemo(() => {
+    const roles = Array.isArray(user?.roles)
+      ? user.roles.map((r: unknown) => String(r || "").trim().toLowerCase())
+      : [];
+    const isAdmin = roles.includes("administrator");
+    const isNdisApprovedRole = roles.includes("ndis-approved");
+    const isB2bUser = roles.includes("b2b_user");
+    if (isAdmin || isNdisApprovedRole || isB2bUser) return true;
+    if (user) return false;
+    if (sessionStatus !== "unauthenticated") return false;
+    const digits = `${watchedCustNdis}${watchedLegacyNdis}`.replace(/\D/g, "");
+    return digits.length >= 9;
+  }, [
+    user,
+    user?.roles,
+    sessionStatus,
+    watchedCustNdis,
+    watchedLegacyNdis,
+  ]);
+
+  useEffect(() => {
+    if (!canUseOnAccount && selectedPaymentMethod === "cod") {
+      setSelectedPaymentMethod("eway");
+    }
+  }, [canUseOnAccount, selectedPaymentMethod]);
 
   /** One-shot apply of first saved address per section (returning customers). */
   const savedAddressHydrationRef = useRef({ billing: false, shipping: false });
@@ -172,6 +207,115 @@ export function useCheckoutPageState() {
   );
 
   useMountFlag(setIsMounted);
+
+  /** One Woo price refresh on checkout so line row prices match quote-totals / order creation. */
+  const checkoutPriceSyncRef = useRef(false);
+  useEffect(() => {
+    if (!isMounted || cartLines.length === 0) {
+      checkoutPriceSyncRef.current = false;
+      return;
+    }
+    if (checkoutPriceSyncRef.current) return;
+    checkoutPriceSyncRef.current = true;
+    void validateCart();
+  }, [isMounted, cartLines.length, validateCart]);
+
+  const [serverTotals, setServerTotals] = useState<CheckoutTotals | null>(null);
+  const [totalsQuoteLoading, setTotalsQuoteLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isMounted || cartLines.length === 0) {
+      setServerTotals(null);
+      setTotalsQuoteLoading(false);
+      return;
+    }
+    const sm = watchedShippingMethod as ShippingMethodType | undefined;
+    if (!sm?.id) {
+      setServerTotals(null);
+      return;
+    }
+    quoteEpochRef.current += 1;
+    const epoch = quoteEpochRef.current;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      if (quoteEpochRef.current !== epoch) return;
+
+      const linesSnapshot = cartLinesRef.current;
+      const data = getValues() as CheckoutFormData;
+      const body = buildCheckoutQuoteTotalsBody({
+        data,
+        cartLines: linesSnapshot,
+        appliedCoupon,
+      });
+      if (!body) {
+        setServerTotals(null);
+        return;
+      }
+      const fingerprintAtSend = cartLinesFingerprint(linesSnapshot);
+      setTotalsQuoteLoading(true);
+      void fetch("/api/checkout/quote-totals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        credentials: "include",
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          if (ac.signal.aborted) return;
+          if (quoteEpochRef.current !== epoch) return;
+          if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
+
+          const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            totals?: CheckoutTotals;
+            error?: string;
+          };
+          if (!res.ok || !json.success || !json.totals) {
+            if (quoteEpochRef.current === epoch) setServerTotals(null);
+            return;
+          }
+          if (quoteEpochRef.current !== epoch) return;
+          if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
+
+          setServerTotals(json.totals);
+        })
+        .catch(() => {
+          if (!ac.signal.aborted && quoteEpochRef.current === epoch) setServerTotals(null);
+        })
+        .finally(() => {
+          if (!ac.signal.aborted && quoteEpochRef.current === epoch) setTotalsQuoteLoading(false);
+        });
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [
+    isMounted,
+    cartLines,
+    appliedCoupon,
+    watchedShippingMethod,
+    shipToDifferentAddress,
+    watchedInsurance,
+    watchedBillingCountry,
+    watchedBillingState,
+    watchedBillingPostcode,
+    watchedBillingCity,
+    watchedShippingCountry,
+    watchedShippingState,
+    watchedShippingPostcode,
+    watchedShippingCity,
+    getValues,
+  ]);
+
+  const summarySubtotal = serverTotals?.subtotal ?? subtotal;
+  const summaryShipping = serverTotals?.shipping ?? shippingCost;
+  const summaryDiscount = serverTotals?.discount ?? couponDiscount;
+  const summaryGst = serverTotals?.gst ?? gst;
+  const summaryOrderTotal = serverTotals?.total ?? orderTotal;
+  const summaryCartSubtotal = serverTotals?.subtotal ?? cartSubtotal;
+
   useCheckoutQueryToasts(isMounted, searchParams, showError);
 
   /** Warm checkout API + prefetch order review so post-submit navigation is instant. */
@@ -204,9 +348,19 @@ export function useCheckoutPageState() {
   const onSubmit = useCallback(
     async (data: CheckoutFormData) => {
       if (placing) return;
+      const validated = await validateCart();
+      if (!validated.valid) {
+        const first = validated.errors[0]?.message?.trim();
+        showError(first || "Your cart could not be validated. Please review your items.");
+        return;
+      }
+      const linesForOrder = getActiveCartSnapshot();
+      if (process.env.NODE_ENV === "development") {
+        console.log("[checkout] placing order with Zustand lines (post-validation):", linesForOrder);
+      }
       await submitCheckoutOrder({
         data,
-        cartLines,
+        cartLines: linesForOrder,
         checkoutSessionId: ensureCheckoutSessionId(),
         selectedPaymentMethod,
         ewayTokenFlowEnabled,
@@ -225,7 +379,7 @@ export function useCheckoutPageState() {
     },
     [
       placing,
-      cartLines,
+      validateCart,
       selectedPaymentMethod,
       ewayTokenFlowEnabled,
       appliedCoupon,
@@ -251,13 +405,14 @@ export function useCheckoutPageState() {
   return {
     isMounted,
     cartLines,
-    subtotal,
-    cartSubtotal,
-    couponDiscount,
+    subtotal: summarySubtotal,
+    cartSubtotal: summaryCartSubtotal,
+    couponDiscount: summaryDiscount,
     appliedCoupon,
-    shippingCost,
-    gst,
-    orderTotal,
+    shippingCost: summaryShipping,
+    gst: summaryGst,
+    orderTotal: summaryOrderTotal,
+    totalsQuoteLoading,
     postSubmitNavigation,
     placing,
     selectedPaymentMethod,

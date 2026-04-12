@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/components/CartProvider";
+import { useCartStore } from "@/store/cartStore";
 import { parseResponseJson } from "@/lib/parse-response-json";
 
 // ============================================================================
@@ -71,7 +72,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
   const router = useRouter();
   const auth = useAuth();
   const { update } = useSession();
-  const { items: cartItems, clear: clearLocalCart } = useCart();
+  const { items: cartItems } = useCart();
   const [isProcessing, setIsProcessing] = useState(false);
 
   /**
@@ -135,10 +136,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
           };
         }
 
-        // Clear local cart if items were merged
-        if (data.cartSync?.mergedCount > 0) {
-          clearLocalCart();
-        }
+        // Zustand guest→user merge + Woo push run in CartProvider when session updates; do not clear here.
 
         await update?.();
 
@@ -161,7 +159,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
         setIsProcessing(false);
       }
     },
-    [isProcessing, cartItems, clearLocalCart, update, router]
+    [isProcessing, cartItems, update, router]
   );
 
   /**
@@ -316,8 +314,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
       }>(response);
 
       if (response.ok && data?.success) {
-        // Clear local cart after successful merge
-        clearLocalCart();
+        useCartStore.getState().clearGuestCartOnly();
         return { success: true, mergedCount: data.mergedCount ?? 0 };
       }
 
@@ -326,7 +323,7 @@ export function useGraphQLAuth(): UseGraphQLAuthReturn {
       console.error("Cart merge error:", error);
       return { success: false, mergedCount: 0 };
     }
-  }, [auth.isAuthenticated, cartItems, clearLocalCart]);
+  }, [auth.isAuthenticated, cartItems]);
 
   return {
     // State from useAuth

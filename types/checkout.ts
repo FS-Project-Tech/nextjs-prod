@@ -1,3 +1,5 @@
+import type { CartItem } from "@/lib/types/cart";
+
 /** Woo REST `payment_method` for headless checkout. */
 export type PaymentMethod = "eway" | "cod";
 
@@ -8,6 +10,11 @@ export type CheckoutCartItem = {
   quantity: number;
   /** Preferred for resolution — mapped to Woo `product_id` / `variation_id` before order creation. */
   sku?: string;
+  /**
+   * Display unit price from the storefront cart (e.g. after quantity-unit / packaging multipliers).
+   * When set, checkout quote and order line math use this instead of raw Woo REST `price` alone.
+   */
+  unit_price?: number;
   /** Set by token redeem when headless locked line amounts (no cart coupon). */
   subtotal?: string;
   total?: string;
@@ -36,6 +43,11 @@ export type CheckoutInitiatePayload = {
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
   line_items: CheckoutCartItem[];
+  /**
+   * Required when `payment_method === "eway"`: current Zustand cart lines; server re-validates (same as /api/validate-cart)
+   * before charging eWAY. Never trust this for amounts without {@link runFullCartValidation}.
+   */
+  cart_items?: CartItem[];
   shipping_method_id: string;
   payment_method: PaymentMethod;
   /** Client-generated UUID for idempotent checkout (stored on Woo order meta). */

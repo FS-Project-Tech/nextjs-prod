@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,18 +13,16 @@ import {
 import { calculateSubtotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
 import { useUser } from "@/hooks/useUser";
-import { useCartStore, useCartStoreItems } from "@/store/cartStore";
+import {
+  getActiveCartSnapshot,
+  getUserCartBucketSnapshot,
+  useCartStore,
+  useCartStoreItems,
+} from "@/store/cartStore";
 
-// Re-export CartItem for backward compatibility
 export type { CartItem };
 
-// WooCommerce cart item from API response
-interface WCCartItem {
-  product_id: number;
-  variation_id?: number;
-  price: string;
-  quantity: number;
-}
+const WOO_PUSH_DEBOUNCE_MS = 450;
 
 interface CartState {
   items: CartItem[];
@@ -37,14 +36,21 @@ interface CartState {
   removeItem: (id: string) => void;
   updateItemQty: (id: string, qty: number) => void;
   clear: () => void;
+  /** Push current Zustand cart to Woo (clear + re-add). Never reads Woo into Zustand. */
   syncWithWooCommerce: (couponCode?: string) => Promise<void>;
   validateCart: () => Promise<{
     valid: boolean;
     errors: Array<{ itemId: string; message: string }>;
   }>;
   total: string;
-  /** Re-fetch cart from server (for cross-browser: call when cart is empty on another device) */
+  /** Re-fetch dashboard mirror when cart is empty (logged-in only). */
   refreshCartFromServer: () => void;
+  /** True while guest→user merge / login cart transition runs. */
+  isCartMerging: boolean;
+  /** Clear guest bucket only (safe after server merge). */
+  clearGuestCart: () => void;
+  /** Clear a specific user's persisted bucket (does not change active user). */
+  clearUserCart: (userId: string) => void;
 }
 
 const CartContext = createContext<CartState | undefined>(undefined);
@@ -53,8 +59,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   const items = useCartStoreItems();
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isCartMerging, setIsCartMerging] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const cartMergeBlockingRef = useRef(false);
+  const loginTransitionReadyUidRef = useRef<string | null>(null);
   const { user, loading: authLoading } = useUser();
   const [hasLoadedServerCart, setHasLoadedServerCart] = useState(false);
   const loadRetryCount = useRef(0);
@@ -62,38 +71,62 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   itemsRef.current = items;
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const cartSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncInFlightRef = useRef(false);
-  const cartKey = useMemo(() => {
-    if (authLoading) return undefined;
-    if (!user?.id) return "cart:v1:guest";
-    return `cart:v1:user:${user.id}`;
-  }, [user?.id, authLoading]);
+  const userIdRef = useRef<string | undefined>(undefined);
+  const serverCartLoadGenerationRef = useRef(0);
+  const wooSyncMutexRef = useRef(Promise.resolve());
+  const wooPushDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wooPushDepthRef = useRef(0);
 
   useEffect(() => {
+    userIdRef.current = user?.id ? String(user.id) : undefined;
+  }, [user?.id]);
+
+  /** Guest session: no active user, optional legacy guest import. */
+  useEffect(() => {
     if (typeof window === "undefined") return;
-    const store = useCartStore.getState();
-    if (cartKey === undefined) {
-      if (store.activeUserId !== null) {
-        store.setActiveUserId(null);
-      }
+    if (authLoading) {
       setIsHydrated(false);
       return;
     }
-    const { setActiveUserId, migrateFromLegacyKey, activeUserId } = useCartStore.getState();
-    const nextUserId = user?.id ? String(user.id) : null;
-    if (activeUserId !== nextUserId) {
-      setActiveUserId(nextUserId);
-    }
-    migrateFromLegacyKey(cartKey);
-    setIsHydrated(true);
-  }, [cartKey, user?.id]);
+    if (user?.id) return;
 
-  // Persist cart to server when user leaves the page (so other browsers get the latest)
+    loginTransitionReadyUidRef.current = null;
+    useCartStore.getState().setActiveUserId(null);
+    useCartStore.getState().hydrateGuestBucketFromLegacyIfEmpty();
+    serverCartLoadGenerationRef.current += 1;
+    setHasLoadedServerCart(false);
+    loadRetryCount.current = 0;
+    setIsHydrated(true);
+  }, [authLoading, user?.id]);
+
+  const saveCartToServerNow = useCallback(async (lines: CartItem[]): Promise<boolean> => {
+    if (!userIdRef.current) return false;
+    const snapshot = JSON.stringify({ items: lines });
+    try {
+      const res = await fetch("/api/dashboard/cart/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: snapshot,
+        keepalive: true,
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean };
+      if (res.ok && data.success === true) {
+        lastSavedSnapshotRef.current = snapshot;
+        return true;
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[CartProvider] immediate cart save failed", e);
+      }
+    }
+    return false;
+  }, []);
+
   useEffect(() => {
     if (!user?.id || typeof window === "undefined") return;
     const onUnload = () => {
       const current = itemsRef.current;
-      if (current.length === 0) return;
       const payload = JSON.stringify({ items: current });
       const blob = new Blob([payload], { type: "application/json" });
       navigator.sendBeacon("/api/dashboard/cart/save", blob);
@@ -106,13 +139,160 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     };
   }, [user?.id]);
 
-  // Load server-side cart for logged-in users (cross-browser persistence). Retry on 401 until session is ready.
+  const cancelDebouncedWooPush = useCallback(() => {
+    if (wooPushDebounceRef.current) {
+      clearTimeout(wooPushDebounceRef.current);
+      wooPushDebounceRef.current = null;
+    }
+  }, []);
+
+  const performWooPush = useCallback(async (lines: CartItem[], couponCode?: string) => {
+    wooPushDepthRef.current += 1;
+    if (wooPushDepthRef.current === 1) {
+      setIsSyncing(true);
+      setSyncError(null);
+    }
+    try {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[CartProvider] Woo push — Zustand snapshot (source of truth):", lines);
+      }
+
+      if (lines.length === 0) {
+        const res = await fetch("/api/cart/clear", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+          body: "{}",
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          const msg =
+            typeof data.error === "string" && data.error.trim()
+              ? data.error.trim()
+              : "Failed to clear WooCommerce cart";
+          throw new Error(msg);
+        }
+        if (process.env.NODE_ENV === "development") {
+          console.log("[CartProvider] Woo push — cleared (empty Zustand cart)", data);
+        }
+        return;
+      }
+
+      const res = await fetch("/api/cart/add-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({ items: lines, couponCode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        lineCount?: number;
+        clientLineCount?: number;
+      };
+      if (!res.ok) {
+        const msg =
+          typeof data.error === "string" && data.error.trim()
+            ? data.error.trim()
+            : "Failed to push cart to WooCommerce";
+        throw new Error(msg);
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.log("[CartProvider] Woo push — server ack (not applied to Zustand):", data);
+      }
+    } finally {
+      wooPushDepthRef.current -= 1;
+      if (wooPushDepthRef.current <= 0) {
+        wooPushDepthRef.current = 0;
+        setIsSyncing(false);
+      }
+    }
+  }, []);
+
+  const enqueueWooPush = useCallback(
+    (lines: CartItem[], couponCode?: string) => {
+      if (cartMergeBlockingRef.current) {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[CartProvider] Woo push skipped (cart login merge in progress)");
+        }
+        return;
+      }
+      wooSyncMutexRef.current = wooSyncMutexRef.current
+        .then(() => performWooPush(lines, couponCode))
+        .catch((e) => {
+          const msg = e instanceof Error ? e.message : "Cart sync failed";
+          setSyncError(msg);
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[CartProvider] Woo push failed (Zustand unchanged)", e);
+          }
+        });
+    },
+    [performWooPush],
+  );
+
+  /**
+   * Runs before paint and before dashboard `useEffect` so `activeUserId` is set before any `setItems`
+   * from `/api/dashboard/cart/load`.
+   */
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    if (!user?.id) return;
+
+    const uid = String(user.id);
+    const needsTransition = loginTransitionReadyUidRef.current !== uid;
+
+    if (!needsTransition) {
+      setIsHydrated(true);
+      return;
+    }
+
+    cartMergeBlockingRef.current = true;
+    setIsCartMerging(true);
+    try {
+      const store = useCartStore.getState();
+      if (process.env.NODE_ENV === "development") {
+        console.log("[CartProvider] login transition (before merge)", {
+          uid,
+          guestCount: store.guestItems.length,
+          userBucketCount: (store.userCarts[uid] ?? []).length,
+          activeUserId: store.activeUserId,
+        });
+      }
+      store.hydrateUserBucketFromLegacyIfEmpty(uid);
+      store.mergeGuestIntoUserBucket(uid);
+      store.setActiveUserId(uid);
+      loginTransitionReadyUidRef.current = uid;
+      if (process.env.NODE_ENV === "development") {
+        const s = useCartStore.getState();
+        console.log("[CartProvider] login transition (after merge + setActiveUserId)", {
+          guestCount: s.guestItems.length,
+          userBucketCount: (s.userCarts[uid] ?? []).length,
+          activeUserId: s.activeUserId,
+        });
+      }
+    } finally {
+      cartMergeBlockingRef.current = false;
+      setIsCartMerging(false);
+      setIsHydrated(true);
+    }
+
+    cancelDebouncedWooPush();
+    enqueueWooPush(getActiveCartSnapshot());
+  }, [authLoading, user?.id, cancelDebouncedWooPush, enqueueWooPush]);
+
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isHydrated || typeof window === "undefined") return;
+    if (isCartMerging) return;
     if (!user?.id) {
       setHasLoadedServerCart(false);
       loadRetryCount.current = 0;
+      return;
+    }
+    const uid = String(user.id);
+    if (getUserCartBucketSnapshot(uid).length > 0) {
+      setHasLoadedServerCart(true);
       return;
     }
     if (hasLoadedServerCart) return;
@@ -124,6 +304,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     let cancelled = false;
 
     const load = async () => {
+      const generationAtStart = serverCartLoadGenerationRef.current;
       try {
         const res = await fetch("/api/dashboard/cart/load", {
           method: "GET",
@@ -142,9 +323,14 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
         loadRetryCount.current = 0;
         const data = await res.json();
+        if (cancelled) return;
+        if (generationAtStart !== serverCartLoadGenerationRef.current) {
+          setHasLoadedServerCart(true);
+          return;
+        }
         const serverItems: CartItem[] = Array.isArray(data.items) ? data.items : [];
         useCartStore.getState().setItems((current) =>
-          serverItems.length > 0 || current.length === 0 ? serverItems : current,
+          current.length === 0 && serverItems.length > 0 ? serverItems : current,
         );
         lastSavedSnapshotRef.current = JSON.stringify({ items: serverItems });
         setHasLoadedServerCart(true);
@@ -170,30 +356,76 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         retryTimeoutRef.current = null;
       }
     };
-  }, [isHydrated, user?.id, hasLoadedServerCart]);
+  }, [isHydrated, isCartMerging, user?.id, hasLoadedServerCart]);
+
+  const scheduleDebouncedWooPush = useCallback(() => {
+    if (cartMergeBlockingRef.current) return;
+    cancelDebouncedWooPush();
+    wooPushDebounceRef.current = setTimeout(() => {
+      wooPushDebounceRef.current = null;
+      enqueueWooPush(getActiveCartSnapshot());
+    }, WOO_PUSH_DEBOUNCE_MS);
+  }, [cancelDebouncedWooPush, enqueueWooPush]);
 
   const close = useCallback(() => setIsOpen(false), []);
 
-  const addItem = useCallback((input: Omit<CartItem, "id"> & { id?: string }) => {
-    useCartStore.getState().addItem(input);
-    setSyncError(null);
-    setIsOpen(true);
-  }, []);
+  const addItem = useCallback(
+    (input: Omit<CartItem, "id"> & { id?: string }) => {
+      serverCartLoadGenerationRef.current += 1;
+      useCartStore.getState().addItem(input);
+      setSyncError(null);
+      setIsOpen(true);
+      scheduleDebouncedWooPush();
+    },
+    [scheduleDebouncedWooPush],
+  );
 
-  const removeItem = useCallback((id: string) => {
-    useCartStore.getState().removeItem(id);
-  }, []);
+  const removeItem = useCallback(
+    (id: string) => {
+      serverCartLoadGenerationRef.current += 1;
+      if (cartSaveTimerRef.current) {
+        clearTimeout(cartSaveTimerRef.current);
+        cartSaveTimerRef.current = null;
+      }
+      cancelDebouncedWooPush();
 
-  const updateItemQty = useCallback((id: string, qty: number) => {
-    useCartStore.getState().updateItemQty(id, qty);
-  }, []);
+      const line = getActiveCartSnapshot().find((i) => i.id === id);
+      if (!line) return;
+
+      useCartStore.getState().removeItem(id);
+      void saveCartToServerNow(getActiveCartSnapshot());
+      enqueueWooPush(getActiveCartSnapshot());
+    },
+    [saveCartToServerNow, cancelDebouncedWooPush, enqueueWooPush],
+  );
+
+  const updateItemQty = useCallback(
+    (id: string, qty: number) => {
+      serverCartLoadGenerationRef.current += 1;
+      if (cartSaveTimerRef.current) {
+        clearTimeout(cartSaveTimerRef.current);
+        cartSaveTimerRef.current = null;
+      }
+      useCartStore.getState().updateItemQty(id, qty);
+      void saveCartToServerNow(getActiveCartSnapshot());
+      scheduleDebouncedWooPush();
+    },
+    [saveCartToServerNow, scheduleDebouncedWooPush],
+  );
 
   const clear = useCallback(() => {
+    serverCartLoadGenerationRef.current += 1;
+    if (cartSaveTimerRef.current) {
+      clearTimeout(cartSaveTimerRef.current);
+      cartSaveTimerRef.current = null;
+    }
+    cancelDebouncedWooPush();
     useCartStore.getState().clear();
     setSyncError(null);
-  }, []);
+    void saveCartToServerNow([]);
+    enqueueWooPush([]);
+  }, [saveCartToServerNow, cancelDebouncedWooPush, enqueueWooPush]);
 
-  // Persist logged-in cart to server (account-based cart) whenever items change
   useEffect(() => {
     if (!isHydrated) return;
     if (!user?.id) return;
@@ -223,7 +455,10 @@ export default function CartProvider({ children }: { children: React.ReactNode }
             body: snapshot,
           });
           if (res.ok) {
-            lastSavedSnapshotRef.current = snapshot;
+            const data = (await res.json().catch(() => ({}))) as { success?: boolean };
+            if (data.success === true) {
+              lastSavedSnapshotRef.current = snapshot;
+            }
           }
         } catch (e) {
           if (process.env.NODE_ENV === "development") {
@@ -242,104 +477,73 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     };
   }, [items, isHydrated, user?.id, hasLoadedServerCart]);
 
+  const clearGuestCart = useCallback(() => {
+    useCartStore.getState().clearGuestCartOnly();
+  }, []);
+
+  const clearUserCart = useCallback((userId: string) => {
+    useCartStore.getState().clearUserCartBucket(userId);
+  }, []);
+
   const syncWithWooCommerce = useCallback(
     async (couponCode?: string) => {
-      if (items.length === 0) return;
-      if (syncInFlightRef.current) return;
-      syncInFlightRef.current = true;
-
-      setIsSyncing(true);
-      setSyncError(null);
-
-      try {
-        const response = await fetch("/api/cart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items, couponCode }),
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          const error = (await response.json().catch(() => ({}))) as {
-            error?: string;
-            message?: string;
-          };
-          const raw =
-            (typeof error.error === "string" && error.error) ||
-            (typeof error.message === "string" && error.message) ||
-            "";
-          let msg = raw || "Failed to sync cart";
-          try {
-            const parsed = JSON.parse(raw) as { message?: string };
-            if (typeof parsed.message === "string" && parsed.message.trim()) {
-              msg = parsed.message.trim();
+      if (cartMergeBlockingRef.current) return;
+      cancelDebouncedWooPush();
+      const lines = getActiveCartSnapshot();
+      await new Promise<void>((resolve) => {
+        wooSyncMutexRef.current = wooSyncMutexRef.current
+          .then(() => performWooPush(lines, couponCode))
+          .catch((e) => {
+            const msg = e instanceof Error ? e.message : "Cart sync failed";
+            setSyncError(msg);
+            if (process.env.NODE_ENV === "development") {
+              console.warn("[CartProvider] syncWithWooCommerce failed", e);
             }
-          } catch {
-            /* use raw */
-          }
-          throw new Error(msg);
-        }
-
-        const data = await response.json();
-
-        if (data.cart?.items) {
-          const priceMap = new Map<string, string>();
-          (data.cart.items as WCCartItem[]).forEach((wcItem) => {
-            const itemId = `${wcItem.product_id}${
-              wcItem.variation_id ? ":" + wcItem.variation_id : ""
-            }`;
-            priceMap.set(itemId, wcItem.price);
-          });
-
-          useCartStore.getState().setItems((prev) =>
-            prev.map((item) => {
-              const updatedPrice = priceMap.get(item.id);
-
-              if (updatedPrice === undefined) return item;
-
-              return {
-                ...item,
-                price: Number(updatedPrice).toFixed(2),
-              };
-            }),
-          );
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to sync cart";
-        console.error("Cart sync error:", error);
-        setSyncError(message);
-      } finally {
-        syncInFlightRef.current = false;
-        setIsSyncing(false);
-      }
+          })
+          .finally(() => resolve());
+      });
     },
-    [items],
+    [cancelDebouncedWooPush, performWooPush],
   );
 
   const refreshCartFromServer = useCallback(() => {
+    serverCartLoadGenerationRef.current += 1;
     loadRetryCount.current = 0;
     setHasLoadedServerCart(false);
   }, []);
 
   const open = useCallback(() => {
-    if (items.length > 0) {
-      setIsOpen(true);
-      syncWithWooCommerce().catch(() => {});
-    } else {
-      setIsOpen(true);
-      if (user?.id) refreshCartFromServer();
+    if (items.length > 0 && !cartMergeBlockingRef.current) {
+      cancelDebouncedWooPush();
+      enqueueWooPush(getActiveCartSnapshot());
+    } else if (user?.id) {
+      refreshCartFromServer();
     }
-  }, [items.length, syncWithWooCommerce, user?.id, refreshCartFromServer]);
+    setIsOpen(true);
+  }, [items.length, user?.id, cancelDebouncedWooPush, enqueueWooPush, refreshCartFromServer]);
 
   const validateCart = useCallback(async () => {
-    if (items.length === 0) return { valid: true, errors: [] };
+    const snapshot = getActiveCartSnapshot();
+    if (snapshot.length === 0) return { valid: true, errors: [] };
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[CartProvider] validateCart (checkout prep) — active bucket:", snapshot);
+    }
 
     try {
-      const response = await fetch("/api/cart/validate", {
+      const response = await fetch("/api/validate-cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({ items: snapshot }),
       });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        valid?: boolean;
+        errors?: Array<{ itemId: string; message: string }>;
+        items?: CartItem[];
+      };
 
       if (!response.ok) {
         return {
@@ -348,8 +552,27 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         };
       }
 
-      const data = await response.json();
-      return { valid: data.valid, errors: data.errors || [] };
+      if (
+        data.valid === true &&
+        Array.isArray(data.items) &&
+        data.items.length === snapshot.length &&
+        data.items.length > 0
+      ) {
+        useCartStore.getState().replaceItems(data.items);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[CartProvider] validate-cart applied Woo prices to Zustand:", data.items);
+        }
+      } else if (data.valid === true && process.env.NODE_ENV === "development") {
+        console.warn("[CartProvider] validate-cart OK but skipped replaceItems (unexpected payload)", {
+          snapshotLen: snapshot.length,
+          returnedLen: Array.isArray(data.items) ? data.items.length : -1,
+        });
+      }
+
+      return {
+        valid: Boolean(data.valid),
+        errors: Array.isArray(data.errors) ? data.errors : [],
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Validation failed";
       return {
@@ -357,7 +580,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         errors: [{ itemId: "unknown", message }],
       };
     }
-  }, [items]);
+  }, []);
 
   const total = useMemo(() => {
     return calculateSubtotal(items).toFixed(2);
@@ -369,6 +592,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       isOpen,
       isSyncing,
       isHydrated,
+      isCartMerging,
       syncError,
       open,
       close,
@@ -376,6 +600,8 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       removeItem,
       updateItemQty,
       clear,
+      clearGuestCart,
+      clearUserCart,
       syncWithWooCommerce,
       validateCart,
       total,
@@ -386,6 +612,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       isOpen,
       isSyncing,
       isHydrated,
+      isCartMerging,
       syncError,
       open,
       close,
@@ -393,6 +620,8 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       removeItem,
       updateItemQty,
       clear,
+      clearGuestCart,
+      clearUserCart,
       syncWithWooCommerce,
       validateCart,
       total,

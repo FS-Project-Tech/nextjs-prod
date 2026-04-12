@@ -40,6 +40,7 @@ function CheckoutPageInner() {
     shippingCost,
     gst,
     orderTotal,
+    totalsQuoteLoading,
     placing,
     selectedPaymentMethod,
     setSelectedPaymentMethod,
@@ -157,6 +158,7 @@ function CheckoutPageInner() {
                 shippingCost={shippingCost}
                 gst={gst}
                 orderTotal={orderTotal}
+                totalsSyncing={totalsQuoteLoading}
               />
               <PaymentSection
                 items={cartLines}

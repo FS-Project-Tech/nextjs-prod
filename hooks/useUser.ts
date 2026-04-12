@@ -9,6 +9,8 @@ export function useUser() {
   return {
     user,
     loading: status === "loading",
+    /** `"unauthenticated"` | `"authenticated"` | `"loading"` — use for guest-only UI (e.g. on-account gate). */
+    sessionStatus: status,
     logout: async () => {
       await signOut({ callbackUrl: "/login" });
     },

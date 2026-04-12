@@ -16,6 +16,8 @@ export type WooCommerceCartLineForSync = {
   image?: { src: string; alt: string };
   stock_status?: string;
   stock_quantity?: number | null;
+  /** Present when cart was synced via Store API */
+  wc_store_item_key?: string;
 };
 
 export type WooCommerceCartData = {

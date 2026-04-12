@@ -109,6 +109,10 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       checkoutSessionId,
     });
 
+    if (process.env.NODE_ENV === "development") {
+      console.log("[checkout] POST /api/checkout line_items (Zustand → Woo order):", payload.line_items);
+    }
+
     const requestUrl =
       typeof window !== "undefined" ? new URL(endpoint, window.location.origin).href : endpoint;
 

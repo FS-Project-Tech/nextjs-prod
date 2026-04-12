@@ -29,6 +29,8 @@ export interface CartItem {
   tax_class?: string;
   /** WooCommerce tax status, e.g. 'taxable', 'none' */
   tax_status?: string;
+  /** WooCommerce Store API cart line key (required for DELETE /cart/items/:key) */
+  wc_store_item_key?: string;
 }
 
 /**

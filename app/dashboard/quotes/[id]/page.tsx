@@ -111,8 +111,8 @@ export default function QuoteDetailPage() {
         throw new Error(data.error || "Failed to convert quote");
       }
 
-      // Clear existing cart
-      clearCart();
+      // Clear existing cart (wait for Woo before adds)
+      await clearCart();
 
       // Add quote items to cart
       for (const item of data.items) {
@@ -124,7 +124,7 @@ export default function QuoteDetailPage() {
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-+|-+$/g, "") || "product";
 
-          addItem({
+          await addItem({
             productId: item.product_id,
             variationId: item.variation_id,
             name: item.name,

@@ -1,6 +1,6 @@
 /**
  * Unified checkout payment orchestration (eWAY hosted card).
- * All payment truth is server-side; Woo order is the source of truth.
+ * Charge amount comes from validated checkout totals when provided; Woo `order.total` is fallback only.
  */
 import type { CheckoutInitiatePayload } from "@/types/checkout";
 import {
@@ -17,6 +17,9 @@ import {
 } from "@/lib/services/wooService";
 import {
   mergeEwayPaymentSessionMeta,
+  readCanonicalCheckoutPaymentTotalString,
+  readCurrentWooOrderTotalString,
+  readStoredEwayPaymentOrderTotal,
   readStoredPaymentUrl,
   shouldReuseEwayPayment,
 } from "@/lib/woo/orderPaymentLock";
@@ -27,6 +30,8 @@ export type HandlePaymentContext = {
   payload: CheckoutInitiatePayload;
   customerIp?: string;
   actorUserId?: number;
+  /** Validated grand total (major units string); when set, eWAY uses this instead of Woo `order.total`. */
+  validatedCheckoutTotalStr?: string;
 };
 
 /** @deprecated use HandlePaymentContext */
@@ -101,9 +106,25 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     return { type: "redirect", url: existingPayUrl, reused: true };
   }
 
+  if (existingPayUrl) {
+    console.log({
+      tag: "[payment] eWAY not reusing stored payment_url (new AccessCodesShared)",
+      postId,
+      canonical_total: readCanonicalCheckoutPaymentTotalString(latest),
+      woo_total: readCurrentWooOrderTotalString(latest),
+      stored_session_total: readStoredEwayPaymentOrderTotal(latest),
+    });
+  }
+
   const lo = latest as Record<string, unknown>;
+  const fromValidated =
+    typeof ctx.validatedCheckoutTotalStr === "string" && ctx.validatedCheckoutTotalStr.trim()
+      ? ctx.validatedCheckoutTotalStr.trim()
+      : null;
   const total =
-    typeof lo.total === "string" ? lo.total : typeof lo.total === "number" ? String(lo.total) : "0";
+    fromValidated ??
+    (readCanonicalCheckoutPaymentTotalString(latest) ||
+      (typeof lo.total === "string" ? lo.total : typeof lo.total === "number" ? String(lo.total) : "0"));
   const currency =
     typeof lo.currency === "string" && lo.currency.trim() ? lo.currency.trim() : "AUD";
 
@@ -118,10 +139,11 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   const wooParsed = Number.parseFloat(total);
   const ewayAmountCents = Math.round(wooParsed * 100);
   console.log({
-    tag: "[payment] eway amounts (Woo is source of truth)",
+    tag: "[payment] eway amounts (validated checkout total)",
     postId,
-    woo_total: total,
-    eway_amount: ewayAmountCents,
+    payment_total: total,
+    used_validated_param: Boolean(fromValidated),
+    eway_amount_cents: ewayAmountCents,
   });
 
   console.log("[payment] eway: creating hosted payment", { postId });
@@ -143,7 +165,7 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   try {
     const fresh = await getWooOrder(String(postId));
     await updateWooOrder(postId, {
-      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl),
+      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl, total),
     });
   } catch (e) {
     console.error("[payment] failed to store payment_url / payment_initiated on order", {

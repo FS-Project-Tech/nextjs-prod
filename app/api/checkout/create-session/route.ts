@@ -3,6 +3,8 @@ import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextAuthOptions";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
+import { stripEmptyNdisHcpFromInitiatePayload } from "@/lib/checkout/ndisHcpPayload";
+import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { getCheckoutSessionStore } from "@/lib/checkout-session-store";
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const rawBody = await readJsonBody(req);
-    const payload = parseCheckoutPayload(rawBody);
+    const payload = stripEmptyNdisHcpFromInitiatePayload(parseCheckoutPayload(rawBody));
 
     if (payload.payment_method !== "eway") {
       return NextResponse.json(
@@ -71,6 +73,23 @@ export async function POST(req: NextRequest) {
 
     const { validatedLineItems, wooLineItems, shippingLine, totals } =
       await validateAndRecalculateCheckout(payload);
+
+    const cartCheck = await validateCartForEwayCheckout({
+      cart_items: payload.cart_items!,
+      totals,
+    });
+    if (cartCheck.ok === false) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+          valid: cartCheck.valid,
+          errors: cartCheck.errors,
+          code: cartCheck.code,
+        },
+        { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+      );
+    }
 
     const session = await getServerSession(authOptions);
     const user = session?.user as Record<string, unknown> | undefined;

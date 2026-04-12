@@ -11,6 +11,7 @@ import PaymentStatus from "@/components/checkout/order-review/PaymentStatus";
 import { downloadOrderInvoicePdf } from "@/lib/order-review-pdf";
 import { trackPurchase } from "@/lib/analytics";
 import { getOrderPaymentMethodDisplay } from "@/lib/checkout/paymentDisplay";
+import { hcpDisplayFromOrderMeta } from "@/lib/checkout/ndisHcpPayload";
 
 function OrderReviewContent() {
   const searchParams = useSearchParams();
@@ -310,21 +311,6 @@ function OrderReviewContent() {
     return String(legacy);
   };
 
-  const getHCPNumber = (): string | null => {
-    const hcpInfo = order.meta_data?.find((m) => m.key === "hcp_info")?.value;
-    if (typeof hcpInfo === "string" && hcpInfo.trim()) {
-      try {
-        const parsed = JSON.parse(hcpInfo) as { number?: unknown };
-        if (parsed?.number != null && String(parsed.number).trim()) return String(parsed.number);
-      } catch {
-        // no-op
-      }
-    }
-    const legacy = order.meta_data?.find((m) => m.key === "HCP Number")?.value;
-    if (legacy == null || String(legacy).trim() === "") return null;
-    return String(legacy);
-  };
-
   const getMetaValue = (key: string) => {
     const meta = order.meta_data?.find((m) => m.key === key);
     return meta?.value ?? null;
@@ -427,7 +413,7 @@ function OrderReviewContent() {
       });
 
   const ndisNumber = getNDISNumber();
-  const hcpNumber = getHCPNumber();
+  const hcpDetails = hcpDisplayFromOrderMeta(order.meta_data);
   const deliveryAuthority = getDeliveryAuthority();
   const deliveryInstructions = getDeliveryInstructions();
   const doNotSendPaperwork = getDoNotSendPaperwork();
@@ -452,7 +438,7 @@ function OrderReviewContent() {
             orderStatusLabel={orderStatusLabel}
             orderStatusToneClass={orderStatusToneClass}
             ndisNumber={ndisNumber}
-            hcpNumber={hcpNumber}
+            hcpDetails={hcpDetails}
             deliveryAuthority={deliveryAuthority}
             deliveryInstructions={deliveryInstructions}
             doNotSendPaperwork={doNotSendPaperwork}

@@ -7,6 +7,9 @@ import { updateWooOrder } from "@/services/woocommerce";
 import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import {
   mergeEwayPaymentSessionMeta,
+  readCanonicalCheckoutPaymentTotalString,
+  readCurrentWooOrderTotalString,
+  readStoredEwayPaymentOrderTotal,
   readStoredPaymentUrl,
   shouldReuseEwayPayment,
 } from "@/lib/woo/orderPaymentLock";
@@ -75,6 +78,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const totalStr =
+    readCanonicalCheckoutPaymentTotalString(order) ||
+    (typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0");
+
   const existingUrl = readStoredPaymentUrl(order);
   if (shouldReuseEwayPayment(order) && existingUrl) {
     console.log({
@@ -93,17 +100,24 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (existingUrl) {
+    console.log({
+      tag: "[api/eway] not reusing stored payment_url (total changed or legacy meta)",
+      orderId: orderIdStr,
+      canonical_total: readCanonicalCheckoutPaymentTotalString(order),
+      woo_order_total: readCurrentWooOrderTotalString(order),
+      stored_session_total: readStoredEwayPaymentOrderTotal(order),
+    });
+  }
+
   const billing = (o.billing as Record<string, string | undefined>) || {};
   const shipping = (o.shipping as Record<string, string | undefined>) || {};
-
-  const totalStr =
-    typeof o.total === "string" ? o.total : typeof o.total === "number" ? String(o.total) : "0";
   const wooParsed = Number.parseFloat(totalStr);
   const ewayAmountCents = Math.round(wooParsed * 100);
   console.log({
-    tag: "[api/eway] amounts (Woo is source of truth)",
+    tag: "[api/eway] amounts (canonical checkout total)",
     orderId: orderIdStr,
-    woo_total: totalStr,
+    payment_total: totalStr,
     eway_amount: ewayAmountCents,
   });
 
@@ -153,7 +167,7 @@ export async function POST(req: NextRequest) {
   try {
     const fresh = await getWooOrder(orderIdStr);
     await updateWooOrder(postIdNum, {
-      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl),
+      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl, totalStr),
     });
   } catch (e) {
     console.error("[api/eway] failed to store payment_url on order", { orderId: orderIdStr, e });

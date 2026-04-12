@@ -27,7 +27,9 @@ export function toPublicSession(record: CheckoutSessionRecord): CheckoutSessionP
     totals: record.totals,
     user_id: record.userId,
     meta_data: [
-      { key: "ndis_type", value: p.ndis_type || "" },
+      ...(p.ndis_type?.trim()
+        ? [{ key: "ndis_type" as const, value: p.ndis_type.trim() }]
+        : []),
       {
         key: INSURANCE_OPTION_META_KEY,
         value: p.insurance_option === "yes" ? "yes" : "no",
