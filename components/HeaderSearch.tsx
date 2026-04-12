@@ -331,6 +331,18 @@ export default function HeaderSearch() {
     setActiveIndex(-1);
   }, []);
 
+  const clearSearch = useCallback(() => {
+    searchGenerationRef.current += 1;
+    suppressAutoOpenAfterNavigationRef.current = false;
+    setQuery("");
+    setResults([]);
+    setCategories([]);
+    setBrands([]);
+    setIsSearching(false);
+    closePanel();
+    inputRef.current?.focus();
+  }, [closePanel]);
+
   const flatRows = useMemo(
     () =>
       buildRankedFlatRows(
@@ -522,8 +534,31 @@ export default function HeaderSearch() {
           }}
           onBlur={() => setTimeout(() => setShow(false), 200)}
           placeholder="Search"
-          className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-500 focus:ring-0"
+          className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 pr-1 text-base text-gray-900 outline-none placeholder:text-gray-500 focus:ring-0"
         />
+
+        {query.length > 0 && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={clearSearch}
+            className="flex min-h-11 min-w-10 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+            aria-label="Clear search and close suggestions"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
 
         {isSearching && (
           <div

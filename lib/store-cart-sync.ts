@@ -180,12 +180,17 @@ async function buildStoreApiAddItemBodyFromParts(parts: {
 }
 
 async function buildStoreApiAddItemBody(line: CartItem): Promise<Record<string, unknown>> {
-  return buildStoreApiAddItemBodyFromParts({
+  const base = await buildStoreApiAddItemBodyFromParts({
     productId: line.productId,
     variationId: line.variationId,
     quantity: line.qty,
     attributes: line.attributes,
   });
+  const data = line.cartItemData;
+  if (data && Object.keys(data).length > 0) {
+    return { ...base, cart_item_data: { ...data } };
+  }
+  return base;
 }
 
 function storeLineMatchesRequestedLine(

@@ -1461,29 +1461,49 @@ export default function ProductDetailPanel({
                   matched?.tax_status ||
                   product.tax_status ||
                   undefined;
+                const baseAttrs =
+                  attributes.length > 0 ? { ...selected } : { ...selectedSimpleAttributes };
+                /** Store API ignores "Available Unit Options"; map merged-row choice onto the real Woo attribute. */
+                const attrsForCart =
+                  packagingUnitAttribute && selectedUnitOption
+                    ? { ...baseAttrs, [packagingUnitAttribute.name]: selectedUnitOption }
+                    : baseAttrs;
+
+                /** Alternate unit label (e.g. "3 PKT/CTN") → expand PDP qty into minimum-UOM line qty. */
+                const uomMult = selectedUnitOption ? extractUnitMultiplier(selectedUnitOption) : 1;
+                const safeUomMult =
+                  Number.isFinite(uomMult) && uomMult > 0 ? Math.floor(uomMult) : 1;
+                const cartQty = Math.max(1, Math.floor(Number(quantity) * safeUomMult));
+                /** Per minimum-UOM unit price so (price × cartQty) matches PDP (displayPrice × quantity). */
+                const displayNum = Number(displayPrice || 0);
+                const linePrice =
+                  selectedUnitOption &&
+                  Number.isFinite(displayNum) &&
+                  displayNum > 0 &&
+                  safeUomMult > 0
+                    ? (displayNum / safeUomMult).toFixed(2)
+                    : displayPrice || "0";
+
+                const cartItemData =
+                  selectedUnitOption && String(selectedUnitOption).trim()
+                    ? {
+                        bulk_uom: String(selectedUnitOption).trim().slice(0, 200),
+                        /** Line qty is already expanded to min UOM; Woo/plugin uses 1 unit per cart qty. */
+                        bulk_multiplier: 1,
+                      }
+                    : undefined;
+
                 addItem({
                   productId: product.id,
                   variationId,
                   name: product.name,
                   slug: product.slug,
                   imageUrl: cartLineImageUrl,
-                  price: displayPrice || "0",
-                  qty: quantity,
+                  price: linePrice,
+                  qty: cartQty,
                   sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,
-                  attributes:
-                    attributes.length > 0
-                      ? {
-                          ...selected,
-                          ...(selectedUnitOption
-                            ? { "Available Unit Options": selectedUnitOption }
-                            : {}),
-                        }
-                      : {
-                          ...selectedSimpleAttributes,
-                          ...(selectedUnitOption
-                            ? { "Available Unit Options": selectedUnitOption }
-                            : {}),
-                        },
+                  attributes: attrsForCart,
+                  ...(cartItemData ? { cartItemData } : {}),
                   deliveryPlan: plan,
                   tax_class: variationTaxClass,
                   tax_status: variationTaxStatus,

@@ -24,6 +24,8 @@ export interface CartItem {
   qty: number;
   sku?: string | null;
   attributes?: Record<string, string>;
+  /** Woo Store API `cart_item_data` (e.g. bulk_uom) for quantity-units plugins. */
+  cartItemData?: Record<string, string | number>;
   deliveryPlan?: DeliveryPlan;
   /** WooCommerce tax class slug or name, e.g. 'gst-10', 'gst-free' */
   tax_class?: string;

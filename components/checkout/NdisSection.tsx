@@ -25,6 +25,12 @@ export default function NdisSection({
   return (
     <section className="rounded-xl bg-white p-6" aria-label="NDIS and Home Care Package">
       <div className="space-y-4">
+        <p
+          className="rounded-lg border border-amber-300/80 bg-amber-100 px-4 py-3 text-sm font-semibold leading-snug text-amber-950 shadow-sm"
+          role="status"
+        >
+          NDIS approved? Please enter your details here to enable On Account ordering.
+        </p>
         <div className="rounded-lg border border-gray-200 bg-gray-50/50">
           <button
             type="button"
