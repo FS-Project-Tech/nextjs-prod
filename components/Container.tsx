@@ -7,8 +7,8 @@ interface ContainerProps {
 }
 
 /**
- * Reusable container component with consistent spacing
- * Uses the standard site width: w-[85vw] with responsive padding
+ * Site width follows global `.container` in `app/globals.css`: full width on small
+ * screens; from 1024px up, 90% width (5% gutter each side) with `mx-auto`.
  */
 export default function Container({
   children,
@@ -17,7 +17,7 @@ export default function Container({
 }: ContainerProps) {
   return (
     <div
-      className={`mx-auto container ${className}`}
+      className={`container mx-auto ${className}`}
       suppressHydrationWarning={suppressHydrationWarning}
     >
       {children}

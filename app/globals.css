@@ -250,10 +250,22 @@ main {
   animation: navigation-progress 1.8s ease-in-out infinite;
 }
 
-/* Site-wide content width: full width minus 3% (≈1.5% inset each side when centered). */
+/* Site-wide `.container` (pair with `mx-auto`):
+ * – Under 1024px: full width (component padding handles small-screen gutters)
+ * – ≥ 1024px (laptop / desktop): 90% width → 5% space each side when centered
+ */
 .container {
-  width: calc(100% - 3%);
-  max-width: calc(100% - 3%);
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 1024px) {
+  .container {
+    width: 90%;
+    max-width: 90%;
+  }
 }
 /* Header */
 main{background-color: #fff;}

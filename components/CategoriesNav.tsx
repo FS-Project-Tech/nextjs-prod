@@ -262,9 +262,9 @@ async function CategoriesNavContent() {
     <nav className="bg-nav-header" aria-label="Primary">
       {/* Single row + horizontal scroll on narrow viewports (touch / trackpad / scrollbar) */}
       <div
-        className="w-full overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.45)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/40"
+        className="w-full container overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.45)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/40"
       >
-        <ul className="mx-auto flex w-max min-w-full flex-nowrap items-center gap-1 px-2 py-1.5 text-sm sm:gap-2 sm:px-3 sm:py-2 md:gap-3 md:px-4 lg:px-6">
+        <ul className="mx-auto flex w-max min-w-full flex-nowrap items-center gap-1 px-2 text-sm sm:gap-2 sm:px-3 md:gap-3">
           {/* All Categories — desktop only (mobile: Clearance leads the row) */}
           <li className="hidden shrink-0 md:block">
             <AllCategoriesDrawer className="px-2 py-2 text-white cursor-pointer whitespace-nowrap sm:px-3 md:px-3" />
