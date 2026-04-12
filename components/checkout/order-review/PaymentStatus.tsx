@@ -51,7 +51,7 @@ function PaymentStatusInner({
     hcpDetails?.participantName ||
     hcpDetails?.number ||
     hcpDetails?.providerEmail ||
-    hcpDetails?.fundingApproved !== null ||
+    (hcpDetails != null && hcpDetails.fundingApproved !== null) ||
     deliveryAuthority ||
     deliveryInstructions ||
     doNotSendPaperwork ||
@@ -134,7 +134,7 @@ function PaymentStatusInner({
             {(hcpDetails?.participantName ||
               hcpDetails?.number ||
               hcpDetails?.providerEmail ||
-              hcpDetails?.fundingApproved !== null) && (
+              (hcpDetails != null && hcpDetails.fundingApproved !== null)) && (
               <div className="md:col-span-2">
                 <p className="mb-2 font-medium text-gray-800">Home Care Package (HCP)</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -156,7 +156,7 @@ function PaymentStatusInner({
                       <span className="text-gray-900">{hcpDetails.providerEmail}</span>
                     </div>
                   ) : null}
-                  {hcpDetails?.fundingApproved !== null ? (
+                  {hcpDetails != null && hcpDetails.fundingApproved !== null ? (
                     <div className="sm:col-span-2">
                       <span className="font-medium text-gray-700">HCP funding approved:</span>{" "}
                       <span className="text-gray-900">{hcpDetails.fundingApproved ? "Yes" : "No"}</span>
