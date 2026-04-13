@@ -121,7 +121,8 @@ export function useCheckoutPageState() {
     const isAdmin = roles.includes("administrator");
     const isNdisApprovedRole = roles.includes("ndis-approved");
     const isB2bUser = roles.includes("b2b_user");
-    if (isAdmin || isNdisApprovedRole || isB2bUser) return true;
+    const isB2b30Days = roles.includes("b2b30days");
+    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days) return true;
     if (user) return false;
     if (sessionStatus !== "unauthenticated") return false;
     const digits = `${watchedCustNdis}${watchedLegacyNdis}`.replace(/\D/g, "");

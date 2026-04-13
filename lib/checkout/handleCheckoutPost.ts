@@ -240,6 +240,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     const roleCanOnAccount =
       actorRoles.includes("administrator") ||
       actorRoles.includes("b2b_user") ||
+      actorRoles.includes("b2b30days") ||
       Boolean(actor.ndisApproved);
     const guestNdisQualifies =
       isGuestShopper && countNdisDigitsInCheckoutPayload(payload) >= 9;
@@ -250,7 +251,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
           success: false,
           error: isGuestShopper
             ? 'On account is available for guests when the NDIS number has at least 9 digits, or sign in as a B2B / NDIS-approved customer.'
-            : "On account payment is only available for administrators, B2B users, and NDIS Approved Customers.",
+            : "On account payment is only available for administrators, B2B / B2B 30-day customers, and NDIS Approved Customers.",
         },
         { status: 403 },
       );
