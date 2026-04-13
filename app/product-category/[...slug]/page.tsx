@@ -1,9 +1,27 @@
+import { Suspense } from "react";
 import { fetchCategoryBySlug } from "@/lib/woocommerce";
 import { getUnifiedCategories, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
 import CategoryPageClient from "@/components/CategoryPageClient";
+import Container from "@/components/Container";
+import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
+import ShopListingLayout from "@/components/ShopListingLayout";
 import type { Metadata } from "next";
 import { fetchCategorySEO } from "@/lib/wordpress";
 import { stripHTML } from "@/lib/xss-sanitizer";
+
+/** Server Suspense fallback — required so `useSearchParams` in the client tree can prerender. */
+function CategoryPageFallback() {
+  return (
+    <ShopListingLayout>
+      <div className="min-h-screen py-4">
+        <Container>
+          <div className="mb-6 h-9 max-w-sm animate-pulse rounded-lg bg-gray-200" aria-hidden />
+          <ProductGridSkeleton />
+        </Container>
+      </div>
+    </ShopListingLayout>
+  );
+}
 
 export const revalidate = 600;
 export const dynamicParams = true;
@@ -134,10 +152,12 @@ export default async function CategoryPage(props: { params: Promise<{ slug: stri
   const category = await fetchCategoryBySlug(decodedSlug).catch(() => null);
 
   return (
-    <CategoryPageClient
-      initialSlug={decodedSlug}
-      initialCategoryName={category?.name}
-      initialCategoryDescription={category?.description}
-    />
+    <Suspense fallback={<CategoryPageFallback />}>
+      <CategoryPageClient
+        initialSlug={decodedSlug}
+        initialCategoryName={category?.name}
+        initialCategoryDescription={category?.description}
+      />
+    </Suspense>
   );
 }
