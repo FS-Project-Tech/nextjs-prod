@@ -34,13 +34,8 @@ export function validateStartup(): void {
 
     const errorMessage = `\n❌ Environment Validation Failed:\n${errors.join("\n")}\n\nPlease check your .env.local file.\n`;
 
-    // During `next build`, env may be incomplete; never abort the build here.
-    const isNextBuildPhase =
-      process.env.NEXT_PHASE === "phase-production-build" ||
-      process.env.NEXT_PHASE === "phase-development-build";
-
-    // In production runtime, throw to prevent a misconfigured server from starting.
-    if (process.env.NODE_ENV === "production" && !isNextBuildPhase) {
+    // In production, throw error to prevent startup
+    if (process.env.NODE_ENV === "production") {
       throw new Error(errorMessage);
     }
 
