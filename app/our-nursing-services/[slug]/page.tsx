@@ -1,26 +1,28 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import { sanitizeWordPressPageHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
-import {
-  fetchNursingServicePageForUrl,
-  getOurNursingServiceDetailSlugs,
-} from "@/lib/our-nursing-services-cards";
+import { fetchNursingServicePageForUrl } from "@/lib/our-nursing-services-cards";
+
+export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
 
-/** Allow new WP child pages without rebuilding */
+/** Allow new WP child pages without a fixed build-time list */
 export const dynamicParams = true;
-
-export async function generateStaticParams() {
-  const slugs = await getOurNursingServiceDetailSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const page = await fetchNursingServicePageForUrl(slug);
+  let page: Awaited<ReturnType<typeof fetchNursingServicePageForUrl>> = null;
+  try {
+    page = await fetchNursingServicePageForUrl(slug);
+  } catch (err) {
+    console.error("[our-nursing-services/[slug]] generateMetadata: fetch failed", {
+      slug,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const titleText = page
     ? decodeHTMLEntities(page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug)
     : slug;
@@ -36,7 +38,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function NursingServiceDetailPage({ params }: Props) {
   const { slug } = await params;
   const page = await fetchNursingServicePageForUrl(slug);
-  if (!page) notFound();
+
+  if (!page) {
+    console.error("CMS page not found:", slug);
+    return <CmsPageFallback slug={slug} breadcrumbLabel={slug} />;
+  }
 
   const title = decodeHTMLEntities(page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || slug);
   const content = page.content?.rendered || "";

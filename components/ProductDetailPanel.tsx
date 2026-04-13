@@ -1343,6 +1343,11 @@ export default function ProductDetailPanel({
               onSkuChange={(sku) => setCurrentSku(sku || product.sku || null)}
               style="swatches"
               hideSingleValueSecondaryAttributes={shouldHideSingleValueVariationRows}
+              suppressAttributeRowLabels={
+                showMergedUnitRow && packagingUnitAttribute
+                  ? [packagingUnitAttribute.name]
+                  : undefined
+              }
             />
           )}
           {showMergedUnitRow && (

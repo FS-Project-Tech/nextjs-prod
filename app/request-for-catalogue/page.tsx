@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import Image from "next/image";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import RequestForCatalogueForm from "@/components/RequestForCatalogueForm";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeWordPressPageHTML, decodeHTMLEntities, stripHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
+
+export const dynamic = "force-dynamic";
 
 /** Remove MetForm / shortcodes so headless page can show optional WP intro HTML only */
 function stripMetformShortcodes(html: string): string {
@@ -16,7 +19,14 @@ function stripMetformShortcodes(html: string): string {
 const WP_SLUG = "request-for-catalogue";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await fetchPageBySlug(WP_SLUG);
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(WP_SLUG);
+  } catch (err) {
+    console.error("[request-for-catalogue] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -29,23 +39,38 @@ export async function generateMetadata(): Promise<Metadata> {
         .trim()
         .slice(0, 160)
     : undefined;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
+  const siteOrigin = getPublicSiteOrigin();
+  const path = "/request-for-catalogue";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
   return {
     title: `${title} | Joya Medical Supplies`,
     description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-    alternates: { canonical: `${siteUrl}/request-for-catalogue` },
-    openGraph: {
-      title,
-      description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-      type: "website",
-      url: `${siteUrl}/request-for-catalogue`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+            url: absoluteUrl,
+          },
+        }
+      : {
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+          },
+        }),
   };
 }
 
 export default async function RequestForCataloguePage() {
   const page = await fetchPageBySlug(WP_SLUG);
-  if (!page) notFound();
+  if (!page) {
+    console.error("CMS page not found:", WP_SLUG);
+    return <CmsPageFallback slug={WP_SLUG} breadcrumbLabel="Request For Catalogue" />;
+  }
 
   const title = decodeHTMLEntities(
     page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Request For Catalogue"

@@ -10,11 +10,12 @@ import {
 import PrefetchLink from "@/components/PrefetchLink";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { decodeHTMLEntities } from "@/lib/xss-sanitizer";
 
-const WP_SLUG = "empower-program";
+export const dynamic = "force-dynamic";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
+const WP_SLUG = "empower-program";
 
 /** Microsoft Form — override with NEXT_PUBLIC_EMPOWER_FORM_URL if needed */
 const EMPOWER_FORM_URL =
@@ -32,7 +33,14 @@ const benefits: { title: string; Icon: typeof Sprout }[] = [
 ];
 
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await fetchPageBySlug(WP_SLUG);
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(WP_SLUG);
+  } catch (err) {
+    console.error("[empower-program] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -48,17 +56,21 @@ export async function generateMetadata(): Promise<Metadata> {
   const description = rawExcerpt
     ? decodeHTMLEntities(rawExcerpt)
     : "Join the JOYA and B. Braun Empower Program — samples, support, resources, and exclusive discounts for people living with urinary disorders.";
+  const siteOrigin = getPublicSiteOrigin();
+  const path = "/empower-program";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
 
   return {
     title,
     description,
-    alternates: { canonical: `${siteUrl}/empower-program` },
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: `${siteUrl}/empower-program`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: { title, description, type: "website", url: absoluteUrl },
+        }
+      : {
+          openGraph: { title, description, type: "website" },
+        }),
   };
 }
 

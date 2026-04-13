@@ -1,17 +1,37 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import Image from "next/image";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeWordPressPageHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
 const WP_SLUG = "b2b";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
+
+async function loadB2bPage() {
+  try {
+    return await fetchPageBySlug(WP_SLUG);
+  } catch (err) {
+    console.error("[b2b] fetchPageBySlug threw", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
 
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await fetchPageBySlug(WP_SLUG);
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(WP_SLUG);
+  } catch (err) {
+    console.error("[b2b] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -24,23 +44,39 @@ export async function generateMetadata(): Promise<Metadata> {
         .trim()
         .slice(0, 160)
     : undefined;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const siteOrigin = getPublicSiteOrigin();
+  const b2bPath = "/b2b";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${b2bPath}` : undefined;
+
   return {
     title: `${title} | Joya Medical Supplies`,
     description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-    alternates: { canonical: `${siteUrl}/b2b` },
-    openGraph: {
-      title,
-      description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-      type: "website",
-      url: `${siteUrl}/b2b`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+            url: absoluteUrl,
+          },
+        }
+      : {
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+          },
+        }),
   };
 }
 
 export default async function B2BPage() {
-  const page = await fetchPageBySlug(WP_SLUG);
-  if (!page) notFound();
+  const page = await loadB2bPage();
+  if (!page) {
+    console.error("CMS page not found:", WP_SLUG);
+    return <CmsPageFallback slug={WP_SLUG} breadcrumbLabel="B2B" />;
+  }
 
   const title = decodeHTMLEntities(page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "B2B");
   const content = page.content?.rendered || "";
@@ -81,7 +117,6 @@ export default async function B2BPage() {
         </section>
 
         <section className="container mx-auto px-4 pb-12 sm:px-6 md:px-8 md:pb-16">
-          {/* Same typography as Nursing — bullets & numbered lists in globals.css */}
           <div
             className="nursing-page-content b2b-page-content mx-auto max-w-8xl text-gray-900"
             dangerouslySetInnerHTML={{

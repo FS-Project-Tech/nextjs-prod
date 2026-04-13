@@ -1,19 +1,27 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeWordPressPageHTML, TelehealthMediaHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { splitTelehealthBody } from "@/lib/telehealth-content";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
- 
+
+export const dynamic = "force-dynamic";
+
 /** WordPress page slug (create a Page in WP with this slug). */
 const WP_PAGE_SLUG = "telehealth";
- 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
- 
+
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await fetchPageBySlug(WP_PAGE_SLUG);
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(WP_PAGE_SLUG);
+  } catch (err) {
+    console.error("[telehealth] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -27,45 +35,50 @@ export async function generateMetadata(): Promise<Metadata> {
         .slice(0, 160)
     : undefined;
   const description = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
- 
+  const siteOrigin = getPublicSiteOrigin();
+  const path = "/telehealth";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
+
   return {
     title,
     description,
-    alternates: { canonical: `${siteUrl}/telehealth` },
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: `${siteUrl}/telehealth`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: { title, description, type: "website", url: absoluteUrl },
+        }
+      : {
+          openGraph: { title, description, type: "website" },
+        }),
   };
 }
- 
+
 export default async function TelehealthPage() {
   const page = await fetchPageBySlug(WP_PAGE_SLUG);
   if (!page) {
-    notFound();
+    console.error("CMS page not found:", WP_PAGE_SLUG);
+    return <CmsPageFallback slug={WP_PAGE_SLUG} breadcrumbLabel="Telehealth" />;
   }
- 
+
   const rawTitle = page.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
         .trim()
     : "";
   const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Telehealth";
- 
+
   const bodyDecoded = decodeHTMLEntities(page.content?.rendered || "");
   const { copyHtml, mediaHtml } = splitTelehealthBody(bodyDecoded);
- 
+
   const copySafe = sanitizeWordPressPageHTML(copyHtml);
   const mediaSafe = TelehealthMediaHTML(mediaHtml);
- 
+
   const breadcrumbItems = [{ label: "Home", href: "/" }, { label: title }];
- 
+
   return (
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
- 
+
       <div className="min-h-screen bg-white">
         <div className="border-b border-gray-200 bg-gray-50/80">
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -84,10 +97,9 @@ export default async function TelehealthPage() {
             </nav>
           </div>
         </div>
- 
+
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
           <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-12 xl:gap-16">
-            {/* Text column */}
             <div className="min-w-0">
               <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{title}</h1>
               <div
@@ -105,8 +117,7 @@ export default async function TelehealthPage() {
                 }}
               />
             </div>
- 
-            {/* Video / embed column */}
+
             <div className="min-w-0 lg:sticky lg:top-24">
               {mediaSafe ? (
                 <div
@@ -139,7 +150,7 @@ export default async function TelehealthPage() {
               )}
             </div>
           </div>
- 
+
           <div className="mt-14 border-t border-gray-200 pt-8">
             <Link
               href="/"

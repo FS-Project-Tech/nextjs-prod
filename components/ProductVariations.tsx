@@ -535,6 +535,12 @@ interface ProductVariationsProps {
   defaultSelected?: { [name: string]: string };
   style?: "swatches" | "buttons" | "dropdowns";
   hideSingleValueSecondaryAttributes?: boolean;
+  /**
+   * Omit these attribute rows from the UI (label match vs product attribute names).
+   * Rows are still part of `attributes` for matching, auto-select, and option pools — e.g. PDP shows
+   * the same packaging under a single merged "unit" row from the parent.
+   */
+  suppressAttributeRowLabels?: string[];
 }
 
 /**
@@ -698,10 +704,15 @@ export default function ProductVariations({
   defaultSelected = {},
   style = "swatches",
   hideSingleValueSecondaryAttributes = false,
+  suppressAttributeRowLabels,
 }: ProductVariationsProps) {
   const [selectedAttributes, setSelectedAttributes] = useState<{ [name: string]: string }>(
     defaultSelected
   );
+
+  const isAttributeRowSuppressed = (attrName: string) =>
+    Array.isArray(suppressAttributeRowLabels) &&
+    suppressAttributeRowLabels.some((label) => attributeNameMatches(label, attrName));
 
   // Determine main and secondary attributes (first attribute is main, rest are secondary)
   const mainAttribute = attributes.length > 0 ? attributes[0] : null;
@@ -921,7 +932,7 @@ export default function ProductVariations({
   return (
     <div className="space-y-4" suppressHydrationWarning>
       {/* Main Attribute */}
-      {mainAttribute && (
+      {mainAttribute && !isAttributeRowSuppressed(mainAttribute.name) && (
         <div>
           <label className="mb-2 block text-sm font-medium text-gray-700">
             {mainAttribute.name}
@@ -962,6 +973,9 @@ export default function ProductVariations({
       {shouldShowSecondarySection && (
         <div className="block">
           {secondaryAttributes.map((attribute) => {
+            if (isAttributeRowSuppressed(attribute.name)) {
+              return null;
+            }
             const attrIdx = attributes.indexOf(attribute);
             if (attrIdx > 0) {
               for (let k = 1; k < attrIdx; k++) {

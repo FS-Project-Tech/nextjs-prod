@@ -12,6 +12,22 @@ import { getWpBaseUrl } from "@/lib/wp-utils";
  * Set `NEXT_PUBLIC_WORDPRESS_REST_URL` (or server-only `WORDPRESS_REST_BASE_URL`) to the exact
  * domain where the REST API should run (e.g. your staging URL).
  */
+function isLocalhostBase(url: string): boolean {
+  return /localhost|127\.0\.0\.1|^\s*https?:\/\/0\.0\.0\.0/i.test(url);
+}
+
+/** Skip localhost-derived bases on Vercel so deploys fail loudly in logs instead of silently. */
+function acceptWpBaseCandidate(t: string): boolean {
+  if (!t) return false;
+  if (process.env.VERCEL && isLocalhostBase(t)) {
+    console.error(
+      "[getWordPressRestBaseUrl] Skipping localhost candidate on Vercel — set NEXT_PUBLIC_WORDPRESS_REST_URL or WORDPRESS_REST_BASE_URL to your public WordPress host.",
+    );
+    return false;
+  }
+  return true;
+}
+
 export function getWordPressRestBaseUrl(): string {
   const candidates = [
     process.env.WORDPRESS_REST_BASE_URL,
@@ -22,19 +38,21 @@ export function getWordPressRestBaseUrl(): string {
   ];
   for (const c of candidates) {
     const t = (c || "").trim().replace(/\/$/, "");
-    if (t) return t;
+    if (acceptWpBaseCandidate(t)) return t;
   }
   const wcPublic = (process.env.NEXT_PUBLIC_WC_API_URL || "").trim();
   if (wcPublic) {
     try {
       const u = new URL(wcPublic);
-      return `${u.protocol}//${u.host}`.replace(/\/$/, "");
+      const t = `${u.protocol}//${u.host}`.replace(/\/$/, "");
+      if (acceptWpBaseCandidate(t)) return t;
     } catch {
       /* ignore */
     }
   }
   const fromWc = getWpBaseUrl().trim().replace(/\/$/, "");
-  return fromWc;
+  if (acceptWpBaseCandidate(fromWc)) return fromWc;
+  return "";
 }
 
 export interface WpPage {
@@ -52,11 +70,36 @@ export interface WpPage {
 }
 
 function buildFetchInit(init?: { revalidate?: number; cache?: RequestCache }) {
-  const fetchInit: RequestInit & { next?: { revalidate: number } } =
-    init?.cache === "no-store"
-      ? { cache: "no-store" }
-      : { next: { revalidate: init?.revalidate ?? 3600 } };
-  return fetchInit;
+  if (init == null) {
+    return { cache: "no-store" as RequestCache };
+  }
+  if (init.cache === "no-store" || init.revalidate === 0) {
+    return { cache: "no-store" as RequestCache };
+  }
+  return { next: { revalidate: init.revalidate ?? 3600 } };
+}
+
+function wpPageFromJson(data: unknown): WpPage | null {
+  const page = Array.isArray(data) ? (data[0] ?? null) : data;
+  if (page && typeof page === "object" && (page as WpPage).id) {
+    return page as WpPage;
+  }
+  return null;
+}
+
+/** Direct `?slug=` query only (no search fallback). */
+async function fetchPageBySlugDirect(
+  slug: string,
+  base: string,
+  init?: { revalidate?: number; cache?: RequestCache }
+): Promise<{ page: WpPage | null; status: number; requestUrl: string }> {
+  const requestUrl = `${base}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&_embed=1`;
+  const res = await fetch(requestUrl, buildFetchInit(init));
+  if (!res.ok) {
+    return { page: null, status: res.status, requestUrl };
+  }
+  const data = await res.json();
+  return { page: wpPageFromJson(data), status: res.status, requestUrl };
 }
 
 export async function fetchPageBySlug(
@@ -64,16 +107,49 @@ export async function fetchPageBySlug(
   init?: { revalidate?: number; cache?: RequestCache }
 ): Promise<WpPage | null> {
   const base = getWordPressRestBaseUrl();
-  if (!base) return null;
-  try {
-    const res = await fetch(
-      `${base}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&_embed=1`,
-      buildFetchInit(init)
+  if (!base) {
+    console.error(
+      "[fetchPageBySlug] Missing WordPress REST base URL (set NEXT_PUBLIC_WP_URL, NEXT_PUBLIC_WORDPRESS_REST_URL, or WORDPRESS_REST_BASE_URL)",
+      { slug },
     );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return Array.isArray(data) ? (data[0] ?? null) : data;
-  } catch {
+    return null;
+  }
+
+  try {
+    const { page: direct, status, requestUrl } = await fetchPageBySlugDirect(slug, base, init);
+
+    if (direct) {
+      if (process.env.NODE_ENV === "development" || process.env.VERCEL) {
+        console.log("[fetchPageBySlug] OK (slug query)", { slug, id: direct.id, status, requestUrl });
+      }
+      return direct;
+    }
+
+    console.error("[fetchPageBySlug] Slug query miss or error; retrying via search", {
+      slug,
+      status,
+      requestUrl,
+    });
+
+    const fromSearch = await fetchPageBySlugSearch(slug, init);
+    if (fromSearch) {
+      if (process.env.NODE_ENV === "development" || process.env.VERCEL) {
+        console.log("[fetchPageBySlug] OK (search fallback)", { slug, id: fromSearch.id });
+      }
+      return fromSearch;
+    }
+
+    return null;
+  } catch (err) {
+    console.error("[fetchPageBySlug] Fetch failed", {
+      slug,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    const fromSearch = await fetchPageBySlugSearch(slug, init).catch(() => null);
+    if (fromSearch) {
+      console.log("[fetchPageBySlug] OK (search fallback after error)", { slug, id: fromSearch.id });
+      return fromSearch;
+    }
     return null;
   }
 }
@@ -114,24 +190,42 @@ export async function fetchPageBySlugSearch(
 ): Promise<WpPage | null> {
   const base = getWordPressRestBaseUrl();
   if (!base || !exactSlug) return null;
+  const requestUrl = `${base}/wp-json/wp/v2/pages?${new URLSearchParams({
+    search: exactSlug,
+    per_page: "50",
+    _embed: "1",
+  }).toString()}`;
   try {
-    const params = new URLSearchParams({
-      search: exactSlug,
-      per_page: "50",
-      _embed: "1",
-    });
-    const res = await fetch(
-      `${base}/wp-json/wp/v2/pages?${params.toString()}`,
-      buildFetchInit(init)
-    );
-    if (!res.ok) return null;
+    const res = await fetch(requestUrl, buildFetchInit(init));
+    if (!res.ok) {
+      console.error("[fetchPageBySlugSearch] WordPress HTTP error", {
+        slug: exactSlug,
+        status: res.status,
+        statusText: res.statusText,
+        requestUrl,
+      });
+      return null;
+    }
     const data = await res.json();
-    if (!Array.isArray(data)) return null;
+    if (!Array.isArray(data)) {
+      console.error("[fetchPageBySlugSearch] Expected array JSON", { slug: exactSlug });
+      return null;
+    }
     const hit = data.find(
       (p: { slug?: string }) => String(p.slug || "").toLowerCase() === exactSlug.toLowerCase()
     );
+    if (!hit) {
+      console.warn("[fetchPageBySlugSearch] No exact slug match in results", {
+        slug: exactSlug,
+        resultCount: data.length,
+      });
+    }
     return hit ? (hit as WpPage) : null;
-  } catch {
+  } catch (err) {
+    console.error("[fetchPageBySlugSearch] Fetch failed", {
+      slug: exactSlug,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

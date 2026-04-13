@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import NursingServiceCard from "@/components/NursingServiceCard";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { decodeHTMLEntities, sanitizeWordPressPageHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import {
@@ -10,6 +11,10 @@ import {
   getOurNursingServiceDetailSlugs,
 } from "@/lib/our-nursing-services-cards";
 import { rewriteNursingHubLinksToNext } from "@/lib/nursing-service-routes";
+
+export const dynamic = "force-dynamic";
+
+const HUB_WP_SLUG = "our-nursing-services";
 
 /** Avoid duplicate title when WP body repeats the same H1 as the page title. */
 function stripLeadingDuplicateH1(html: string, pageTitlePlain: string): string {
@@ -31,15 +36,34 @@ function stripLeadingDuplicateH1(html: string, pageTitlePlain: string): string {
   return html;
 }
 
-export const metadata: Metadata = {
-  title: "Our Nursing Services | Joya Medical Supplies",
-  description: "Professional nursing services including wound management and stoma care at home.",
-  alternates: { canonical: "/our-nursing-services" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  let wpPage: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    wpPage = await fetchPageBySlug(HUB_WP_SLUG);
+  } catch (err) {
+    console.error("[our-nursing-services] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const heading = decodeHTMLEntities(
+    wpPage?.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Our Nursing Services"
+  );
+  const siteOrigin = getPublicSiteOrigin();
+  const path = "/our-nursing-services";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
+  return {
+    title: `${heading} | Joya Medical Supplies`,
+    description: "Professional nursing services including wound management and stoma care at home.",
+    ...(absoluteUrl ? { alternates: { canonical: absoluteUrl } } : { alternates: { canonical: path } }),
+  };
+}
 
 export default async function OurNursingServicesPage() {
-  const wpPage = await fetchPageBySlug("our-nursing-services");
-  if (!wpPage) notFound();
+  const wpPage = await fetchPageBySlug(HUB_WP_SLUG);
+  if (!wpPage) {
+    console.error("CMS page not found:", HUB_WP_SLUG);
+    return <CmsPageFallback slug={HUB_WP_SLUG} breadcrumbLabel="Our Nursing Services" />;
+  }
 
   const serviceCards = await getOurNursingServicesCards();
   const nursingDetailSlugs = await getOurNursingServiceDetailSlugs();
@@ -97,7 +121,6 @@ export default async function OurNursingServicesPage() {
               ))}
             </div>
           ) : (
-            /* Hub page body (Gutenberg columns, images, buttons) — no WP child pages */
             <div
               className="nursing-page-content nursing-services-hub-cms mx-auto max-w-5xl"
               dangerouslySetInnerHTML={{

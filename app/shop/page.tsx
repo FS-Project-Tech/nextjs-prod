@@ -8,9 +8,9 @@ import { BreadcrumbStructuredData } from "@/components/StructuredData";
 export const revalidate = 600; // 10 minutes
 
 export const metadata: Metadata = {
-  title: "Shop",
+  title: "Shop Medical Products Online in Australia - Joya Medical Supplies",
   description:
-    "Browse our complete product catalog. Find the perfect products for your needs with fast shipping and secure checkout.",
+    "Joya Medical Supplies is a leading medical supplies in Australia, offering bandages, dressings, pads, pants, gloves, wipes, and many more. Visit our online store today!",
   openGraph: {
     title: "Shop | WooCommerce Store",
     description: "Browse our complete product catalog. Find the perfect products for your needs.",

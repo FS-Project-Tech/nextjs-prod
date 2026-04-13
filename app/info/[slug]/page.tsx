@@ -2,9 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
+
+export const dynamic = "force-dynamic";
 
 /** Map URL slugs to WordPress page slugs */
 const SLUG_TO_WP: Record<string, string> = {
@@ -25,6 +29,13 @@ const SLUG_TITLES: Record<string, string> = {
 
 const VALID_SLUGS = Object.keys(SLUG_TO_WP);
 
+/** Stable legal pages: opt-in fetch cache to reduce WordPress load (route remains dynamic). */
+const STABLE_WP_SLUGS = new Set(["privacy-policy", "term-conditions"]);
+
+function fetchInitForWpSlug(wpSlug: string) {
+  return STABLE_WP_SLUGS.has(wpSlug) ? ({ revalidate: 3600 } as const) : undefined;
+}
+
 /** Decode HTML entities (e.g. &#8211; → –, &amp; → &) */
 function decodeHTMLEntities(str: string): string {
   return str
@@ -38,10 +49,6 @@ function decodeHTMLEntities(str: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-export async function generateStaticParams() {
-  return VALID_SLUGS.map((slug) => ({ slug }));
-}
-
 export async function generateMetadata({
   params,
 }: {
@@ -51,7 +58,17 @@ export async function generateMetadata({
   const wpSlug = SLUG_TO_WP[slug];
   if (!wpSlug) return { title: "Page" };
 
-  const page = await fetchPageBySlug(wpSlug);
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(wpSlug, fetchInitForWpSlug(wpSlug));
+  } catch (err) {
+    console.error("[info] generateMetadata: fetch failed", {
+      slug,
+      wpSlug,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -66,17 +83,20 @@ export async function generateMetadata({
     : undefined;
   const excerpt = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
+  const siteOrigin = getPublicSiteOrigin();
+  const path = `/info/${slug}`;
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
   return {
     title,
     description: excerpt,
-    alternates: { canonical: `${siteUrl}/info/${slug}` },
-    openGraph: {
-      title,
-      description: excerpt,
-      type: "website",
-      url: `${siteUrl}/info/${slug}`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: { title, description: excerpt, type: "website", url: absoluteUrl },
+        }
+      : {
+          openGraph: { title, description: excerpt, type: "website" },
+        }),
   };
 }
 
@@ -88,9 +108,12 @@ export default async function InfoPage({ params }: { params: Promise<{ slug: str
     notFound();
   }
 
-  const page = await fetchPageBySlug(wpSlug);
+  const page = await fetchPageBySlug(wpSlug, fetchInitForWpSlug(wpSlug));
   if (!page) {
-    notFound();
+    console.error("CMS page not found:", wpSlug);
+    return (
+      <CmsPageFallback slug={wpSlug} breadcrumbLabel={SLUG_TITLES[slug] || slug} />
+    );
   }
 
   const rawTitle = page.title?.rendered
@@ -107,10 +130,8 @@ export default async function InfoPage({ params }: { params: Promise<{ slug: str
       <BreadcrumbStructuredData items={breadcrumbItems} />
 
       <div className="min-h-screen bg-gray-50">
-        {/* HEADER */}
         <div className="border-b border-gray-200 bg-white">
           <div className="container mx-auto px-4 py-6 sm:px-6 md:px-8">
-            {/* Breadcrumb */}
             <nav className="mb-3 text-sm text-gray-500">
               <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <li>
@@ -123,15 +144,12 @@ export default async function InfoPage({ params }: { params: Promise<{ slug: str
               </ol>
             </nav>
 
-            {/* Page Title */}
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{title}</h1>
           </div>
         </div>
 
-        {/* CONTENT */}
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
           <div className="mx-auto max-w-8xl  rounded-2xl border border-gray-200 bg-white p-6 sm:p-10 shadow-sm">
-            {/* WordPress Content */}
             <div
               className="
                 prose prose-lg max-w-none info-page-content
@@ -154,7 +172,6 @@ export default async function InfoPage({ params }: { params: Promise<{ slug: str
               }}
             />
 
-            {/* Back Button */}
             <div className="mt-10 pt-6 border-t border-gray-200">
               <Link
                 href="/"

@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
     default: "WooCommerce Headless Store",
-    template: "%s | WooCommerce Store",
+    template: "%s",
   },
   description:
     "A modern headless e-commerce solution with Next.js and WooCommerce. Shop the latest products with fast, secure checkout.",

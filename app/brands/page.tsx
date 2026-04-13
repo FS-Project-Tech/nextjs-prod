@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description:
     "Shop by brand. Browse all brands and find products from your favorite manufacturers.",
   openGraph: {
-    title: "Brands | WooCommerce Store",
+    title: "Brands",
     description:
       "Shop by brand. Browse all brands and find products from your favorite manufacturers.",
     type: "website",

@@ -1,7 +1,14 @@
+import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
+
+/** WordPress REST product (Yoast adds `yoast_head_json` when REST integration is enabled). */
 export async function fetchProductSEO(slug: string) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_WP_URL}/wp-json/wp/v2/product?slug=${slug}`, {
-    next: { revalidate: 300 }, // match your ISR
-  });
+  const base = getWordPressRestBaseUrl();
+  if (!base || !slug?.trim()) return null;
+
+  const res = await fetch(
+    `${base}/wp-json/wp/v2/product?slug=${encodeURIComponent(slug.trim())}`,
+    { next: { revalidate: 300 } },
+  );
 
   if (!res.ok) {
     return null;
@@ -11,11 +18,13 @@ export async function fetchProductSEO(slug: string) {
   return data?.[0] || null;
 }
 
-// lib/wordpress.ts
 export async function fetchCategorySEO(slug: string) {
+  const base = getWordPressRestBaseUrl();
+  if (!base || !slug?.trim()) return null;
+
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_WP_URL}/wp-json/wp/v2/product_cat?slug=${slug}`,
-    { next: { revalidate: 600 } }
+    `${base}/wp-json/wp/v2/product_cat?slug=${encodeURIComponent(slug.trim())}`,
+    { next: { revalidate: 600 } },
   );
 
   if (!res.ok) return null;
@@ -24,14 +33,41 @@ export async function fetchCategorySEO(slug: string) {
   return data?.[0] || null;
 }
 
+const BRAND_TAXONOMY_REST_BASES = ["product_brand", "pa_brand", "brand"] as const;
+
+/**
+ * WordPress brand term for Yoast (`yoast_head_json`) — same taxonomies as `resolveBrandSlugToTerm`.
+ */
+export async function fetchBrandTermSEO(slug: string) {
+  const base = getWordPressRestBaseUrl();
+  if (!base || !slug?.trim()) return null;
+
+  const slugEnc = encodeURIComponent(slug.trim());
+  for (const tax of BRAND_TAXONOMY_REST_BASES) {
+    try {
+      const res = await fetch(`${base}/wp-json/wp/v2/${tax}?slug=${slugEnc}`, {
+        next: { revalidate: 600 },
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const term = Array.isArray(data) ? data[0] : data;
+      if (term && typeof term === "object" && (term as { id?: number }).id != null) {
+        return term as Record<string, unknown> & { yoast_head_json?: unknown };
+      }
+    } catch {
+      /* try next taxonomy */
+    }
+  }
+  return null;
+}
+
 /** Fetch brand by slug from WordPress (e.g. /brand/3m/ – plugin may register product_brand or similar). */
 export async function fetchBrandBySlug(slug: string) {
-  const base = process.env.NEXT_PUBLIC_WP_URL;
-
+  const base = getWordPressRestBaseUrl();
   if (!base) return null;
 
   try {
-    const res = await fetch(`${base}/wp-json/custom/v1/brands?slug=${slug}`, {
+    const res = await fetch(`${base}/wp-json/custom/v1/brands?slug=${encodeURIComponent(slug)}`, {
       next: { revalidate: 3600 },
     });
 

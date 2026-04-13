@@ -1,20 +1,47 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import Image from "next/image";
 import PrefetchLink from "@/components/PrefetchLink";
+import CmsPageFallback from "@/components/CmsPageFallback";
 import { fetchPageBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeWordPressPageHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
-export const metadata: Metadata = {
-  title: "Nursing | Joya Medical Supplies",
-  description: "Nursing resources and medical supplies for healthcare professionals.",
-  alternates: { canonical: "/nursing" },
-};
+export const dynamic = "force-dynamic";
+
+const WP_SLUG = "nursing";
+
+export async function generateMetadata(): Promise<Metadata> {
+  let page: Awaited<ReturnType<typeof fetchPageBySlug>> = null;
+  try {
+    page = await fetchPageBySlug(WP_SLUG);
+  } catch (err) {
+    console.error("[nursing] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const rawTitle = page?.title?.rendered
+    ? String(page.title.rendered)
+        .replace(/<[^>]+>/g, "")
+        .trim()
+    : "";
+  const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Nursing";
+  const siteOrigin = getPublicSiteOrigin();
+  const path = "/nursing";
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${path}` : undefined;
+  return {
+    title: `${title} | Joya Medical Supplies`,
+    description: "Nursing resources and medical supplies for healthcare professionals.",
+    ...(absoluteUrl ? { alternates: { canonical: absoluteUrl } } : { alternates: { canonical: path } }),
+  };
+}
 
 export default async function NursingPage() {
-  const page = await fetchPageBySlug("nursing");
-  if (!page) notFound();
+  const page = await fetchPageBySlug(WP_SLUG);
+  if (!page) {
+    console.error("CMS page not found:", WP_SLUG);
+    return <CmsPageFallback slug={WP_SLUG} breadcrumbLabel="Nursing" />;
+  }
 
   const title = decodeHTMLEntities(
     page.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "Nursing"

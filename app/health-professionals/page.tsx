@@ -3,8 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
 import { fetchFirstPageOrPostBySlug } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
 import { sanitizeWordPressPageHTML, decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
+
+export const dynamic = "force-dynamic";
 
 const NEXT_PATH = "/health-professionals";
 
@@ -16,12 +19,17 @@ function wpSlugCandidates(): string[] {
   return [...new Set(out)];
 }
 
-export const revalidate = 3600;
-
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await fetchFirstPageOrPostBySlug(wpSlugCandidates(), {
-    cache: "no-store",
-  });
+  let page: Awaited<ReturnType<typeof fetchFirstPageOrPostBySlug>> = null;
+  try {
+    page = await fetchFirstPageOrPostBySlug(wpSlugCandidates(), {
+      cache: "no-store",
+    });
+  } catch (err) {
+    console.error("[health-professionals] generateMetadata: fetch failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const rawTitle = page?.title?.rendered
     ? String(page.title.rendered)
         .replace(/<[^>]+>/g, "")
@@ -34,17 +42,28 @@ export async function generateMetadata(): Promise<Metadata> {
         .trim()
         .slice(0, 160)
     : undefined;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const siteOrigin = getPublicSiteOrigin();
+  const absoluteUrl = siteOrigin ? `${siteOrigin}${NEXT_PATH}` : undefined;
   return {
     title: `${title} | Joya Medical Supplies`,
     description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-    alternates: { canonical: `${siteUrl}${NEXT_PATH}` },
-    openGraph: {
-      title,
-      description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
-      type: "website",
-      url: `${siteUrl}${NEXT_PATH}`,
-    },
+    ...(absoluteUrl
+      ? {
+          alternates: { canonical: absoluteUrl },
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+            url: absoluteUrl,
+          },
+        }
+      : {
+          openGraph: {
+            title,
+            description: rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined,
+            type: "website",
+          },
+        }),
   };
 }
 

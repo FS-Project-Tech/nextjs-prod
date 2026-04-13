@@ -27,58 +27,99 @@ export async function generateStaticParams() {
   }
 }
 
+type YoastOgImage = { url: string; width?: number; height?: number; alt?: string };
+
+type YoastHeadJson = {
+  title?: string;
+  description?: string;
+  canonical?: string;
+  og_title?: string;
+  og_description?: string;
+  og_image?: YoastOgImage[];
+  twitter_title?: string;
+  twitter_description?: string;
+  twitter_image?: string;
+};
+
 export async function generateMetadata(props: {
   params: Promise<{ slug: string[] }>;
 }): Promise<Metadata> {
   try {
     const { slug } = await props.params;
     const decodedSlug = getLeafSlug(slug);
+    const pathSegments = slug.filter(Boolean).join("/");
 
     const [wpCategory, wooCategory] = await Promise.all([
       fetchCategorySEO(decodedSlug).catch(() => null),
       fetchCategoryBySlug(decodedSlug).catch(() => null),
     ]);
 
-    const yoast = wpCategory?.yoast_head_json;
+    const yoast = wpCategory?.yoast_head_json as YoastHeadJson | undefined;
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const defaultPath = `/product-category/${pathSegments}`;
+    const defaultCanonical = siteUrl ? `${siteUrl}${defaultPath}` : defaultPath;
 
-    if (yoast) {
-      return {
-        title: yoast.title,
-        description: yoast.description,
-        openGraph: {
-          title: yoast.og_title,
-          description: yoast.og_description,
-          url: yoast.canonical,
-          images: yoast.og_image?.map(
-            (img: { url: string; width?: number; height?: number; alt?: string }) => ({
-              url: img.url,
-              width: img.width,
-              height: img.height,
-              alt: img.alt || yoast.title,
-            })
-          ),
-        },
-        twitter: {
-          card: "summary_large_image",
-          title: yoast.twitter_title || yoast.title,
-          description: yoast.twitter_description || yoast.description,
-          images: yoast.twitter_image ? [yoast.twitter_image] : [],
-        },
-        alternates: {
-          canonical: yoast.canonical,
-        },
-      };
-    }
+    const fallbackTitle = wooCategory?.name || (wpCategory?.name as string | undefined) || "Category";
+    const fallbackDescription = wooCategory?.description
+      ? stripHTML(wooCategory.description).replace(/\s+/g, " ").trim().slice(0, 160)
+      : undefined;
 
-    const title = wooCategory?.name || wpCategory?.name || "Category";
-    const rawDesc = wooCategory?.description;
-    const description = rawDesc ? stripHTML(rawDesc).slice(0, 160) : undefined;
+    const title = yoast?.title?.trim() || fallbackTitle;
+    const description =
+      (yoast?.description && yoast.description.trim()) || fallbackDescription || undefined;
+    const canonical = (yoast?.canonical && yoast.canonical.trim()) || defaultCanonical;
+
+    const ogTitle = yoast?.og_title?.trim() || title;
+    const ogDescription =
+      (yoast?.og_description && yoast.og_description.trim()) || description;
+    const ogImages =
+      yoast?.og_image && yoast.og_image.length > 0
+        ? yoast.og_image.map((img) => ({
+            url: img.url,
+            width: img.width,
+            height: img.height,
+            alt: img.alt || ogTitle,
+          }))
+        : wooCategory?.image?.src
+          ? [
+              {
+                url: wooCategory.image.src,
+                width: 1200,
+                height: 630,
+                alt: wooCategory.image.alt || title,
+              },
+            ]
+          : [];
+
+    const twitterTitle = yoast?.twitter_title?.trim() || title;
+    const twitterDescription =
+      (yoast?.twitter_description && yoast.twitter_description.trim()) || description;
+    const firstOgUrl =
+      ogImages.length > 0 && typeof ogImages[0] === "object" && ogImages[0]?.url
+        ? ogImages[0].url
+        : undefined;
+    const twitterImages = yoast?.twitter_image
+      ? [yoast.twitter_image]
+      : firstOgUrl
+        ? [firstOgUrl]
+        : [];
 
     return {
       title,
       description,
-      alternates: {
-        canonical: `/product-category/${slug.join("/")}`,
+      alternates: { canonical },
+      openGraph: {
+        title: ogTitle,
+        description: ogDescription,
+        type: "website",
+        url: canonical,
+        images: ogImages,
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: twitterTitle,
+        description: twitterDescription,
+        images: twitterImages,
       },
     };
   } catch {
