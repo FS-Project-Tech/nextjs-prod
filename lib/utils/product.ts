@@ -609,6 +609,92 @@ export function matchVariation(
 }
 
 /**
+ * Label for the merged packaging / unit row on the PDP. Woo often stores the concrete sell unit on
+ * different variation axes (e.g. Large → "Box (100 Pcs)" on the last attr, Small → "CTN (20 Boxes)"
+ * on an earlier attr) with "Any …" on the other. Reading only `selected[lastAttr]` then shows the
+ * wrong chip for some sizes.
+ */
+export function concretePackagingLabelFromVariation(
+  variation: WooCommerceVariation | null | undefined,
+  attributeDefs: { name: string }[],
+): string {
+  if (!variation?.attributes?.length || !attributeDefs.length) return "";
+
+  const nameKey = (name: string) => variationAttrKey(name);
+
+  const skipNonPackagingAxis = (defName: string) => {
+    const k = nameKey(defName);
+    return (
+      k.includes("size") ||
+      k.includes("gender") ||
+      k.includes("colour") ||
+      k.includes("color") ||
+      k.includes("french") ||
+      k.includes("paediatric") ||
+      k.includes("pediatric") ||
+      /^pa\d+fr$/.test(k)
+    );
+  };
+
+  const packagingLikeName = (defName: string) => {
+    const k = nameKey(defName);
+    return (
+      k.includes("box") ||
+      k.includes("ctn") ||
+      k.includes("pack") ||
+      k.includes("pcs") ||
+      k.includes("pkt") ||
+      k.includes("carton") ||
+      k.includes("case") ||
+      k.includes("unit") ||
+      k.includes("each")
+    );
+  };
+
+  const attrs = variation.attributes;
+  const concreteFor = (defName: string): string | null => {
+    const va = attrs.find((a) => variationAttributeNamesMatch(a.name, defName));
+    if (!va?.option || isVariationAnyOption(va.option)) return null;
+    const s = String(va.option).trim();
+    return s || null;
+  };
+
+  for (const def of attributeDefs) {
+    if (skipNonPackagingAxis(def.name)) continue;
+    const v = concreteFor(def.name);
+    if (v && packagingLikeName(def.name)) return v;
+  }
+
+  for (const def of attributeDefs) {
+    if (skipNonPackagingAxis(def.name)) continue;
+    const v = concreteFor(def.name);
+    if (v) return v;
+  }
+
+  return "";
+}
+
+/**
+ * Overlay variation concrete options onto the PDP selection map. When Woo uses "Any …" on one axis,
+ * the shopper can keep a value that still matches but is wrong for cart / display — replace with the
+ * variation's real terms wherever they are concrete.
+ */
+export function overlayConcreteVariationAttributes(
+  selected: Record<string, string>,
+  variation: WooCommerceVariation | null | undefined,
+  attributeDefs: { name: string }[],
+): Record<string, string> {
+  if (!variation?.attributes?.length || !attributeDefs.length) return { ...selected };
+  const out: Record<string, string> = { ...selected };
+  for (const def of attributeDefs) {
+    const va = variation.attributes.find((a) => variationAttributeNamesMatch(a.name, def.name));
+    if (!va?.option || isVariationAnyOption(va.option)) continue;
+    out[def.name] = String(va.option).trim();
+  }
+  return out;
+}
+
+/**
  * Find brand from product_brand taxonomy or attributes
  * WooCommerce REST API may include brands in the product response similar to categories
  */

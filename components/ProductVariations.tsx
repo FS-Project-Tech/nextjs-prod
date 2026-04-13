@@ -980,9 +980,15 @@ export default function ProductVariations({
               return null;
             }
 
-            // Optional PDP behavior: hide rows that only have a single concrete value
-            // (e.g. "Each"), while still keeping it selected internally for variation matching.
-            if (hideSingleValueSecondaryAttributes && availableOptions.length <= 1) {
+            // Optional PDP behavior: hide rows that are globally single-value (e.g. only "Each"),
+            // while still keeping the value selected internally for variation matching.
+            // Do NOT hide when the product defines multiple options but the current French/Gender/…
+            // filter leaves only one — shoppers must still see e.g. Length: 18cm.
+            if (
+              hideSingleValueSecondaryAttributes &&
+              attribute.options.length <= 1 &&
+              availableOptions.length <= 1
+            ) {
               return null;
             }
 

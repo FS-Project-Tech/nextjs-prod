@@ -654,6 +654,8 @@ import {
   findBrand,
   extractProductBrands,
   extractEtaDateDisplayForProduct,
+  concretePackagingLabelFromVariation,
+  overlayConcreteVariationAttributes,
 } from "@/lib/utils/product";
 import { useViewedProduct } from "@/hooks/useViewedProducts";
 import ConsultationFormModal from "@/components/ConsultationFormModal";
@@ -1033,6 +1035,11 @@ export default function ProductDetailPanel({
 
   /** Main variation unit from Woo (e.g. Box (100 Pcs)); extras come from Available Unit Options. */
   const primaryUnitChipValue = useMemo(() => {
+    const resolvedVar = matchedVariation || matched;
+    if (attributes.length > 0) {
+      const fromVariation = concretePackagingLabelFromVariation(resolvedVar, attributes);
+      if (fromVariation) return fromVariation;
+    }
     if (!packagingUnitAttribute) return "";
     if (eachAttribute && packagingUnitAttribute === eachAttribute) return eachValue;
     const selMap = attributes.length > 0 ? selected : selectedSimpleAttributes;
@@ -1043,6 +1050,9 @@ export default function ProductDetailPanel({
     }
     return "";
   }, [
+    matchedVariation,
+    matched,
+    attributes,
     packagingUnitAttribute,
     eachAttribute,
     eachValue,
@@ -1461,8 +1471,16 @@ export default function ProductDetailPanel({
                   matched?.tax_status ||
                   product.tax_status ||
                   undefined;
-                const baseAttrs =
+                const rawAttrs =
                   attributes.length > 0 ? { ...selected } : { ...selectedSimpleAttributes };
+                const baseAttrs =
+                  attributes.length > 0
+                    ? overlayConcreteVariationAttributes(
+                        rawAttrs,
+                        matchedVariation || matched,
+                        attributes,
+                      )
+                    : rawAttrs;
                 /** Store API ignores "Available Unit Options"; map merged-row choice onto the real Woo attribute. */
                 const attrsForCart =
                   packagingUnitAttribute && selectedUnitOption
