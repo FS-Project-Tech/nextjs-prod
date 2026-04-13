@@ -10,20 +10,33 @@ export const metadata: Metadata = {
   alternates: { canonical: "/blog" },
 };
 
+/** Next may pass `searchParams` as a Promise (request) or plain object (prerender); values may be `string | string[]`. */
+function firstSearchParam(v: string | string[] | undefined): string | undefined {
+  if (v == null) return undefined;
+  return Array.isArray(v) ? v[0] : v;
+}
+
+type BlogSearchParams = { page?: string | string[]; category?: string | string[] };
+
 export default async function BlogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; category?: string }>;
+  searchParams: Promise<BlogSearchParams> | BlogSearchParams;
 }) {
-  const { page = "1", category } = await searchParams;
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const sp = searchParams instanceof Promise ? await searchParams : searchParams;
+  const pageRaw = firstSearchParam(sp?.page) ?? "1";
+  const categoryRaw = firstSearchParam(sp?.category);
+  const pageNum = Math.max(1, parseInt(pageRaw, 10) || 1);
+  const categoryNum = categoryRaw != null && categoryRaw !== "" ? parseInt(categoryRaw, 10) : NaN;
+  const category =
+    categoryRaw != null && categoryRaw !== "" && Number.isFinite(categoryNum) ? String(categoryNum) : undefined;
   const perPage = 10;
 
   const [postsData, categories] = await Promise.all([
     fetchPosts({
       per: perPage,
       page: pageNum,
-      categories: category ? [parseInt(category, 10)] : undefined,
+      categories: Number.isFinite(categoryNum) && categoryNum > 0 ? [categoryNum] : undefined,
     }),
     fetchCategories(),
   ]);

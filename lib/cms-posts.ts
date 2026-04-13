@@ -44,11 +44,14 @@ export async function fetchPosts(params?: {
       next: { revalidate: 60 },
     });
     if (!res.ok) return { posts: [], totalPages: 0 };
-    let posts: WpPost[] = await res.json();
+    const json: unknown = await res.json();
+    if (!Array.isArray(json)) return { posts: [], totalPages: 0 };
+    let posts: WpPost[] = json as WpPost[];
     if (excludeSlugs.length > 0) {
-      posts = posts.filter((p) => !excludeSlugs.includes(p.slug)).slice(0, per);
+      posts = posts.filter((p) => p && typeof p.slug === "string" && !excludeSlugs.includes(p.slug)).slice(0, per);
     }
-    const totalPages = parseInt(res.headers.get("X-WP-TotalPages") || "1", 10) || 1;
+    const rawTotal = parseInt(res.headers.get("X-WP-TotalPages") || "1", 10);
+    const totalPages = Math.min(200, Math.max(1, Number.isFinite(rawTotal) ? rawTotal : 1));
     return { posts, totalPages };
   } catch {
     return { posts: [], totalPages: 0 };
@@ -63,8 +66,9 @@ export async function fetchPostBySlug(slug: string): Promise<WpPost | null> {
       { next: { revalidate: 60 } }
     );
     if (!res.ok) return null;
-    const data = await res.json();
-    return Array.isArray(data) ? (data[0] ?? null) : data;
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return null;
+    return (data[0] as WpPost | undefined) ?? null;
   } catch {
     return null;
   }
@@ -77,7 +81,8 @@ export async function fetchCategories(): Promise<{ id: number; name: string; slu
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
-    const data = await res.json();
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return [];
     return data.map((c: { id: number; name: string; slug: string }) => ({
       id: c.id,
       name: c.name,
