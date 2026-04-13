@@ -704,6 +704,9 @@ export default function FilterSidebar({
         if (activeCategory === slug) {
           params.delete("category");
         } else {
+          // Choosing a sidebar category = category browse; drop keyword search (not when deselecting).
+          params.delete("q");
+          params.delete("categories");
           params.set("category", slug);
         }
         const qs = params.toString();

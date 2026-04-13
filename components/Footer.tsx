@@ -1,5 +1,6 @@
 import PrefetchLink from "@/components/PrefetchLink";
 import Image from "next/image";
+import { getAcfOptions } from "@/lib/wp-acf-options";
 
 const currentYear = new Date().getFullYear();
 
@@ -66,23 +67,22 @@ function FollowUsSocial({ links }: { links: ReturnType<typeof getSocialLinks> })
   );
 }
 
+function acfImageSrc(field: unknown): string | undefined {
+  if (typeof field === "string" && /^https?:\/\//i.test(field)) return field;
+  if (field && typeof field === "object" && field !== null && "url" in field) {
+    const u = (field as { url?: unknown }).url;
+    return typeof u === "string" ? u : undefined;
+  }
+  return undefined;
+}
+
 async function fetchHeaderData() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_WP_URL || process.env.WP_URL;
-
-    if (!baseUrl) return null;
-
-    const res = await fetch(`${baseUrl}/wp-json/acf/v3/options/options`, {
-      next: { revalidate: 3600 },
-    });
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-
+    const acf = await getAcfOptions();
+    if (!acf) return null;
     return {
-      footerLogo: data?.acf?.footer_logo || data?.acf?.logo,
-      siteName: data?.acf?.site_name,
+      footerLogo: acfImageSrc(acf.footer_logo) || acfImageSrc(acf.logo),
+      siteName: typeof acf.site_name === "string" ? acf.site_name : undefined,
     };
   } catch {
     return null;

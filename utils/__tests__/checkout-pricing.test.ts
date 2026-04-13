@@ -135,6 +135,8 @@ describe("validateAndRecalculateCheckout", () => {
     expect(r.wooLineItems).toHaveLength(1);
     expect(r.wooLineItems[0].subtotal).toBe("37.50");
     expect(r.wooLineItems[0].total).toBe("37.50");
+    expect(r.shippingLine.method_id).toBe("flat_rate");
+    expect(r.shippingLine.instance_id).toBe("1");
   });
 
   it("uses client unit_price over Woo REST when provided (PDP multipliers)", async () => {

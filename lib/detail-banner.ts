@@ -1,4 +1,5 @@
-const WP_URL = process.env.NEXT_PUBLIC_WP_URL || "";
+import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
+import { getAcfOptions } from "@/lib/wp-acf-options";
 
 async function fetchMediaSourceUrl(id: number, wpBase: string): Promise<string | null> {
   const base = (wpBase || "").trim().replace(/\/$/, "");
@@ -70,14 +71,20 @@ export interface CategoryBannerData {
 }
 
 export async function fetchDetailBanner(): Promise<DetailBannerData | null> {
-  if (!WP_URL) return null;
   try {
-    const res = await fetch(`${WP_URL}/wp-json/acf/v3/options/detail-banner`, {
-      next: { revalidate: 300 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.acf || null;
+    const acf = await getAcfOptions();
+    if (!acf) return null;
+    const nested = acf.detail_banner;
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      return nested as DetailBannerData;
+    }
+    if (acf.banner_image !== undefined || acf.banner_link !== undefined) {
+      return {
+        banner_image: acf.banner_image as DetailBannerData["banner_image"],
+        banner_link: acf.banner_link as DetailBannerData["banner_link"],
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -85,11 +92,12 @@ export async function fetchDetailBanner(): Promise<DetailBannerData | null> {
 
 /** Fetch category ACF (repeater category_banners) from product_cat taxonomy */
 export async function fetchCategoryBanner(categoryId: number): Promise<CategoryBannerData | null> {
-  if (!WP_URL || !categoryId) return null;
+  const base = getWordPressRestBaseUrl().replace(/\/$/, "");
+  if (!base || !categoryId) return null;
   try {
     const res = await fetch(
-      `${WP_URL}/wp-json/wp/v2/product_cat/${categoryId}?_fields=acf,parent`,
-      { next: { revalidate: 300 } }
+      `${base}/wp-json/wp/v2/product_cat/${categoryId}?_fields=acf,parent`,
+      { next: { revalidate: 300 } },
     );
     if (!res.ok) return null;
     const data = await res.json();

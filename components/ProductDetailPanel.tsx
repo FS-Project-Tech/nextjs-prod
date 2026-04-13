@@ -1594,7 +1594,7 @@ export default function ProductDetailPanel({
       )}
 
       {/* Need Consultation */}
-      <button
+      {/* <button
         onClick={() => setIsConsultationModalOpen(true)}
         className="flex items-center gap-2 text-sm font-medium text-[#1f605f] hover:text-[#1a4d4c] transition-colors underline underline-offset-2"
       >
@@ -1607,7 +1607,7 @@ export default function ProductDetailPanel({
           />
         </svg>
         <span>Need Consultation</span>
-      </button>
+      </button> */}
 
       {/* Consultation Form Modal */}
       <ConsultationFormModal

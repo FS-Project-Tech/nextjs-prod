@@ -1,6 +1,6 @@
 /**
  * Production-Grade Analytics & Tracking
- * Supports GA4 + Meta Pixel + Ecommerce Events
+ * Supports GA4 + Google Ads conversions + Meta Pixel + Ecommerce Events
  */
 
 declare global {
@@ -14,8 +14,31 @@ declare global {
 // 🔥 CONFIG
 const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || "INR";
 
+function googleAdsId(): string {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "";
+}
+
+function googleAdsPurchaseLabel(): string {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL?.trim() || "";
+}
+
 function isBrowser() {
   return typeof window !== "undefined";
+}
+
+/**
+ * Ensures Google Ads gtag config runs (idempotent). Use when gtag was bootstrapped
+ * without Ads (e.g. client-only GA4 fallback in AnalyticsInitializer).
+ */
+export function ensureGoogleAdsGtagConfig() {
+  if (!isBrowser()) return;
+  const id = googleAdsId();
+  if (!id || !window.gtag) return;
+  try {
+    window.gtag("config", id);
+  } catch (err) {
+    console.error("ensureGoogleAdsGtagConfig error", err);
+  }
 }
 
 // ==============================
@@ -285,6 +308,17 @@ export function trackPurchase(order: {
       currency: CURRENCY,
       num_items: order.items.reduce((sum, item) => sum + item.quantity, 0),
     });
+
+    const awId = googleAdsId();
+    const awLabel = googleAdsPurchaseLabel();
+    if (awId && awLabel && window.gtag) {
+      window.gtag("event", "conversion", {
+        send_to: `${awId}/${awLabel}`,
+        value: order.revenue,
+        currency: CURRENCY,
+        transaction_id: order.id.toString(),
+      });
+    }
   } catch (err) {
     console.error("trackPurchase error", err);
   }

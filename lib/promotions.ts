@@ -1,10 +1,9 @@
-export async function fetchGlobalPromotions() {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_WP_URL}/wp-json/acf/v3/options/options`, {
-    next: { revalidate: 300 },
-  });
+import { getAcfOptions } from "@/lib/wp-acf-options";
 
-  if (!res.ok) return [];
-
-  const data = await res.json();
-  return data?.acf?.promotional_section || [];
+export async function fetchGlobalPromotions(): Promise<any[]> {
+  const acf = await getAcfOptions();
+  if (!acf) return [];
+  const section = acf.promotional_section;
+  // `acf` is Record<string, unknown>; without a cast this becomes unknown[] and poisons Promise.all inference.
+  return Array.isArray(section) ? (section as any[]) : [];
 }

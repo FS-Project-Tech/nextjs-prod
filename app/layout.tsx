@@ -48,6 +48,23 @@ const MiniCartDrawer = dynamic(() => import("@/components/MiniCartDrawer"), {
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
 const ga4MeasurementId = process.env.NEXT_PUBLIC_GA4_ID?.trim() || "";
+const googleAdsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "";
+/** gtag.js is loaded with the first configured ID; additional IDs use gtag("config", ...). */
+const gtagScriptId = ga4MeasurementId || googleAdsId;
+const gtagBootstrapInline = (() => {
+  const parts = [
+    "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.gtag=gtag;gtag('js',new Date());",
+  ];
+  if (ga4MeasurementId) {
+    parts.push(
+      `gtag('config',${JSON.stringify(ga4MeasurementId)},{send_page_view:false});`,
+    );
+  }
+  if (googleAdsId) {
+    parts.push(`gtag('config',${JSON.stringify(googleAdsId)});`);
+  }
+  return parts.join("");
+})();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -130,15 +147,15 @@ export default function RootLayout({
         {/* Remove browser extension attributes before React hydrates */}
         {/* <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" /> */}
 
-        {ga4MeasurementId ? (
+        {gtagScriptId ? (
           <>
             <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga4MeasurementId)}`}
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtagScriptId)}`}
               strategy="afterInteractive"
               nonce={nonce}
             />
-            <Script id="google-analytics" strategy="afterInteractive">
-              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.gtag=gtag;gtag('js',new Date());gtag('config',${JSON.stringify(ga4MeasurementId)},{send_page_view:false});`}
+            <Script id="gtag-bootstrap" strategy="afterInteractive" nonce={nonce}>
+              {gtagBootstrapInline}
             </Script>
           </>
         ) : null}

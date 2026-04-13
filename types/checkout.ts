@@ -88,12 +88,20 @@ export type CheckoutTotals = {
   totalCents: number;
 };
 
+/** Woo REST order `shipping_lines[]` — include `instance_id` when known so WC applies correct shipping tax rules. */
+export type CheckoutWooShippingLine = {
+  method_id: string;
+  method_title: string;
+  total: string;
+  instance_id?: string;
+};
+
 export type PendingEwayOrder = {
   orderRef: string;
   createdAt: number;
   payload: CheckoutInitiatePayload;
   line_items: Array<{ product_id: number; variation_id?: number; quantity: number }>;
-  shipping_line: { method_id: string; method_title: string; total: string };
+  shipping_line: CheckoutWooShippingLine;
   totals: CheckoutTotals;
   actor: CheckoutActor;
 };

@@ -1,6 +1,7 @@
 import { cache } from "react";
 import HeroDualSlider, { SliderImage } from "@/components/HeroDualSlider";
 import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
+import { getAcfOptions } from "@/lib/wp-acf-options";
 
 interface ACFImageField {
   url?: string;
@@ -17,66 +18,12 @@ interface ACFRepeaterItem {
   link?: string | { url?: string; href?: string };
 }
 
-interface ACFOptionsResponse {
-  acf?: {
-    left_side_banner?: ACFRepeaterItem[];
-    right_side_banner?: ACFRepeaterItem[];
-    mobile_left_side_banner?: ACFRepeaterItem[];
-    mobile_right_side_banner?: ACFRepeaterItem[];
-    [key: string]: unknown;
-  };
-}
-
-/** Optional: WordPress ACF options sub-route if `/options` omits Hero fields (e.g. menu slug). */
-function heroOptionsSlugCandidates(): string[] {
-  const fromEnv = (
-    process.env.NEXT_PUBLIC_ACF_HERO_OPTIONS_SLUG ||
-    process.env.WP_ACF_HERO_OPTIONS_SLUG ||
-    ""
-  )
-    .trim()
-    .replace(/^\//, "");
-  const extra = fromEnv ? [fromEnv] : [];
-  return [
-    ...extra,
-    "hero-dual-slider",
-    "hero_dual_slider",
-    "Hero-Dual-Slider",
-    "Hero Dual Slider",
-    "herodualslider",
-  ];
-}
-
 const HERO_ACF_KEYS = [
   "left_side_banner",
   "right_side_banner",
   "mobile_left_side_banner",
   "mobile_right_side_banner",
 ] as const;
-
-async function fetchJsonAcf(baseUrl: string, path: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    next: { revalidate: 60 },
-  });
-  if (!res.ok) return {};
-  try {
-    const data = (await res.json()) as Record<string, unknown>;
-    const acfRaw = data?.acf;
-    const base: Record<string, unknown> =
-      acfRaw && typeof acfRaw === "object" && !Array.isArray(acfRaw)
-        ? { ...(acfRaw as Record<string, unknown>) }
-        : {};
-    // Some setups expose repeater fields on the JSON root instead of under `acf`
-    for (const k of HERO_ACF_KEYS) {
-      if (base[k] === undefined && data[k] !== undefined) {
-        base[k] = data[k];
-      }
-    }
-    return base;
-  } catch {
-    return {};
-  }
-}
 
 /** Normalise ACF layer keys (ignore case / stray spaces in exported JSON). */
 function normalisedLayer(layer: Record<string, unknown>): Record<string, unknown> {
@@ -268,18 +215,8 @@ async function fetchACFHeroData(): Promise<{
   if (!baseUrl) return empty;
 
   try {
-    const acfLayers: Record<string, unknown>[] = [];
-
-    const main = await fetchJsonAcf(baseUrl, "/wp-json/acf/v3/options/options");
-    if (Object.keys(main).length) acfLayers.push(main);
-
-    for (const slug of heroOptionsSlugCandidates()) {
-      const encoded = encodeURIComponent(slug);
-      const layer = await fetchJsonAcf(baseUrl, `/wp-json/acf/v3/options/${encoded}`);
-      if (Object.keys(layer).length) acfLayers.push(layer);
-    }
-
-    const acf = mergeHeroAcf(...acfLayers);
+    const main = (await getAcfOptions()) ?? {};
+    const acf = mergeHeroAcf(main);
 
     const leftBanner = (acf.left_side_banner as ACFRepeaterItem[] | undefined) || [];
     const rightBanner = (acf.right_side_banner as ACFRepeaterItem[] | undefined) || [];

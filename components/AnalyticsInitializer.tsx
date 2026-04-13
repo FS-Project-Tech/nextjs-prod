@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { initGA4, initMetaPixel } from "@/lib/analytics";
+import { ensureGoogleAdsGtagConfig, initGA4, initMetaPixel } from "@/lib/analytics";
 
 /**
  * GA4 loads via `next/script` in root layout when NEXT_PUBLIC_GA4_ID is set.
@@ -14,6 +14,8 @@ export default function AnalyticsInitializer() {
     if (gaId && typeof window !== "undefined" && !window.gtag) {
       initGA4(gaId);
     }
+
+    ensureGoogleAdsGtagConfig();
 
     // Initialize Meta Pixel
     if (process.env.NEXT_PUBLIC_META_PIXEL_ID) {

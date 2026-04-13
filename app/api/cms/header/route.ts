@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicApiHandler, API_TIMEOUT } from "@/lib/api-middleware";
+import { getAcfOptions } from "@/lib/wp-acf-options";
 
 function getWpBase(): string | null {
   const api = process.env.WC_API_URL || "";
@@ -57,36 +58,32 @@ async function getHeaderData(req: NextRequest) {
     return NextResponse.json(fallback, { headers: { "Cache-Control": "no-store" } });
   }
 
-  // Use Next.js API route as proxy instead of direct WordPress call
-  // This ensures all WordPress calls go through Next.js API layer
+  // Shared ACF options (same fetch as RSC — one WP request per request when combined with SSR)
   try {
-    const res = await fetchWithTimeout(`/api/cms/acf-options`, { cache: "no-store" }, 5000);
-    if (res.ok) {
-      const json: any = await res.json();
-      const fields = json?.acf || {};
+    const fields = (await getAcfOptions()) ?? {};
+    const siteLogo = fields.site_logo as { url?: string } | undefined;
+    const headerLogo = fields.header_logo as { url?: string } | undefined;
+    const footerLogoField = fields.footer_logo as { url?: string } | undefined;
+    const footerLogoAlt = fields.footerLogo as { url?: string } | undefined;
+    const footerLogoImage = fields.footer_logo_image as { url?: string } | undefined;
+    if (Object.keys(fields).length > 0) {
       return NextResponse.json(
         {
-          logo: fields?.site_logo?.url || fields?.header_logo?.url || fallback.logo,
+          logo: siteLogo?.url || headerLogo?.url || fallback.logo,
           footerLogo:
-            fields?.footer_logo?.url ||
-            fields?.footerLogo?.url ||
-            fields?.footer_logo_image?.url ||
+            footerLogoField?.url ||
+            footerLogoAlt?.url ||
+            footerLogoImage?.url ||
             fallback.footerLogo ||
             fallback.logo,
-          tagline: fields?.header_tagline || fields?.site_tagline || fallback.tagline,
-          siteName: fields?.site_name || fields?.siteName || fallback.siteName,
+          tagline: fields.header_tagline || fields.site_tagline || fallback.tagline,
+          siteName: fields.site_name || fields.siteName || fallback.siteName,
         },
-        { headers: { "Cache-Control": "no-store" } }
+        { headers: { "Cache-Control": "no-store" } },
       );
     }
-  } catch (error) {
-    // Swallow and continue to next fallback path
-    const isAbort =
-      (error instanceof DOMException && error.name === "AbortError") ||
-      (error instanceof Error && error.name === "AbortError");
-    if (isAbort) {
-      // Silent on timeout/abort
-    }
+  } catch {
+    /* fall through */
   }
 
   // Fallback to a "home" page ACF (5 second timeout)

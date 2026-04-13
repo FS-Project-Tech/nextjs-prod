@@ -26,7 +26,12 @@ export type CheckoutSessionRecord = {
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   /** Present for new sessions; omit on older stored tokens. */
   wooLineItems?: WooLineItem[];
-  shippingLine: { method_id: string; method_title: string; total: string };
+  shippingLine: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    instance_id?: string;
+  };
   totals: CheckoutTotals;
 };
 

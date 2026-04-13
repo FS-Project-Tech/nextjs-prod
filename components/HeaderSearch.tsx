@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Typesense from "typesense";
 import { TYPESENSE_DEFAULT_QUERY_BY } from "@/lib/typesense-products";
 import {
@@ -311,6 +311,8 @@ function MagnifierIcon() {
 
 export default function HeaderSearch() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -364,6 +366,22 @@ export default function HeaderSearch() {
       cancelled = true;
     };
   }, []);
+
+  /** Keep header field in sync with `/search?q=` when URL changes (e.g. sidebar category clears `q`). */
+  const urlSearchQ = searchParams.get("q") ?? "";
+  useEffect(() => {
+    if (!pathname.startsWith("/search")) return;
+    const q = urlSearchQ.trim();
+    setQuery(q);
+    if (!q) {
+      searchGenerationRef.current += 1;
+      setResults([]);
+      setCategories([]);
+      setBrands([]);
+      setShow(false);
+      setIsSearching(false);
+    }
+  }, [pathname, urlSearchQ]);
 
   const categoryLabel = useCallback(
     (slug: string) => {
@@ -606,7 +624,7 @@ export default function HeaderSearch() {
                       suppressAutoOpenAfterNavigationRef.current = true;
                       closePanel();
                       router.push(
-                        `/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(cat.value)}`
+                        `/search?category=${encodeURIComponent(cat.value)}`
                       );
                     }}
                     className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600"

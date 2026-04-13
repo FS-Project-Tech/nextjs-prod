@@ -29,7 +29,13 @@ export type WooCreateOrderInput = {
   line_items: WooLineItem[];
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
-  shipping_line?: { method_id: string; method_title: string; total: string };
+  shipping_line?: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    /** Zone method instance — required for correct shipping tax behaviour in Woo. */
+    instance_id?: string;
+  };
   fee_lines?: WooFeeLineInput[];
   coupon_code?: string;
   meta_data?: Array<{ key: string; value: unknown }>;

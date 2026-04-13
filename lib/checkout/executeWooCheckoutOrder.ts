@@ -103,7 +103,12 @@ export type WooCheckoutExecuteResult =
 export async function executeWooCheckoutOrder(input: {
   payload: CheckoutInitiatePayload;
   wooLineItems: WooLineItem[];
-  shippingLine: { method_id: string; method_title: string; total: string };
+  shippingLine: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    instance_id?: string;
+  };
   actor: CheckoutActor;
   customerIp?: string;
   /** COD: defer shipping/meta/fees PUT until after the HTTP response (Next `after`). eWAY: inline before payment URL. */

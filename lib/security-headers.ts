@@ -35,6 +35,10 @@ const GOOGLE_TAG_GA_SCRIPT_SRC =
 const GOOGLE_TAG_GA_CONNECT_SRC =
   "https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://analytics.google.com https://*.analytics.google.com";
 
+/** Google Ads conversion / remarketing beacons (gtag AW-). */
+const GOOGLE_ADS_CONNECT_IMG =
+  "https://www.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net";
+
 const GOOGLE_TAG_GA_IMG_SRC =
   "https://www.google-analytics.com https://www.googletagmanager.com";
 
@@ -79,7 +83,7 @@ export const CSP_HEADER = [
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${TAWK_STYLE_SRC}`,
   `img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com ${GOOGLE_TAG_GA_IMG_SRC} ${META_PIXEL_IMG_SRC} ${TAWK_IMG_SRC}`,
   `font-src 'self' data: https: https://fonts.gstatic.com ${TAWK_FONT_SRC}`,
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC}`.trim(),
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${GOOGLE_ADS_CONNECT_IMG} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC}`.trim(),
   `frame-src *.google.com ${TAWK_FRAME_SRC}`,
   /** Same-origin service workers (e.g. /sw.js); blob for bundled/worklet-style workers. */
   "worker-src 'self' blob:",

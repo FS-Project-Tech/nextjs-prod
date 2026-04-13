@@ -241,6 +241,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
       actorRoles.includes("administrator") ||
       actorRoles.includes("b2b_user") ||
       actorRoles.includes("b2b30days") ||
+      actorRoles.includes("ndis-approved") ||
       Boolean(actor.ndisApproved);
     const guestNdisQualifies =
       isGuestShopper && countNdisDigitsInCheckoutPayload(payload) >= 9;

@@ -2,6 +2,8 @@
  * Public CMS helpers (no WooCommerce consumer keys).
  */
 
+import { getAcfOptions } from "@/lib/wp-acf-options";
+
 export interface ApiFetchOptions<T = unknown> {
   timeout?: number;
   retries?: number;
@@ -37,19 +39,13 @@ export async function apiFetchJson<T>(url: string, options: ApiFetchOptions<T> =
 }
 
 export async function getMarketingUpdates() {
-  const base = wpOrigin();
-  if (!base) throw new Error("NEXT_PUBLIC_WP_URL missing");
-  const res = await fetch(`${base}/wp-json/acf/v3/options/options`, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error("Failed to fetch marketing updates");
-  return res.json();
+  const acf = await getAcfOptions();
+  return { acf: acf ?? {} };
 }
 
 export async function getFeaturedCategories() {
-  const base = wpOrigin();
-  if (!base) throw new Error("NEXT_PUBLIC_WP_URL missing");
-  const res = await fetch(`${base}/wp-json/acf/v3/options/options`, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error("Failed to fetch featured categories");
-  return res.json();
+  const acf = await getAcfOptions();
+  return { acf: acf ?? {} };
 }
 
 export async function getBrandsFromCustomEndpoint() {
@@ -80,7 +76,7 @@ export const fetchBrandWithProducts = async (slug: string) => {
   if (!base) throw new Error("NEXT_PUBLIC_WP_URL missing");
   const res = await fetch(
     `${base}/wp-json/custom/v1/brands?slug=${encodeURIComponent(slug)}&include_products=1`,
-    { next: { revalidate: 60 } }
+    { next: { revalidate: 60 } },
   );
   const payload = await res.json();
   return Array.isArray(payload) ? payload[0] ?? null : null;

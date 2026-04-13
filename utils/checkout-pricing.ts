@@ -208,6 +208,7 @@ import { calculateGST, calculateTotal } from "@/lib/cart/pricing";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
+import { splitWooZoneShippingMethodId } from "@/lib/woo/shippingMethodIds";
 import type { WooLineItem } from "@/services/woocommerce";
 import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
 import { wcGet } from "@/lib/woocommerce/wc-fetch";
@@ -255,7 +256,12 @@ function checkoutPayloadForQuote(input: CheckoutQuoteTotalsInput): CheckoutIniti
 export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
-  shippingLine: { method_id: string; method_title: string; total: string };
+  shippingLine: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    instance_id?: string;
+  };
   totals: CheckoutTotals;
 }> {
   return validateAndRecalculateCheckout(checkoutPayloadForQuote(input));
@@ -264,7 +270,12 @@ export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Prom
 export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePayload): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
-  shippingLine: { method_id: string; method_title: string; total: string };
+  shippingLine: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    instance_id?: string;
+  };
   totals: CheckoutTotals;
 }> {
   const toItemKey = (productId: number, variationId?: number) => `${productId}:${variationId ?? 0}`;
@@ -425,11 +436,13 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     return base;
   });
 
+  const { method_id, instance_id } = splitWooZoneShippingMethodId(String(selectedRate.id));
   return {
     validatedLineItems,
     wooLineItems,
     shippingLine: {
-      method_id: selectedRate.id,
+      method_id,
+      ...(instance_id ? { instance_id } : {}),
       method_title: selectedRate.label || selectedRate.id,
       total: shipping.toFixed(2),
     },

@@ -7,9 +7,10 @@ import CategoriesSectionDisplay, {
 
 export default async function CategoriesSection() {
   const data = await getFeaturedCategories();
-  const updates = data?.acf?.featured_category;
+  const raw = data?.acf?.featured_category;
+  const updates = Array.isArray(raw) ? raw : [];
 
-  if (!updates || updates.length === 0) return null;
+  if (updates.length === 0) return null;
 
   const items: CategorySectionItem[] = updates
     .map((item: Record<string, unknown>) => {

@@ -8,9 +8,10 @@ import MarketingUpdatesDisplay, {
 
 export default async function MarketingUpdatesSection() {
   const data = await getMarketingUpdates();
-  const updates = data?.acf?.marketing_updates;
+  const raw = data?.acf?.marketing_updates;
+  const updates = Array.isArray(raw) ? raw : [];
 
-  if (!updates || updates.length === 0) return null;
+  if (updates.length === 0) return null;
 
   const items: MarketingSectionItem[] = updates
     .map((item: Record<string, unknown>) => {

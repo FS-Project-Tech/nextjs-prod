@@ -4,6 +4,8 @@ import {
   fetchProductReviews,
   fetchProducts,
   WooCommerceVariation,
+  type PaginatedProductResponse,
+  type WooCommerceProductReview,
 } from "@/lib/woocommerce";
 
 import ProductGallery from "@/components/ProductGallery";
@@ -27,6 +29,7 @@ import {
   bannerRowHasImage,
   resolveBannerRowImageUrl,
   resolvePromoImageUrl,
+  type CategoryBannerRow,
 } from "@/lib/detail-banner";
 import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
 import {
@@ -197,7 +200,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
   // (reduces total wait vs sequential fetches)
   // =======================================================
   const [promotions, variations, categoryProductsResult, initialReviews, categoryBanners] =
-    await Promise.all([
+    (await Promise.all([
       fetchGlobalPromotions(),
       product.variations?.length
         ? fetchProductVariations(product.id).catch(() => [] as WooCommerceVariation[])
@@ -206,9 +209,14 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
         ? fetchProducts({ per_page: 20, category: firstCategoryId })
         : Promise.resolve({ products: [] as any[] }),
       fetchProductReviews(product.id, { per_page: 20 }),
-      // fetchDetailBanner(),
       firstCategoryId ? fetchCategoryBannersWithInheritance(firstCategoryId) : Promise.resolve([]),
-    ]);
+    ])) as [
+      any[],
+      WooCommerceVariation[],
+      PaginatedProductResponse | { products: any[] },
+      WooCommerceProductReview[],
+      CategoryBannerRow[],
+    ];
 
   const categoryIds = product.categories?.map((c) => c.id) || [];
   const activePromotions = getActivePromotions(promotions, categoryIds);

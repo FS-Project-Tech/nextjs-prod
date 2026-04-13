@@ -182,15 +182,18 @@ export function buildCheckoutExtensionPatch(
     patch.status = "processing";
   }
   if (input.shipping_line) {
-    patch.shipping_lines = [
-      {
-        method_id: input.shipping_line.method_id,
-        method_title: input.shipping_line.method_title,
-        total: input.shipping_line.total,
-        total_tax: "0",
-        taxes: [],
-      },
-    ];
+    const sl: Record<string, unknown> = {
+      method_id: input.shipping_line.method_id,
+      method_title: input.shipping_line.method_title,
+      total: input.shipping_line.total,
+      total_tax: "0",
+      taxes: [],
+    };
+    const inst = input.shipping_line.instance_id?.trim();
+    if (inst) {
+      sl.instance_id = inst;
+    }
+    patch.shipping_lines = [sl];
   }
   if (input.fee_lines && input.fee_lines.length > 0) {
     patch.fee_lines = input.fee_lines;
