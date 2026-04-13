@@ -4,6 +4,7 @@
  */
 
 import { formatPrice } from "./format-utils";
+import { getPublicApiKeyHeaders } from "./public-api-headers";
 
 type SubcategoryInfo = { slug: string; name: string };
 
@@ -80,7 +81,10 @@ export async function generateCataloguePDF(
       sortBy: "popularity",
       q: "*",
     });
-    const res = await fetch(`/api/typesense/search?${qs.toString()}`);
+    const res = await fetch(`/api/typesense/search?${qs.toString()}`, {
+      headers: getPublicApiKeyHeaders(),
+      cache: "no-store",
+    });
     const json = await res.json();
     const products = Array.isArray(json.products) ? json.products : [];
     const rows = products.map((doc: Record<string, unknown>) => typesenseListingToRow(doc));

@@ -27,6 +27,9 @@ import {
 import { applySavedBillingAddress, applySavedShippingAddress } from "./savedAddressPatch";
 import { cartLinesFingerprint } from "./cartFingerprint";
 
+/** Debounce before POST /api/checkout/quote-totals (ms). Lower = snappier; too low = excess API calls on address typing. */
+const QUOTE_TOTALS_DEBOUNCE_MS = 120;
+
 export function useCheckoutPageState() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -235,6 +238,9 @@ export function useCheckoutPageState() {
       setServerTotals(null);
       return;
     }
+    // Drop previous quote immediately so Order summary uses client totals (selected rate, coupon, GST)
+    // instead of stale server shipping/total until the new quote returns.
+    setServerTotals(null);
     quoteEpochRef.current += 1;
     const epoch = quoteEpochRef.current;
     const ac = new AbortController();
@@ -287,7 +293,7 @@ export function useCheckoutPageState() {
         .finally(() => {
           if (!ac.signal.aborted && quoteEpochRef.current === epoch) setTotalsQuoteLoading(false);
         });
-    }, 400);
+    }, QUOTE_TOTALS_DEBOUNCE_MS);
     return () => {
       window.clearTimeout(timer);
       ac.abort();

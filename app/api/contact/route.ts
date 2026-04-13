@@ -1,82 +1,86 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { getWpBaseUrl } from "@/lib/auth";
-import { rateLimit } from "@/lib/api-security";
 import { sanitizeString, sanitizeEmail } from "@/lib/sanitize";
 import { secureResponse } from "@/lib/security-headers";
 import { getSiteContact } from "@/lib/site-contact";
 import { sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
- 
+import { parseJsonBody } from "@/lib/api-validation";
+
 export const dynamic = "force-dynamic";
- 
+
+const contactSchema = z.object({
+  firstName: z.string().trim().min(1).max(120),
+  lastName: z.string().trim().min(1).max(120),
+  phone: z.string().trim().max(40).optional().default(""),
+  email: z.string().trim().email().max(254),
+  topic: z.string().trim().min(1).max(200),
+  message: z.string().trim().min(1).max(10_000),
+});
+
 /**
  * POST /api/contact
- * Sends to CONTACT_FORM_ADMIN_EMAIL / NEXT_PUBLIC_CONTACT_EMAIL / site default (info@…).
- *
- * Delivery order:
- * 1. Brevo transactional API if BREVO_API_KEY is set (recommended for headless).
- * 2. WordPress /wp-json/wp/v2/send-email if available.
- *
- * Brevo: verify the sender in Brevo (Senders & IP). Optional CONTACT_FORM_BREVO_SENDER_EMAIL;
- * if omitted, the "from" address defaults to the same as the admin inbox (must be verified).
+ * Rate limits: middleware (5/min per IP). Body validated with Zod.
  */
 export async function POST(req: NextRequest) {
-  const rateLimitCheck = await rateLimit({
-    windowMs: 60 * 60 * 1000,
-    maxRequests: 8,
-  })(req);
-  if (rateLimitCheck) return rateLimitCheck;
- 
   try {
-    let body: Record<string, unknown>;
-    try {
-      body = (await req.json()) as Record<string, unknown>;
-    } catch {
-      return secureResponse({ error: "Expected JSON body." }, { status: 400 });
-    }
-    const firstName = sanitizeString(String(body.firstName ?? ""));
-    const lastName = sanitizeString(String(body.lastName ?? ""));
-    const phone = sanitizeString(String(body.phone ?? ""));
-    const email = sanitizeEmail(String(body.email ?? ""));
-    const topic = sanitizeString(String(body.topic ?? ""));
-    const message = sanitizeString(String(body.message ?? ""));
- 
+    const parsed = await parseJsonBody(req, contactSchema);
+    if (parsed.ok === false) return parsed.response;
+
+    const raw = parsed.data;
+    const firstName = sanitizeString(raw.firstName);
+    const lastName = sanitizeString(raw.lastName);
+    const phone = sanitizeString(raw.phone);
+    const email = sanitizeEmail(raw.email);
+    const topic = sanitizeString(raw.topic);
+    const message = sanitizeString(raw.message);
+
     if (!firstName || !lastName || !email || !message) {
       return secureResponse(
-        { error: "First name, last name, email, and message are required." },
+        {
+          error: "First name, last name, email, and message are required.",
+          code: "VALIDATION_ERROR",
+        },
         { status: 400 }
       );
     }
- 
+
     if (!topic) {
-      return secureResponse({ error: "Please choose a topic." }, { status: 400 });
+      return secureResponse(
+        { error: "Please choose a topic.", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
     }
- 
+
     const adminTo =
       process.env.CONTACT_FORM_ADMIN_EMAIL?.trim() ||
       process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() ||
       getSiteContact().email;
- 
+
     if (!adminTo) {
-      return secureResponse({ error: "Contact form is not configured." }, { status: 503 });
+      return secureResponse(
+        { error: "Contact form is not configured.", code: "NOT_CONFIGURED" },
+        { status: 503 }
+      );
     }
- 
+
     const siteName = process.env.NEXT_PUBLIC_SITE_NAME?.trim() || "Website";
     const subject = `Contact form: ${topic} — ${firstName} ${lastName}`;
     const plain = `
 New message from ${siteName} contact form
- 
+
 Name: ${firstName} ${lastName}
 Email: ${email}
 Phone: ${phone || "—"}
 Topic: ${topic}
- 
+
 Message:
 ${message}
 `.trim();
- 
+
     let sent = false;
     let lastError = "";
- 
+
     if (process.env.BREVO_API_KEY?.trim()) {
       const br = await sendPlainEmailViaBrevo({
         to: adminTo,
@@ -92,7 +96,7 @@ ${message}
         console.warn("[contact]", lastError);
       }
     }
- 
+
     const wpBase = getWpBaseUrl();
     if (!sent && wpBase) {
       try {
@@ -133,27 +137,27 @@ ${message}
         console.warn("[contact] WP", msg);
       }
     }
- 
+
     if (sent) {
       return secureResponse({ success: true });
     }
- 
+
     if (!process.env.BREVO_API_KEY?.trim() && !wpBase) {
       return secureResponse(
         {
           error:
             "Email is not configured. Add BREVO_API_KEY or a WordPress URL with send-email support.",
+          code: "NOT_CONFIGURED",
         },
         { status: 503 }
       );
     }
- 
+
     return secureResponse(
       {
         error: "Could not send your message. Try again later or reach us by phone or email.",
-        ...(process.env.NODE_ENV === "development" && lastError
-          ? { _debug: lastError }
-          : {}),
+        code: "UPSTREAM_ERROR",
+        ...(process.env.NODE_ENV === "development" && lastError ? { _debug: lastError } : {}),
       },
       { status: 502 }
     );
@@ -162,6 +166,7 @@ ${message}
     return secureResponse(
       {
         error: "Something went wrong. Please try again.",
+        code: "INTERNAL_ERROR",
         ...(process.env.NODE_ENV === "development" && e instanceof Error
           ? { _debug: e.message }
           : {}),

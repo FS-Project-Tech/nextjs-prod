@@ -17,7 +17,7 @@ export interface CorsOptions {
 const DEFAULT_OPTIONS: CorsOptions = {
   origin: process.env.NEXT_PUBLIC_SITE_URL || "*",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token", "x-api-key"],
   exposedHeaders: ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
   credentials: true,
   maxAge: 86400, // 24 hours

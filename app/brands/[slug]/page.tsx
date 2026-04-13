@@ -71,24 +71,7 @@ export async function generateMetadata(props: {
       return { title: "Brand" };
     }
 
-    const fromRest = wpTerm?.yoast_head_json as YoastHeadJson | undefined;
-    const fromHeadHtml = extractDescriptionsFromYoastHead(wpTerm?.yoast_head);
-
-    const needsYoastApiFallback =
-      !fromRest?.description?.trim() &&
-      !fromRest?.og_description?.trim() &&
-      !fromRest?.twitter_description?.trim() &&
-      !fromHeadHtml.meta?.trim() &&
-      !fromHeadHtml.og?.trim();
-
-    const fromYoastApi = needsYoastApiFallback
-      ? await fetchBrandYoastHeadJsonFromYoastApi(decodedSlug).catch(() => null)
-      : null;
-
-    const yoast = {
-      ...(fromYoastApi ?? {}),
-      ...(fromRest ?? {}),
-    } as YoastHeadJson;
+    const yoast = wpTerm?.yoast_head_json as YoastHeadJson | undefined;
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
     const defaultPath = `/brands/${decodedSlug}`;
     const defaultCanonical = siteUrl ? `${siteUrl}${defaultPath}` : defaultPath;
@@ -101,22 +84,12 @@ export async function generateMetadata(props: {
 
     const title = yoast?.title?.trim() || brand.name;
     const description =
-      yoast?.description?.trim() ||
-      yoast?.og_description?.trim() ||
-      yoast?.twitter_description?.trim() ||
-      fromHeadHtml.meta?.trim() ||
-      fromHeadHtml.og?.trim() ||
-      fallbackDescription ||
-      undefined;
+      (yoast?.description && yoast.description.trim()) || fallbackDescription || undefined;
     const canonical = (yoast?.canonical && yoast.canonical.trim()) || defaultCanonical;
 
     const ogTitle = yoast?.og_title?.trim() || title;
     const ogDescription =
-      yoast?.og_description?.trim() ||
-      yoast?.description?.trim() ||
-      fromHeadHtml.og?.trim() ||
-      fromHeadHtml.meta?.trim() ||
-      description;
+      (yoast?.og_description && yoast.og_description.trim()) || description;
     const ogImages =
       yoast?.og_image && yoast.og_image.length > 0
         ? yoast.og_image.map((img) => ({

@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { authenticateUser, setAuthToken, validateCSRFToken } from "@/lib/auth-server";
 import { validateRedirect, ALLOWED_REDIRECT_PATHS } from "@/lib/redirectUtils";
 import { rateLimit } from "@/lib/api-security";
-import { sanitizeString, sanitizeEmail } from "@/lib/sanitize";
+import { sanitizeString } from "@/lib/sanitize";
+import { parseJsonBody } from "@/lib/api-validation";
+
+const loginBodySchema = z.object({
+  username: z.string().min(1).max(255),
+  password: z.string().min(8).max(128),
+  csrfToken: z.string().optional(),
+  redirectTo: z.string().max(500).optional(),
+  next: z.string().max(500).optional(),
+});
 
 /**
  * POST /api/auth/login
@@ -16,64 +26,28 @@ export async function POST(request: NextRequest) {
       ? { windowMs: 15 * 60 * 1000, maxRequests: 5 }
       : { windowMs: 5 * 60 * 1000, maxRequests: 20 }; // relaxed for local/dev
 
-  const rateLimitCheck = await rateLimit(rateLimitConfig)(request);
+  const rateLimitCheck = await rateLimit({
+    ...rateLimitConfig,
+    routeKey: "auth-login",
+  })(request);
 
   if (rateLimitCheck) {
     return rateLimitCheck;
   }
 
   try {
-    const body = await request.json();
-    let { username, password } = body;
-    const { csrfToken } = body;
+    const parsed = await parseJsonBody(request, loginBodySchema);
+    if (parsed.ok === false) return parsed.response;
 
-    // Sanitize input
-    username = typeof username === "string" ? sanitizeString(username.trim()) : "";
-    password = typeof password === "string" ? password : ""; // Don't sanitize password (it's hashed)
+    let username = sanitizeString(parsed.data.username.trim());
+    const password = parsed.data.password;
+    const { csrfToken } = parsed.data;
 
-    // Validate required fields
-    if (!username || !password) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: { code: "INVALID_BODY", message: "Username and password are required." },
-        },
-        {
-          status: 400,
-          headers: {
-            "X-Content-Type-Options": "nosniff",
-            "X-Frame-Options": "DENY",
-          },
-        }
-      );
-    }
-
-    // Additional validation: username length
-    if (username.length < 3 || username.length > 255) {
+    if (username.length < 3) {
       return NextResponse.json(
         {
           success: false,
           error: { code: "INVALID_USERNAME", message: "Invalid username format." },
-        },
-        {
-          status: 400,
-          headers: {
-            "X-Content-Type-Options": "nosniff",
-            "X-Frame-Options": "DENY",
-          },
-        }
-      );
-    }
-
-    // Password length validation
-    if (password.length < 8 || password.length > 128) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "INVALID_PASSWORD",
-            message: "Password must be between 8 and 128 characters.",
-          },
         },
         {
           status: 400,
@@ -119,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate and sanitize redirect URL from request
-    const requestedRedirect = body.redirectTo || body.next;
+    const requestedRedirect = parsed.data.redirectTo || parsed.data.next;
     const safeRedirect = validateRedirect(requestedRedirect, ALLOWED_REDIRECT_PATHS, "/dashboard");
 
     // Return user data and CSRF token for client-side use

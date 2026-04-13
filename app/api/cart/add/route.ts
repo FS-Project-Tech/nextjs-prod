@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { applyCorsHeaders } from "@/lib/cors";
 import { secureResponse } from "@/lib/security-headers";
 import { storeApiAddLineItem } from "@/lib/store-cart-sync";
+import { parseJsonBody } from "@/lib/api-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +30,9 @@ function resolveBulkMetaData(raw: unknown): {
       const k = String((row as { key?: unknown }).key ?? "").trim();
       const v = (row as { value?: unknown }).value;
       if (k === "bulk_uom") {
-        bulk_uom = String(v ?? "").trim().slice(0, 200);
+        bulk_uom = String(v ?? "")
+          .trim()
+          .slice(0, 200);
       }
       if (k === "bulk_multiplier") {
         const n = Math.floor(Number(v));
@@ -64,14 +68,21 @@ function parseAttributesRecord(raw: unknown): Record<string, string> | undefined
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-type AddCartBody = {
-  product_id?: unknown;
-  variation_id?: unknown;
-  quantity?: unknown;
-  meta_data?: unknown;
-  /** Optional `{ "Color": "Red", ... }` for Store API `variation` on variable products. */
-  attributes?: unknown;
-};
+const addCartSchema = z.object({
+  product_id: z.coerce.number().finite(),
+  variation_id: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().finite().optional()
+  ),
+  quantity: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(1).optional()
+  ),
+  meta_data: z
+    .array(z.object({ key: z.string(), value: z.union([z.string(), z.number()]) }))
+    .optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * POST /api/cart/add
@@ -91,32 +102,44 @@ type AddCartBody = {
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as AddCartBody;
+    const parsed = await parseJsonBody(req, addCartSchema);
+    if (parsed.ok === false) {
+      return applyCorsHeaders(req, parsed.response);
+    }
+    const body = parsed.data;
 
-    const productId = Number(body.product_id);
+    const productId = Math.floor(body.product_id);
     if (!Number.isFinite(productId) || productId <= 0) {
       return applyCorsHeaders(
         req,
-        secureResponse({ error: "product_id is required and must be a positive number" }, { status: 400 }),
+        secureResponse(
+          {
+            error: "product_id is required and must be a positive number",
+            code: "VALIDATION_ERROR",
+          },
+          { status: 400 }
+        )
       );
     }
 
     const variationRaw = body.variation_id;
     const variationId =
-      variationRaw != null && variationRaw !== ""
-        ? Number(variationRaw)
+      variationRaw != null && variationRaw !== "" && variationRaw !== null
+        ? Math.floor(Number(variationRaw))
         : NaN;
     const hasVariation = Number.isFinite(variationId) && variationId > 0;
 
-    const qtyRaw = body.quantity;
     const quantity =
-      qtyRaw == null || qtyRaw === ""
+      body.quantity == null || body.quantity === "" || body.quantity === null
         ? 1
-        : Math.floor(Number(qtyRaw));
+        : Math.floor(Number(body.quantity));
     if (!Number.isFinite(quantity) || quantity < 1) {
       return applyCorsHeaders(
         req,
-        secureResponse({ error: "quantity must be an integer >= 1" }, { status: 400 }),
+        secureResponse(
+          { error: "quantity must be an integer >= 1", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        )
       );
     }
 
@@ -143,8 +166,8 @@ export async function POST(req: NextRequest) {
             status: result.status,
             body: result.body,
           },
-          { status: result.status >= 400 ? result.status : 502 },
-        ),
+          { status: result.status >= 400 ? result.status : 502 }
+        )
       );
     }
 
@@ -154,7 +177,7 @@ export async function POST(req: NextRequest) {
         success: true,
         meta_data,
         cart: result.cart,
-      }),
+      })
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Add to cart failed";

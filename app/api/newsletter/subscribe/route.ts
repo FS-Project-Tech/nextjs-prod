@@ -1,20 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { z } from "zod";
 import { rateLimit } from "@/lib/api-security";
 import { sanitizeEmail } from "@/lib/sanitize";
 import { secureResponse } from "@/lib/security-headers";
+import { parseJsonBody } from "@/lib/api-validation";
+
+const newsletterSchema = z.object({
+  email: z.string().trim().email().max(254),
+});
 
 /**
- * Newsletter Subscription API
- * Handles newsletter subscription requests
- * Protected with rate limiting to prevent abuse
- *
- * In production, integrate with your email marketing service (Mailchimp, SendGrid, etc.)
+ * Newsletter subscription — Zod-validated body; IP rate limit (1h window) in addition to middleware.
  */
 export async function POST(req: NextRequest) {
-  // Apply rate limiting
   const rateLimitCheck = await rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 5, // 5 subscriptions per hour per IP
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 5,
+    routeKey: "newsletter-subscribe",
   })(req);
 
   if (rateLimitCheck) {
@@ -22,30 +24,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-    let { email } = body;
+    const parsed = await parseJsonBody(req, newsletterSchema);
+    if (parsed.ok === false) return parsed.response;
 
-    // Sanitize email
-    email = sanitizeEmail(email);
+    const email = sanitizeEmail(parsed.data.email);
 
-    // Validate email
     if (!email) {
-      return secureResponse({ error: "Email is required" }, { status: 400 });
+      return secureResponse(
+        { error: "Email is required", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
     }
 
-    // TODO: Integrate with your email marketing service
-    // Example integrations:
-    // - Mailchimp API
-    // - SendGrid API
-    // - ConvertKit API
-    // - WordPress plugin API
-
-    // For now, just log the subscription (only in development)
     if (process.env.NODE_ENV === "development") {
       console.log(`Newsletter subscription: ${email}`);
     }
 
-    // Simulate API call delay
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     return secureResponse({
@@ -57,7 +51,10 @@ export async function POST(req: NextRequest) {
       console.error("Newsletter subscription error:", error);
     }
     return secureResponse(
-      { error: "Failed to subscribe to newsletter. Please try again later." },
+      {
+        error: "Failed to subscribe to newsletter. Please try again later.",
+        code: "INTERNAL_ERROR",
+      },
       { status: 500 }
     );
   }
