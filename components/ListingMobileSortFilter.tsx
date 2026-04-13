@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useProductListing } from "@/contexts/ProductListingContext";
@@ -51,8 +51,10 @@ export type ListingMobileSortFilterProps = {
  * Sticky bar (lg:hidden): Sort | Filter — e-commerce mobile pattern.
  * - Sort: bottom sheet with radios (same behaviour as desktop ProductGrid select).
  * - Filter: full-screen panel with existing FilterSidebar (no logic change).
+ *
+ * `useSearchParams` requires a Suspense boundary during static prerender (App Router).
  */
-export default function ListingMobileSortFilter({
+function ListingMobileSortFilterImpl({
   categorySlug,
   brandSlug,
   onSaleOnly,
@@ -264,5 +266,20 @@ export default function ListingMobileSortFilter({
         </div>
       )}
     </>
+  );
+}
+
+export default function ListingMobileSortFilter(props: ListingMobileSortFilterProps) {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="lg:hidden sticky top-[72px] z-40 -mx-4 px-4 py-3 mb-4 min-h-[57px] bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm"
+          aria-hidden
+        />
+      }
+    >
+      <ListingMobileSortFilterImpl {...props} />
+    </Suspense>
   );
 }
