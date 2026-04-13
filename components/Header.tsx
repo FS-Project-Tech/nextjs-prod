@@ -2,7 +2,7 @@
 
 import PrefetchLink from "@/components/PrefetchLink";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useCart } from "@/components/CartProvider";
 import { useWishlist } from "@/contexts/WishlistContext";
 import { useToast } from "@/components/ToastProvider";
@@ -11,6 +11,16 @@ import { apiFetchJson } from "@/lib/api";
 import { safeLogoUrl } from "@/lib/api-fallbacks";
 import HeaderUser from "@/components/HeaderUser";
 import HeaderSearch from "@/components/HeaderSearch";
+
+/** Placeholder while `HeaderSearch` reads `useSearchParams` (required for static prerender / not-found). */
+function HeaderSearchFallback() {
+  return (
+    <div
+      className="h-11 w-full max-w-3xl rounded-lg border border-gray-200 bg-gray-50"
+      aria-hidden
+    />
+  );
+}
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -134,7 +144,9 @@ export default function Header() {
 
         {/* Desktop Search — wide bar (~2/3 row); overflow-visible for dropdown */}
         <div className="hidden min-w-0 overflow-visible lg:flex lg:col-span-8 justify-center px-1">
-          <HeaderSearch />
+          <Suspense fallback={<HeaderSearchFallback />}>
+            <HeaderSearch />
+          </Suspense>
         </div>
 
         {/* Right Icons */}
@@ -261,7 +273,9 @@ export default function Header() {
 
       {/* Mobile + Tablet Search (Amazon-style top full width) */}
       <div className="lg:hidden container mx-auto overflow-visible px-3 sm:px-4 md:px-5 pb-3">
-        <HeaderSearch />
+        <Suspense fallback={<HeaderSearchFallback />}>
+          <HeaderSearch />
+        </Suspense>
       </div>
 
       {/* Mobile Menu */}
