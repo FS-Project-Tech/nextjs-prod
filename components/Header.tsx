@@ -2,7 +2,8 @@
 
 import PrefetchLink from "@/components/PrefetchLink";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useCart } from "@/components/CartProvider";
 import { useWishlist } from "@/contexts/WishlistContext";
 import { useToast } from "@/components/ToastProvider";
@@ -11,8 +12,31 @@ import { apiFetchJson } from "@/lib/api";
 import { safeLogoUrl } from "@/lib/api-fallbacks";
 import HeaderUser from "@/components/HeaderUser";
 import HeaderSearch from "@/components/HeaderSearch";
+import type { PublicHeaderPayload } from "@/lib/cms/public-header-data";
 
-export default function Header() {
+function HeaderSearchFallback() {
+  return (
+    <div
+      className="h-11 w-full max-w-3xl rounded-lg border border-gray-200 bg-gray-50"
+      aria-hidden
+    />
+  );
+}
+
+function initialLogoFromCms(initialCms: PublicHeaderPayload | null | undefined): string | null {
+  if (initialCms?.logo?.trim()) return safeLogoUrl(initialCms.logo);
+  const env = process.env.NEXT_PUBLIC_HEADER_LOGO?.trim();
+  return env ? safeLogoUrl(env) : null;
+}
+
+export default function Header({
+  initialCms,
+}: {
+  /** From RSC layout — avoids /api/cms/header on first paint when set */
+  initialCms?: PublicHeaderPayload | null;
+}) {
+  const pathname = usePathname();
+  const logoLcpPriority = pathname === "/";
   const [open, setOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -28,11 +52,9 @@ export default function Header() {
   const user = session?.user || null;
   const loading = status === "loading";
 
-  const [logoUrl, setLogoUrl] = useState<string | null>(
-    process.env.NEXT_PUBLIC_HEADER_LOGO || null
-  );
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => initialLogoFromCms(initialCms));
   const [tagline, setTagline] = useState<string | null>(
-    process.env.NEXT_PUBLIC_HEADER_TAGLINE || null
+    initialCms?.tagline ?? process.env.NEXT_PUBLIC_HEADER_TAGLINE ?? null
   );
 
   useEffect(() => {
@@ -56,6 +78,8 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    if (initialCms) return;
+
     async function loadHeaderData() {
       try {
         const json = await apiFetchJson<{
@@ -71,7 +95,7 @@ export default function Header() {
     }
 
     loadHeaderData();
-  }, []);
+  }, [initialCms]);
 
   return (
     <header className="bg-white">
@@ -110,7 +134,8 @@ export default function Header() {
                   alt="Logo"
                   fill
                   className="object-contain"
-                  priority
+                  priority={logoLcpPriority}
+                  sizes="(max-width: 768px) 144px, 160px"
                 />
               </div>
             ) : (
@@ -134,7 +159,9 @@ export default function Header() {
 
         {/* Desktop Search — wide bar (~2/3 row); overflow-visible for dropdown */}
         <div className="hidden min-w-0 overflow-visible lg:flex lg:col-span-8 justify-center px-1">
-          <HeaderSearch />
+          <Suspense fallback={<HeaderSearchFallback />}>
+            <HeaderSearch />
+          </Suspense>
         </div>
 
         {/* Right Icons */}
@@ -261,7 +288,9 @@ export default function Header() {
 
       {/* Mobile + Tablet Search (Amazon-style top full width) */}
       <div className="lg:hidden container mx-auto overflow-visible px-3 sm:px-4 md:px-5 pb-3">
-        <HeaderSearch />
+        <Suspense fallback={<HeaderSearchFallback />}>
+          <HeaderSearch />
+        </Suspense>
       </div>
 
       {/* Mobile Menu */}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import withAuth, { WithAuthProps } from "@/lib/withAuth";
 import { useCart } from "@/components/CartProvider";
-import { clearAddressesDeletedIds } from "@/hooks/useAddresses";
+import { clearAddressesDeletedIds } from "@/lib/addresses-deleted-ids";
 
 function AccountPage({ user }: WithAuthProps) {
   const { clear } = useCart();

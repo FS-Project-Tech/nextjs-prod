@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { WebsiteStructuredData, OrganizationStructuredData } from "@/components/StructuredData";
 import HeroDualSliderServer from "@/components/HeroDualSliderServer";
+import HeroDualSliderSkeleton from "@/components/HeroDualSliderSkeleton";
+import MarketingUpdatesSkeleton from "@/components/MarketingUpdatesSkeleton";
 
 // ============================================================================
 // ISR Configuration - Revalidate homepage every 5 minutes
@@ -34,18 +35,10 @@ import MarketingUpdatesSection from "@/components/MarketingUpdatesSection";
 import NDISCTASection from "@/components/NDISCTASection";
 import TrendingSection from "@/components/TrendingSection";
 import NewsletterSection from "@/components/NewsletterSection";
-import HomePageClient from "@/components/HomePageClient";
 import FeatureStrip from "@/components/FeaturedSection";
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ Search?: string; search?: string }>;
-}) {
+export default async function Home() {
   const continenceSlug = process.env.NEXT_PUBLIC_CONTINENCE_CATEGORY_SLUG || "continence-care";
-
-  const params = await searchParams;
-  const searchQuery = params?.Search || params?.search;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
@@ -66,7 +59,9 @@ export default async function Home({
         {/* Hero — no Framer transform wrapper (breaks viewport-width breakout). */}
         <div className="w-full max-w-none min-w-0">
           <div className="w-full pb-4">
-            <HeroDualSliderServer />
+            <Suspense fallback={<HeroDualSliderSkeleton />}>
+              <HeroDualSliderServer />
+            </Suspense>
           </div>
         </div>
         {/* Categories */}
@@ -74,7 +69,9 @@ export default async function Home({
           <CategoriesSection />
         </Suspense>
         {/* Marketing */}
-        <MarketingUpdatesSection />
+        <Suspense fallback={<MarketingUpdatesSkeleton />}>
+          <MarketingUpdatesSection />
+        </Suspense>
         {/* Product Section */}
         <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
           <ProductSection

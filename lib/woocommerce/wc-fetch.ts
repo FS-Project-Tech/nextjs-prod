@@ -9,8 +9,8 @@ export const WOO_REVALIDATE_SECONDS = {
   products: 300,
   /** /products/categories only */
   categories: 30 * 60,
-  /** Single product, slug lookup, variations */
-  product: 60,
+  /** Single product, slug lookup, variations — align with product page ISR (300s) */
+  product: 300,
 } as const;
 
 export type WooCacheProfile = keyof typeof WOO_REVALIDATE_SECONDS | "noStore";

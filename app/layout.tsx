@@ -1,20 +1,17 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
-import Script from "next/script";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import PWARegister from "@/components/PWARegister";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import NavigationProgress from "@/components/NavigationProgress";
 import MainContent from "@/components/MainContent";
 import CoreProviders from "@/components/CoreProviders";
 import CommerceProviders from "@/components/CommerceProviders";
 import { grift } from "@/lib/fonts";
-import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
-import TawkToWidget from "@/components/TawkToWidget";
-import AnalyticsInitializer from "@/components/AnalyticsInitializer";
-import AnalyticsTracker from "@/components/AnalyticsTracker";
+import DeferredClientPerformance from "@/components/DeferredClientPerformance";
+import DeferredTawkToWidget from "@/components/DeferredTawkToWidget";
+import { ClientCartNavPWA, ClientNavigationProgress } from "@/components/ClientOnlyShellChunks";
+import CategoriesNav, { CategoriesNavSkeleton } from "@/components/CategoriesNav";
+import { getPublicHeaderData } from "@/lib/cms/public-header-data";
 
 
 // Validate environment variables at startup (server-side only)
@@ -32,39 +29,8 @@ const Header = dynamic(() => import("@/components/Header"));
 const Footer = dynamic(() => import("@/components/Footer"), {
   loading: () => <div className="h-40" />,
 });
-const BottomNav = dynamic(() => import("@/components/BottomNav"));
-const CategoriesNav = dynamic(() => import("@/components/CategoriesNav"));
-// const AnalyticsInitializer = dynamic(
-//   () => import("@/components/AnalyticsInitializer"),
-//   { ssr: false }
-// );
-
-// Dynamically import MiniCartDrawer - only loaded when cart opens
-// This reduces initial bundle size by ~100-150KB on every page
-// Note: MiniCartDrawer is a client component, so it will hydrate on the client
-const MiniCartDrawer = dynamic(() => import("@/components/MiniCartDrawer"), {
-  // No ssr: false needed - component will render empty on server and hydrate on client
-});
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
-const ga4MeasurementId = process.env.NEXT_PUBLIC_GA4_ID?.trim() || "";
-const googleAdsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "";
-/** gtag.js is loaded with the first configured ID; additional IDs use gtag("config", ...). */
-const gtagScriptId = ga4MeasurementId || googleAdsId;
-const gtagBootstrapInline = (() => {
-  const parts = [
-    "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.gtag=gtag;gtag('js',new Date());",
-  ];
-  if (ga4MeasurementId) {
-    parts.push(
-      `gtag('config',${JSON.stringify(ga4MeasurementId)},{send_page_view:false});`,
-    );
-  }
-  if (googleAdsId) {
-    parts.push(`gtag('config',${JSON.stringify(googleAdsId)});`);
-  }
-  return parts.join("");
-})();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -128,12 +94,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const headerCms = await getPublicHeaderData();
   return (
     <html
       lang="en"
@@ -144,49 +111,26 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${grift.className} min-h-screen antialiased text-base font-normal leading-normal text-gray-900`}
       >
-        {/* Remove browser extension attributes before React hydrates */}
-        {/* <Script src="/remove-extension-attributes.js" strategy="beforeInteractive" /> */}
-
-        {gtagScriptId ? (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtagScriptId)}`}
-              strategy="afterInteractive"
-              nonce={nonce}
-            />
-            <Script id="gtag-bootstrap" strategy="afterInteractive" nonce={nonce}>
-              {gtagBootstrapInline}
-            </Script>
-          </>
-        ) : null}
-
-        <NavigationProgress />
-        <SpeedInsights />
-        <Analytics />
+        <ClientNavigationProgress />
+        <DeferredClientPerformance nonce={nonce} />
         <ErrorBoundary>
           <CoreProviders>
-            <AnalyticsInitializer />
-            <Suspense fallback={null}>
-              <AnalyticsTracker />
-            </Suspense>
             <CommerceProviders>
-              
-
               <div className="app-shell">
                 <div className="sticky top-0 z-50 bg-white shadow-sm">
-                  <Header />
-                  <CategoriesNav />
+                  <Header initialCms={headerCms} />
+                  <Suspense fallback={<CategoriesNavSkeleton />}>
+                    <CategoriesNav />
+                  </Suspense>
                 </div>
 
-                <main className="flex-1 pb-20 md:pb-24 lg:pb-0" suppressHydrationWarning>
+                <main className="flex-1 pb-20 md:pb-24 lg:pb-0">
                   <MainContent>{children}</MainContent>
                 </main>
 
                 <Footer />
-                <MiniCartDrawer />
-                <BottomNav />
-                <PWARegister />
-                <TawkToWidget />
+                <ClientCartNavPWA />
+                <DeferredTawkToWidget />
               </div>
             </CommerceProviders>
           </CoreProviders>

@@ -33,11 +33,20 @@ export async function middleware(request: NextRequest) {
       if (mutationBlock) return addSecurityHeadersToResponse(mutationBlock);
     }
 
-    const response = NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+
+    const response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
     return addSecurityHeadersToResponse(response);
   } catch (error) {
     console.error("[Middleware] Error:", error);
-    const response = NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", request.nextUrl.pathname);
+    const response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
     return addSecurityHeadersToResponse(response);
   }
 }

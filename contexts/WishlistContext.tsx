@@ -525,7 +525,9 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
   // State
   const [items, setItems] = useState<number[]>([]);
   const [products, setProducts] = useState<WishlistProduct[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  /** Defer network/cookie wishlist load until idle so first paint is cheaper. */
+  const [deferLoadReady, setDeferLoadReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -614,6 +616,25 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
     setIsMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const enable = () => setDeferLoadReady(true);
+    let idleId: number | undefined;
+    const w = window;
+    if ("requestIdleCallback" in w) {
+      idleId = w.requestIdleCallback(enable, { timeout: 6000 });
+    } else {
+      globalThis.setTimeout(enable, 2000);
+    }
+    const maxWait = globalThis.setTimeout(enable, 8000);
+    return () => {
+      if (idleId != null && "cancelIdleCallback" in w) {
+        w.cancelIdleCallback(idleId);
+      }
+      globalThis.clearTimeout(maxWait);
+    };
+  }, []);
+
   // On logout: clear UI state so we don't show user's list; loadWishlist will then load guest list (don't clear user cookie)
   useEffect(() => {
     if (!isMounted || authLoading) return;
@@ -627,10 +648,10 @@ export function WishlistProvider({ children }: WishlistProviderProps) {
 
   // Load wishlist when mounted or auth changes (logged-in = from cookie; guest = empty)
   useEffect(() => {
-    if (isMounted && !authLoading) {
+    if (isMounted && !authLoading && deferLoadReady) {
       loadWishlist();
     }
-  }, [isMounted, authLoading, isAuthenticated, loadWishlist]);
+  }, [isMounted, authLoading, isAuthenticated, loadWishlist, deferLoadReady]);
 
   // Load products when items change
   useEffect(() => {

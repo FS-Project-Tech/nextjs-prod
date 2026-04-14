@@ -2,7 +2,24 @@ import PrefetchLink from "@/components/PrefetchLink";
 import { getCategoriesForNav } from "@/lib/categories-nav";
 import AllCategoriesDrawer from "@/components/AllCategoriesDrawer";
 import { ChevronDown } from "lucide-react";
- 
+
+/** Shown from root layout `Suspense` while category tree loads (faster TTFB / streaming). */
+export function CategoriesNavSkeleton() {
+  return (
+    <nav className="bg-nav-header" aria-label="Primary">
+      <div className="container w-full overflow-hidden px-2 py-2 sm:px-3">
+        <ul className="mx-auto flex min-h-[2.5rem] w-max min-w-full flex-nowrap items-center gap-2 sm:gap-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <li key={i} className="shrink-0">
+              <div className="h-8 w-[4.5rem] animate-pulse rounded bg-white/20 sm:w-24" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </nav>
+  );
+}
+
 type Category = {
   id: number;
   name: string;
