@@ -217,10 +217,10 @@ function SearchProductCardComponent({
 
       <div className="flex min-w-0 flex-col md:pt-3">
         <div className="min-h-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             <Link
               href={href}
-              className="line-clamp-3 text-sm font-medium text-gray-900 md:line-clamp-2"
+              className="min-w-0 flex-1 basis-full text-sm font-medium leading-snug text-gray-900 break-words md:basis-auto"
             >
               {displayTitle}
             </Link>

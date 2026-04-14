@@ -29,7 +29,13 @@ export const dynamicParams = true;
 function getLeafSlug(input: string[] | string): string {
   const parts = Array.isArray(input) ? input : [input];
   const clean = parts.filter(Boolean);
-  return decodeURIComponent(clean[clean.length - 1] || "");
+  const leaf = clean[clean.length - 1] || "";
+  try {
+    return decodeURIComponent(leaf);
+  } catch {
+    // Malformed encoded segments should not crash the page route.
+    return leaf;
+  }
 }
 
 export async function generateStaticParams() {
@@ -146,10 +152,11 @@ export async function generateMetadata(props: {
 }
 
 export default async function CategoryPage(props: { params: Promise<{ slug: string[] }> }) {
-  const { slug } = await props.params;
-  const decodedSlug = getLeafSlug(slug);
+  try {
+    const { slug } = await props.params;
+    const decodedSlug = getLeafSlug(slug);
 
-  const category = await fetchCategoryBySlug(decodedSlug).catch(() => null);
+    const category = await fetchCategoryBySlug(decodedSlug).catch(() => null);
 
   return (
     <Suspense fallback={<CategoryPageFallback />}>
@@ -160,4 +167,8 @@ export default async function CategoryPage(props: { params: Promise<{ slug: stri
       />
     </Suspense>
   );
+    } catch (error) {
+      console.error("[product-category] render fallback", error);
+      return <CategoryPageClient initialSlug="" initialCategoryName="Category" initialCategoryDescription="" />;
+    }
 }

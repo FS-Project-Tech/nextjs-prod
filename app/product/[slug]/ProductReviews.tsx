@@ -64,7 +64,7 @@ function getReviewerDisplayName(reviewer: string | undefined): string {
   return trimmed;
 }
 
-interface ProductReviewsProps {
+export interface ProductReviewsProps {
   productId: number;
   averageRating: string;
   ratingCount: number;

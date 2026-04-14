@@ -1,8 +1,13 @@
+import { unstable_cache } from "next/cache";
 import { getUnifiedCategories, type UnifiedCategory } from "@/lib/categories-unified";
+import { CACHE_TAGS } from "@/lib/cache";
 
 const NAV_PARENT_SLUGS = ["continence-care", "woundcare", "urinary-care", "skincare", "nutrition"];
 
-export async function getCategoriesForNav() {
+async function getCategoriesForNavUncached(): Promise<{
+  parentCategories: UnifiedCategory[];
+  childCategories: UnifiedCategory[];
+}> {
   const payload = await getUnifiedCategories();
 
   const preferredParents = NAV_PARENT_SLUGS.map((slug) =>
@@ -35,4 +40,16 @@ export async function getCategoriesForNav() {
     parentCategories,
     childCategories,
   };
+}
+
+const getCategoriesForNavCached = unstable_cache(getCategoriesForNavUncached, ["categories-for-nav-v1"], {
+  revalidate: 300,
+  tags: [CACHE_TAGS.CATEGORIES],
+});
+
+/**
+ * Nav tree for `CategoriesNav`. Cached across requests via Next.js Data Cache (survives serverless cold starts).
+ */
+export async function getCategoriesForNav() {
+  return getCategoriesForNavCached();
 }

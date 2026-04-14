@@ -4,6 +4,7 @@ import type { WooCommerceProduct } from "@/lib/woocommerce";
 import { cached, productsKey, CACHE_TTL, CACHE_TAGS, PRODUCT_CACHE_HEADERS } from "@/lib/cache";
 import { dedupeProductsById } from "@/lib/utils/product";
 import { API_RATE_LIMITS, rateLimit } from "@/lib/api-security";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -28,6 +29,7 @@ function parseIncludeParam(raw: string | null): number[] {
  * Wishlist / batch-by-id only. Product listing uses `/api/typesense/search`.
  */
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
   try {
     const limit = await rateLimit(API_RATE_LIMITS.PRODUCTS_READ)(request);
     if (limit) return limit;
@@ -36,7 +38,8 @@ export async function GET(request: NextRequest) {
     const includeIds = parseIncludeParam(searchParams.get("include"));
 
     if (includeIds.length === 0) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           error:
             "Use /api/typesense/search for catalog listing. This route accepts ?include=1,2,3 only.",
@@ -45,6 +48,8 @@ export async function GET(request: NextRequest) {
           totalPages: 0,
         },
         { status: 400 }
+      ),
+      requestId
       );
     }
 
@@ -120,24 +125,27 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    return NextResponse.json(result, {
-      headers: {
-        ...PRODUCT_CACHE_HEADERS,
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-        "Content-Type": "application/json",
-      },
-    });
+    return withRequestId(
+      NextResponse.json(result, {
+        headers: {
+          ...PRODUCT_CACHE_HEADERS,
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+          "Content-Type": "application/json",
+        },
+      }),
+      requestId
+    );
   } catch (error) {
-    if (isDev) console.error("❌ /api/products error:", error);
-
-    return NextResponse.json(
-      {
-        error: "Unable to load products",
+    if (isDev) console.error("❌ /api/products error:", { requestId, error });
+    return createApiErrorResponse(error, {
+      requestId,
+      defaultMessage: "Unable to load products",
+      fallbackBody: {
         products: [],
         total: 0,
         totalPages: 0,
       },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
+      logPrefix: "api/products",
+    });
   }
 }

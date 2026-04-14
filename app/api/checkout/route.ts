@@ -6,16 +6,19 @@ import {
   validateTrustedBrowserOrigin,
   rateLimit,
 } from "@/lib/api-security";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function OPTIONS(req: NextRequest) {
+  const requestId = getRequestId(req);
   if (!validateTrustedBrowserOrigin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return withRequestId(NextResponse.json({ error: "Forbidden" }, { status: 403 }), requestId);
   }
 
-  return new NextResponse(null, {
+  return withRequestId(
+    new NextResponse(null, {
     status: 204,
     headers: {
       "Access-Control-Allow-Origin": req.headers.get("origin") || req.nextUrl.origin,
@@ -23,22 +26,38 @@ export async function OPTIONS(req: NextRequest) {
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       Vary: "Origin",
     },
-  });
+    }),
+    requestId
+  );
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   // ✅ 1. Same-origin / trusted-origin validation
   if (!validateTrustedBrowserOrigin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return withRequestId(NextResponse.json({ error: "Forbidden" }, { status: 403 }), requestId);
   }
 
   // ✅ 2. Rate limiting (protects from spam / bot checkout)
   const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
-  if (limit) return limit;
+  if (limit) return withRequestId(limit, requestId);
 
-  // ✅ 3. Business logic (guests allowed; COD/on-account gated inside handleCheckoutPost)
-  const res = await handleCheckoutPost(req);
-
-  // ✅ 4. Apply CORS headers
-  return corsResponse(req, res);
+  try {
+    // ✅ 3. Business logic (guests allowed; COD/on-account gated inside handleCheckoutPost)
+    const res = await handleCheckoutPost(req);
+    // ✅ 4. Apply CORS headers
+    return withRequestId(corsResponse(req, res), requestId);
+  } catch (error) {
+    return withRequestId(
+      corsResponse(
+        req,
+        createApiErrorResponse(error, {
+          requestId,
+          defaultMessage: "Checkout service unavailable. Please retry.",
+          logPrefix: "api/checkout",
+        })
+      ),
+      requestId
+    );
+  }
 }

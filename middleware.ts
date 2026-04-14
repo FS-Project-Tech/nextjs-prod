@@ -33,11 +33,38 @@ export async function middleware(request: NextRequest) {
       if (mutationBlock) return addSecurityHeadersToResponse(mutationBlock);
     }
 
-    const response = NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+
+    const response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
     return addSecurityHeadersToResponse(response);
   } catch (error) {
     console.error("[Middleware] Error:", error);
-    const response = NextResponse.next();
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return addSecurityHeadersToResponse(
+        NextResponse.json(
+          {
+            error: "Service temporarily unavailable",
+            code: "API_UNAVAILABLE",
+            message: "Please retry shortly.",
+          },
+          {
+            status: 503,
+            headers: {
+              "Cache-Control": "no-store",
+              "Retry-After": "5",
+            },
+          }
+        )
+      );
+    }
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", request.nextUrl.pathname);
+    const response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
     return addSecurityHeadersToResponse(response);
   }
 }

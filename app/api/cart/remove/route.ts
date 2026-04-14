@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyCorsHeaders } from "@/lib/cors";
 import { secureResponse } from "@/lib/security-headers";
 import { removeLineFromStoreApi } from "@/lib/store-cart-sync";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS(req: NextRequest) {
+  const requestId = getRequestId(req);
   const res = new NextResponse(null, { status: 204 });
-  return applyCorsHeaders(req, res);
+  return applyCorsHeaders(req, withRequestId(res, requestId));
 }
 
 type RemoveBody = {
@@ -23,6 +25,7 @@ type RemoveBody = {
  * The client merges with `enrichClientCartFromStore(getActiveCartSnapshot(), storeCart)` so rapid removes stay consistent.
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const body = (await req.json().catch(() => ({}))) as RemoveBody;
     const key = typeof body.key === "string" && body.key.trim() ? body.key.trim() : undefined;
@@ -42,13 +45,19 @@ export async function POST(req: NextRequest) {
       console.log("[api/cart/remove] Woo cart after removal, line count:", n, after);
     }
 
-    return applyCorsHeaders(req, secureResponse({ success: true, storeCart: after }));
+    return applyCorsHeaders(req, withRequestId(secureResponse({ success: true, storeCart: after }), requestId));
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Remove cart line failed";
     if (process.env.NODE_ENV === "development") {
-      console.error("[api/cart/remove]", e);
+      console.error("[api/cart/remove]", { requestId, error: e });
     }
-    return applyCorsHeaders(req, secureResponse({ error: message }, { status: 500 }));
+    return applyCorsHeaders(
+      req,
+      createApiErrorResponse(e, {
+        requestId,
+        defaultMessage: "Remove cart line failed",
+        logPrefix: "api/cart/remove",
+      })
+    );
   }
 }
 
@@ -57,12 +66,13 @@ export async function POST(req: NextRequest) {
  * Removes by Store API line key; returns raw Store cart JSON for client-side merge.
  */
 export async function DELETE(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const key = req.nextUrl.searchParams.get("key")?.trim();
     if (!key) {
       return applyCorsHeaders(
         req,
-        secureResponse({ error: "Missing key query parameter" }, { status: 400 }),
+        withRequestId(secureResponse({ error: "Missing key query parameter" }, { status: 400 }), requestId),
       );
     }
 
@@ -73,12 +83,18 @@ export async function DELETE(req: NextRequest) {
       console.log("[api/cart/remove] DELETE Woo cart after removal, line count:", n, after);
     }
 
-    return applyCorsHeaders(req, secureResponse({ success: true, storeCart: after }));
+    return applyCorsHeaders(req, withRequestId(secureResponse({ success: true, storeCart: after }), requestId));
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Remove cart line failed";
     if (process.env.NODE_ENV === "development") {
-      console.error("[api/cart/remove] DELETE", e);
+      console.error("[api/cart/remove] DELETE", { requestId, error: e });
     }
-    return applyCorsHeaders(req, secureResponse({ error: message }, { status: 500 }));
+    return applyCorsHeaders(
+      req,
+      createApiErrorResponse(e, {
+        requestId,
+        defaultMessage: "Remove cart line failed",
+        logPrefix: "api/cart/remove:delete",
+      })
+    );
   }
 }

@@ -6,6 +6,7 @@ import { secureResponse } from "@/lib/security-headers";
 import { getSiteContact } from "@/lib/site-contact";
 import { sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
 import { parseJsonBody } from "@/lib/api-validation";
+import { createApiErrorResponse, getRequestId, isUpstreamTransientError, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,10 @@ const contactSchema = z.object({
  * Rate limits: middleware (5/min per IP). Body validated with Zod.
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const parsed = await parseJsonBody(req, contactSchema);
-    if (parsed.ok === false) return parsed.response;
+    if (parsed.ok === false) return withRequestId(parsed.response, requestId);
 
     const raw = parsed.data;
     const firstName = sanitizeString(raw.firstName);
@@ -36,19 +38,22 @@ export async function POST(req: NextRequest) {
     const message = sanitizeString(raw.message);
 
     if (!firstName || !lastName || !email || !message) {
-      return secureResponse(
-        {
-          error: "First name, last name, email, and message are required.",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
+      return withRequestId(
+        secureResponse(
+          {
+            error: "First name, last name, email, and message are required.",
+            code: "VALIDATION_ERROR",
+          },
+          { status: 400 }
+        ),
+        requestId
       );
     }
 
     if (!topic) {
-      return secureResponse(
-        { error: "Please choose a topic.", code: "VALIDATION_ERROR" },
-        { status: 400 }
+      return withRequestId(
+        secureResponse({ error: "Please choose a topic.", code: "VALIDATION_ERROR" }, { status: 400 }),
+        requestId
       );
     }
 
@@ -58,9 +63,9 @@ export async function POST(req: NextRequest) {
       getSiteContact().email;
 
     if (!adminTo) {
-      return secureResponse(
-        { error: "Contact form is not configured.", code: "NOT_CONFIGURED" },
-        { status: 503 }
+      return withRequestId(
+        secureResponse({ error: "Contact form is not configured.", code: "NOT_CONFIGURED" }, { status: 503 }),
+        requestId
       );
     }
 
@@ -139,39 +144,47 @@ ${message}
     }
 
     if (sent) {
-      return secureResponse({ success: true });
+      return withRequestId(secureResponse({ success: true }), requestId);
     }
 
     if (!process.env.BREVO_API_KEY?.trim() && !wpBase) {
-      return secureResponse(
-        {
-          error:
-            "Email is not configured. Add BREVO_API_KEY or a WordPress URL with send-email support.",
-          code: "NOT_CONFIGURED",
-        },
-        { status: 503 }
+      return withRequestId(
+        secureResponse(
+          {
+            error:
+              "Email is not configured. Add BREVO_API_KEY or a WordPress URL with send-email support.",
+            code: "NOT_CONFIGURED",
+          },
+          { status: 503 }
+        ),
+        requestId
       );
     }
 
-    return secureResponse(
-      {
-        error: "Could not send your message. Try again later or reach us by phone or email.",
-        code: "UPSTREAM_ERROR",
-        ...(process.env.NODE_ENV === "development" && lastError ? { _debug: lastError } : {}),
-      },
-      { status: 502 }
+    const upstreamStatus = isUpstreamTransientError(lastError) ? 503 : 502;
+    return withRequestId(
+      secureResponse(
+        {
+          error: "Could not send your message. Try again later or reach us by phone or email.",
+          code: "UPSTREAM_ERROR",
+          ...(process.env.NODE_ENV === "development" && lastError ? { _debug: lastError } : {}),
+        },
+        {
+          status: upstreamStatus,
+          headers: upstreamStatus === 503 ? { "Retry-After": "5", "Cache-Control": "no-store" } : undefined,
+        }
+      ),
+      requestId
     );
   } catch (e) {
-    console.error("[contact] unhandled", e);
-    return secureResponse(
-      {
-        error: "Something went wrong. Please try again.",
+    return createApiErrorResponse(e, {
+      requestId,
+      defaultMessage: "Something went wrong. Please try again.",
+      fallbackBody: {
         code: "INTERNAL_ERROR",
-        ...(process.env.NODE_ENV === "development" && e instanceof Error
-          ? { _debug: e.message }
-          : {}),
+        ...(process.env.NODE_ENV === "development" && e instanceof Error ? { _debug: e.message } : {}),
       },
-      { status: 500 }
-    );
+      logPrefix: "api/contact",
+    });
   }
 }

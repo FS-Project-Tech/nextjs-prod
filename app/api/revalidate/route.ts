@@ -144,6 +144,13 @@ export async function POST(request: NextRequest) {
         message = "Revalidated homepage";
         break;
 
+      case "cms-header":
+        revalidateTag("cms-header", "page");
+        revalidatePath("/", "layout");
+        revalidated = ["cms-header", "layout"];
+        message = "Revalidated CMS header cache and layouts";
+        break;
+
       case "all":
         // Revalidate everything
         revalidatePath("/", "layout"); // Revalidate entire site
@@ -214,6 +221,10 @@ export async function GET(request: NextRequest) {
       revalidateTag("categories", "page");
       invalidateCategories();
       message = "Revalidated all categories";
+    } else if (type === "cms-header") {
+      revalidateTag("cms-header", "page");
+      revalidatePath("/", "layout");
+      message = "Revalidated CMS header cache";
     } else if (type === "all") {
       revalidatePath("/", "layout");
       invalidateAll();

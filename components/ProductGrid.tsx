@@ -7,7 +7,11 @@ import { ProductCardProduct } from "@/lib/types/product";
 import { getSalePercentageFromProduct } from "@/lib/utils/product";
 import { useProductListing } from "@/contexts/ProductListingContext";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { LISTING_SORT_OPTIONS } from "@/lib/listing-sort-options";
+import {
+  LISTING_SORT_OPTIONS,
+  defaultListingSort,
+  shouldOmitSortParam,
+} from "@/lib/listing-sort-options";
 
 interface ProductGridProps {
   categorySlug?: string;
@@ -103,14 +107,6 @@ function categoryLeafFromPathname(pathname: string): string {
   const parts = pathname.split("/").filter(Boolean);
   return parts.length >= 2 ? parts[parts.length - 1]! : "";
 }
-
-const SORT_OPTIONS = [
-  { value: "popularity", label: "Popularity" },
-  { value: "price_low", label: "Price: Low to high" },
-  { value: "price_high", label: "Price: High to low" },
-  { value: "newest", label: "Newest" },
-  { value: "rating", label: "Rating" },
-] as const;
 
 function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
   if (!pathname.startsWith("/search")) {
@@ -263,6 +259,11 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
               rating_count: Number(p.rating_count ?? 0),
               tax_class: p.tax_class as string | undefined,
               tax_status: p.tax_status as string | undefined,
+              variation_id:
+                typeof (p as { variation_id?: unknown }).variation_id === "number" &&
+                (p as { variation_id: number }).variation_id > 0
+                  ? (p as { variation_id: number }).variation_id
+                  : undefined,
             }) as ProductCardProduct
         );
 
@@ -321,7 +322,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
   }, [state.hasMore, state.loading, state.page, fetchProducts]);
 
   const listingBusy = Boolean(listingCtx?.listingBusy);
-  const currentSort = searchParams.get("sortBy") || "popularity";
+  const currentSort = searchParams.get("sortBy") || defaultListingSort(pathname, searchParams);
 
   const handleSortChange = useCallback(
     (e: ChangeEvent<HTMLSelectElement>) => {
@@ -329,7 +330,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
       const v = e.target.value;
       const params = new URLSearchParams(searchParams.toString());
       stripDeprecatedListingParams(params, pathname);
-      if (v === "popularity") params.delete("sortBy");
+      if (shouldOmitSortParam(pathname, searchParams, v)) params.delete("sortBy");
       else params.set("sortBy", v);
       params.delete("page");
       const qs = params.toString();
@@ -423,6 +424,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
                       ""
                 }
                 imageAlt={(product as any)?.images?.[0]?.alt || product.name}
+                variation_id={product.variation_id}
               />
             ))}
           </div>

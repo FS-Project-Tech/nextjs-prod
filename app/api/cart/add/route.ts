@@ -4,12 +4,14 @@ import { applyCorsHeaders } from "@/lib/cors";
 import { secureResponse } from "@/lib/security-headers";
 import { storeApiAddLineItem } from "@/lib/store-cart-sync";
 import { parseJsonBody } from "@/lib/api-validation";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS(req: NextRequest) {
+  const requestId = getRequestId(req);
   const res = new NextResponse(null, { status: 204 });
-  return applyCorsHeaders(req, res);
+  return applyCorsHeaders(req, withRequestId(res, requestId));
 }
 
 type BulkMetaRow = { key: string; value: string | number };
@@ -101,10 +103,11 @@ const addCartSchema = z.object({
  * If `meta_data` is omitted or incomplete, defaults to `bulk_uom: ""` and `bulk_multiplier: 1`.
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const parsed = await parseJsonBody(req, addCartSchema);
     if (parsed.ok === false) {
-      return applyCorsHeaders(req, parsed.response);
+      return applyCorsHeaders(req, withRequestId(parsed.response, requestId));
     }
     const body = parsed.data;
 
@@ -112,12 +115,15 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(productId) || productId <= 0) {
       return applyCorsHeaders(
         req,
-        secureResponse(
+        withRequestId(
+          secureResponse(
           {
             error: "product_id is required and must be a positive number",
             code: "VALIDATION_ERROR",
           },
           { status: 400 }
+          ),
+          requestId
         )
       );
     }
@@ -136,9 +142,12 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(quantity) || quantity < 1) {
       return applyCorsHeaders(
         req,
-        secureResponse(
+        withRequestId(
+          secureResponse(
           { error: "quantity must be an integer >= 1", code: "VALIDATION_ERROR" },
           { status: 400 }
+          ),
+          requestId
         )
       );
     }
@@ -160,30 +169,42 @@ export async function POST(req: NextRequest) {
     if (result.ok === false) {
       return applyCorsHeaders(
         req,
-        secureResponse(
+        withRequestId(
+          secureResponse(
           {
             error: "Failed to add item to WooCommerce cart",
             status: result.status,
             body: result.body,
           },
           { status: result.status >= 400 ? result.status : 502 }
+          ),
+          requestId
         )
       );
     }
 
     return applyCorsHeaders(
       req,
-      secureResponse({
-        success: true,
-        meta_data,
-        cart: result.cart,
-      })
+      withRequestId(
+        secureResponse({
+          success: true,
+          meta_data,
+          cart: result.cart,
+        }),
+        requestId
+      )
     );
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Add to cart failed";
     if (process.env.NODE_ENV === "development") {
-      console.error("[api/cart/add]", e);
+      console.error("[api/cart/add]", { requestId, error: e });
     }
-    return applyCorsHeaders(req, secureResponse({ error: message }, { status: 500 }));
+    return applyCorsHeaders(
+      req,
+      createApiErrorResponse(e, {
+        requestId,
+        defaultMessage: "Add to cart failed",
+        logPrefix: "api/cart/add",
+      })
+    );
   }
 }

@@ -4,16 +4,6 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-// Note: address deletions are now persisted server-side (in WordPress and the
-// fallback file store via addresses-memory-store). We no longer filter by a
-// per-browser localStorage deleted list so deletions are consistent across
-// browsers/devices for the same user. The clearAddressesDeletedIds helper is
-// kept as a no-op so existing calls from AuthContext remain safe.
-
-export function clearAddressesDeletedIds(): void {
-  // no-op – server-side deletedIds are used instead of localStorage
-}
-
 export interface Address {
   id?: string;
   type: "billing" | "shipping";

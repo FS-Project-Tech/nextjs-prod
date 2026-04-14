@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { clearAddressesDeletedIds } from "@/hooks/useAddresses";
+import { clearAddressesDeletedIds } from "@/lib/addresses-deleted-ids";
 import { sessionToAppUser, type AppSessionUser } from "@/lib/next-auth-user";
 
 /** @deprecated Use AppSessionUser from @/lib/next-auth-user */

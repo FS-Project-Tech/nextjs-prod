@@ -22,10 +22,14 @@ const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
   "/api/typesense/search/delete",
 ];
 
-const globalPerMinute = Math.max(
-  20,
-  parseInt(process.env.API_GLOBAL_RATE_PER_MINUTE || "100", 10) || 100
-);
+function parseLimit(name: string, fallback: number): number {
+  const n = parseInt(process.env[name] || "", 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return n;
+}
+
+const globalPerMinute = Math.max(20, parseLimit("API_GLOBAL_RATE_PER_MINUTE", 100));
+const standardPerMinute = Math.max(30, parseLimit("API_STANDARD_RATE_PER_MINUTE", 120));
 
 function nextRateLimitResponse(r: Extract<RateLimitBackendResult, { ok: false }>): NextResponse {
   return NextResponse.json(
@@ -105,6 +109,15 @@ export async function applyPerRouteApiRateLimits(req: NextRequest): Promise<Next
     const r = await checkRateLimitSafe(ip, "cart", 120, 60);
     if (r.ok === false) {
       logRateLimit(ip, "cart", fp);
+      return nextRateLimitResponse(r);
+    }
+  }
+
+  // Safety net: every /api route gets at least one bucket even if no specific prefix matches.
+  if (path.startsWith("/api/")) {
+    const r = await checkRateLimitSafe(ip, "api-standard", standardPerMinute, 60);
+    if (r.ok === false) {
+      logRateLimit(ip, "api-standard", fp);
       return nextRateLimitResponse(r);
     }
   }

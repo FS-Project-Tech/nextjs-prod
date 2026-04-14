@@ -28,6 +28,8 @@ export interface ProductCardProduct {
   // ✅ ADD THIS
   image?: string;
   image_alt?: string;
+  /** Woo variation id when this listing row is a variation (Typesense `type: variation`). */
+  variation_id?: number;
 }
 
 /**

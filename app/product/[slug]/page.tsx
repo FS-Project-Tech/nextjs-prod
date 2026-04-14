@@ -1,77 +1,32 @@
-import {
-  fetchProductBySlug,
-  fetchProductVariations,
-  fetchProductReviews,
-  fetchProducts,
-  WooCommerceVariation,
-  type PaginatedProductResponse,
-  type WooCommerceProductReview,
-} from "@/lib/woocommerce";
-
-import ProductGallery from "@/components/ProductGallery";
-import ProductDetailPanel from "@/components/ProductDetailPanel";
-import { ProductVariationGalleryProvider } from "@/components/product/ProductVariationGalleryProvider";
-import ProductInfoAccordion from "@/components/ProductInfoAccordion";
-import ProductReviews from "@/app/product/[slug]/ProductReviews";
+import { fetchProductSEO } from "@/lib/wordpress";
+import { Suspense } from "react";
 import Breadcrumbs from "@/components/Breadcrumbs";
-import RelatedProductsSection from "@/components/RelatedProductsSection";
 import Container from "@/components/Container";
-
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-
-import { getActivePromotions } from "@/lib/getActivePromotions";
-import {
-  fetchDetailBanner,
-  fetchCategoryBannersWithInheritance,
-  getBannerLinkUrl,
-  bannerRowHasImage,
-  resolveBannerRowImageUrl,
-  resolvePromoImageUrl,
-  type CategoryBannerRow,
-} from "@/lib/detail-banner";
-import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
-import {
-  DEFAULT_PRODUCT_SIDEBAR_BANNER_ALT,
-  DEFAULT_PRODUCT_SIDEBAR_BANNER_SRC,
-} from "@/lib/product-detail-defaults";
-import { fetchGlobalPromotions } from "@/lib/promotions";
-import { fetchProductSEO } from "@/lib/wordpress";
 import { stripHTML } from "@/lib/xss-sanitizer";
 import Script from "next/script";
-import { ProductCardProduct } from "@/lib/types/product";
-import { cache } from "react";
+import { getProductBySlugCached } from "@/app/product/[slug]/product-fetch-cache";
+import ProductMainColumn from "@/app/product/[slug]/ProductMainColumn";
+import ProductSidebarColumn from "@/app/product/[slug]/ProductSidebarColumn";
+import ProductAccordionOnlySection from "@/app/product/[slug]/ProductAccordionOnlySection";
+import ProductReviewsServerSection from "@/app/product/[slug]/ProductReviewsServerSection";
+import {
+  ProductMainColumnSkeleton,
+  ProductSidebarSkeleton,
+  ProductAccordionOnlySkeleton,
+  ProductReviewsOnlySkeleton,
+  ProductRelatedSkeleton,
+} from "@/app/product/[slug]/ProductPageSkeletons";
 
 // ============================================================================
-// ISR
+// ISR — cacheable product pages (revalidate every 5 min)
 // ============================================================================
-export const dynamic = "force-dynamic";
 export const revalidate = 300;
 export const dynamicParams = true;
 
 // ============================================================================
-// Static params
-// ============================================================================
-// export async function generateStaticParams() {
-//   try {
-//     const result = await fetchProducts({
-//       per_page: 100,
-//       featured: true,
-//     });
-
-//     return (
-//       result?.products?.map((p: { slug: string }) => ({
-//         slug: p.slug,
-//       })) || []
-//     );
-//   } catch {
-//     return [];
-//   }
-// }
-
-// ============================================================================
-// Metadata — Yoast SEO from WordPress REST (`yoast_head_json`), same idea as /product-category
+// Metadata — Yoast SEO from WordPress REST (`yoast_head_json`)
 // ============================================================================
 
 type YoastOgImage = { url: string; width?: number; height?: number; alt?: string };
@@ -94,9 +49,8 @@ export async function generateMetadata(props: {
   const { slug } = await props.params;
   const decodedSlug = decodeURIComponent(slug);
 
-  const getProduct = cache(fetchProductBySlug);
   const [product, wpProduct] = await Promise.all([
-    getProduct(decodedSlug),
+    getProductBySlugCached(decodedSlug),
     fetchProductSEO(decodedSlug).catch(() => null),
   ]);
 
@@ -171,143 +125,34 @@ export async function generateMetadata(props: {
 }
 
 // ============================================================================
-// Page
+// Page — product fetch once; main column + sidebar + below-fold stream in parallel
 // ============================================================================
 export default async function ProductPage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = await props.params;
   const decodedSlug = decodeURIComponent(slug);
 
-  const getProduct = cache(fetchProductBySlug);
-  const product = await getProduct(decodedSlug);
+  const product = await getProductBySlugCached(decodedSlug);
   if (!product) {
     console.error("Product not found for slug:", decodedSlug);
     notFound();
   }
 
-  // =======================================================
-  // CATEGORY & BRAND (from product)
-  // =======================================================
-  const firstCategoryId = product.categories?.[0]?.id;
-  const brandAttribute = product.attributes?.find(
-    (attr: { slug?: string; options?: string[] }) => attr.slug === "product_brand"
+  const { default: ProductRelatedSections } = await import(
+    "@/app/product/[slug]/ProductRelatedSections"
   );
-  const currentBrandId = brandAttribute?.options?.[0]
-    ? Number(brandAttribute.options[0])
-    : undefined;
-
-  // =======================================================
-  // PARALLEL FETCH: promotions, variations, category products, reviews
-  // (reduces total wait vs sequential fetches)
-  // =======================================================
-  const [promotions, variations, categoryProductsResult, initialReviews, categoryBanners] =
-    (await Promise.all([
-      fetchGlobalPromotions(),
-      product.variations?.length
-        ? fetchProductVariations(product.id).catch(() => [] as WooCommerceVariation[])
-        : Promise.resolve([] as WooCommerceVariation[]),
-      firstCategoryId
-        ? fetchProducts({ per_page: 20, category: firstCategoryId })
-        : Promise.resolve({ products: [] as any[] }),
-      fetchProductReviews(product.id, { per_page: 20 }),
-      firstCategoryId ? fetchCategoryBannersWithInheritance(firstCategoryId) : Promise.resolve([]),
-    ])) as [
-      any[],
-      WooCommerceVariation[],
-      PaginatedProductResponse | { products: any[] },
-      WooCommerceProductReview[],
-      CategoryBannerRow[],
-    ];
-
-  const categoryIds = product.categories?.map((c) => c.id) || [];
-  const activePromotions = getActivePromotions(promotions, categoryIds);
-  const categoryProducts = Array.isArray(categoryProductsResult?.products)
-    ? categoryProductsResult.products
-    : [];
-  // =======================================================
-  // BANNERS: category repeater first, else global fallback
-  // =======================================================
-  const safeCategoryBanners = Array.isArray(categoryBanners) ? categoryBanners : [];
-  const hasCategoryBanners = safeCategoryBanners.some((row) => bannerRowHasImage(row));
-  const bannersToShow = hasCategoryBanners ? safeCategoryBanners : [];
-
-  const wpRestBase = getWordPressRestBaseUrl();
-  const resolvedSidebarBanners = await Promise.all(
-    bannersToShow.map(async (row, i) => ({
-      key: `banner-${i}`,
-      link: getBannerLinkUrl(row),
-      imgUrl: wpRestBase ? await resolveBannerRowImageUrl(row, wpRestBase) : null,
-    }))
-  );
-  const visibleSidebarBanners = resolvedSidebarBanners.filter((b) => b.imgUrl);
-
-  const resolvedPromos = await Promise.all(
-    activePromotions.map(async (promo: any, i: number) => ({
-      key: `promo-${i}`,
-      promo,
-      imgUrl: wpRestBase ? await resolvePromoImageUrl(promo, wpRestBase) : null,
-      href: promo.link?.url || "#",
-      alt:
-        (promo.image &&
-        typeof promo.image === "object" &&
-        promo.image !== null &&
-        "alt" in promo.image
-          ? String((promo.image as { alt?: string }).alt || "")
-          : "") || "",
-    }))
-  );
-  const visiblePromos = resolvedPromos.filter((p) => p.imgUrl);
-
-  /** No usable banner URLs (incl. after resolving media IDs) → static asset */
-  const showDefaultStaticSidebarBanner = visibleSidebarBanners.length === 0;
-
-  // =======================================================
-  // TOP SELLING (same category)
-  // =======================================================
-  const topSellingProducts = Array.isArray(categoryProducts) ? categoryProducts.slice(0, 6) : [];
-
-  // =======================================================
-  // OTHER BRAND PRODUCTS (KEY LOGIC)
-  // =======================================================
-  const otherBrandProducts = currentBrandId
-    ? categoryProducts.filter((p: any) => {
-        const brandAttr = p.attributes?.find((attr: any) => attr.slug === "product_brand");
-        const brandId = brandAttr?.options?.[0] ? Number(brandAttr.options[0]) : null;
-        return brandId && brandId !== currentBrandId;
-      })
-    : [];
-
-  // =======================================================
-  // MAPPER
-  // =======================================================
-  const toProductCardProduct = (p: any): ProductCardProduct => ({
-    id: p.id,
-    slug: p.slug,
-    name: p.name,
-    sku: p.sku,
-    price: p.price,
-    sale_price: p.sale_price,
-    regular_price: p.regular_price,
-    on_sale: p.on_sale,
-    tax_class: p.tax_class,
-    tax_status: p.tax_status,
-    average_rating: p.average_rating,
-    rating_count: p.rating_count,
-    images: p.images,
-  });
 
   return (
     <>
-      {/* Product Structured Data for SEO */}
       <Script
         id="product-schema"
         type="application/ld+json"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             "@context": "https://schema.org/",
             "@type": "Product",
             name: product.name,
-            image: product.images?.map((img: any) => img.src),
+            image: product.images?.map((img: { src: string }) => img.src),
             description: product.short_description?.replace(/<[^>]+>/g, ""),
             sku: product.sku,
             aggregateRating:
@@ -332,7 +177,6 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
         }}
       />
       <main id="main-content" className="min-h-screen py-12">
-        {/* Breadcrumb */}
         <Container>
           <Breadcrumbs
             items={[
@@ -351,74 +195,15 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
           />
         </Container>
 
-        {/* Product header */}
         <Container className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
-          <ProductVariationGalleryProvider
-            baseImages={product.images.map((img) => ({
-              id: img.id,
-              src: img.src,
-              alt: img.alt || product.name,
-              name: img.name,
-            }))}
-          >
-            <section className="lg:col-span-2">
-              <ProductGallery />
-            </section>
-
-            <section className="lg:col-span-2">
-              <ProductDetailPanel product={product} variations={variations} />
-            </section>
-          </ProductVariationGalleryProvider>
-
-          <aside className="flex flex-col lg:col-span-1 gap-6">
-            {visibleSidebarBanners.map(({ key, link, imgUrl }) => (
-              <a
-                key={key}
-                href={link}
-                className="block overflow-hidden transition hover:opacity-95 h-[600px]"
-              >
-                <Image
-                  src={imgUrl!}
-                  alt="Banner"
-                  width={320}
-                  height={800}
-                  className="w-full h-full object-contain"
-                  sizes="320px"
-                />
-              </a>
-            ))}
-            {showDefaultStaticSidebarBanner ? (
-              <div className="block h-[600px] w-full overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-                <Image
-                  src={DEFAULT_PRODUCT_SIDEBAR_BANNER_SRC}
-                  alt={DEFAULT_PRODUCT_SIDEBAR_BANNER_ALT}
-                  width={290}
-                  height={800}
-                  className="h-full w-full object-contain object-top"
-                  sizes="(max-width: 1024px) 100vw, 20vw"
-                  priority={false}
-                />
-              </div>
-            ) : null}
-            {visiblePromos.map(({ key, href, imgUrl, alt }) => (
-              <a
-                key={key}
-                href={href}
-                className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
-              >
-                <Image
-                  src={imgUrl!}
-                  alt={alt}
-                  width={320}
-                  height={520}
-                  className="h-[590px] w-full object-cover"
-                />
-              </a>
-            ))}
-          </aside>
+          <Suspense fallback={<ProductMainColumnSkeleton />}>
+            <ProductMainColumn product={product} />
+          </Suspense>
+          <Suspense fallback={<ProductSidebarSkeleton />}>
+            <ProductSidebarColumn product={product} />
+          </Suspense>
         </Container>
 
-        {/* 4 tabs in one line: Australia wide | Delivery time | NDIS Payment option | 24/7 Customer Support */}
         <Container className="mt-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
             <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow-md">
@@ -509,38 +294,16 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
           </div>
         </Container>
 
-        {/* Product info */}
-        <Container className="mt-10 grid grid-cols-1 lg:grid-cols-1 gap-8">
-          <ProductInfoAccordion product={product} variations={variations} />
-          <ProductReviews
-            productId={product.id}
-            averageRating={product.average_rating || "0"}
-            ratingCount={product.rating_count || 0}
-            reviewsAllowed={product.reviews_allowed !== false}
-            initialReviews={initialReviews}
-          />
-        </Container>
+        <Suspense fallback={<ProductAccordionOnlySkeleton />}>
+          <ProductAccordionOnlySection product={product} />
+        </Suspense>
+        <Suspense fallback={<ProductReviewsOnlySkeleton />}>
+          <ProductReviewsServerSection product={product} />
+        </Suspense>
 
-        {/* Related products: show first row (3) here; "View all" goes to shop for the rest */}
-        {firstCategoryId && (
-          <Container className="mt-10 space-y-10">
-            <RelatedProductsSection
-              title="Top most selling products"
-              products={topSellingProducts.slice(0, 5).map(toProductCardProduct)}
-              viewAllHref={`/shop?category=${firstCategoryId}&orderby=popularity`}
-            />
-
-            <RelatedProductsSection
-              title="Similar products from other brands"
-              products={otherBrandProducts.slice(0, 6).map(toProductCardProduct)}
-              viewAllHref={
-                currentBrandId
-                  ? `/shop?category=${firstCategoryId}&exclude_brand=${currentBrandId}`
-                  : undefined
-              }
-            />
-          </Container>
-        )}
+        <Suspense fallback={<ProductRelatedSkeleton />}>
+          <ProductRelatedSections product={product} />
+        </Suspense>
       </main>
     </>
   );

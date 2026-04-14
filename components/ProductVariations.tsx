@@ -516,7 +516,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import type { WooCommerceVariation } from "@/lib/woocommerce";
 
 interface VariationAttribute {
@@ -709,6 +709,14 @@ export default function ProductVariations({
   const [selectedAttributes, setSelectedAttributes] = useState<{ [name: string]: string }>(
     defaultSelected
   );
+
+  const defaultSelectedSeedRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const seed = JSON.stringify(defaultSelected);
+    if (defaultSelectedSeedRef.current === seed) return;
+    defaultSelectedSeedRef.current = seed;
+    setSelectedAttributes({ ...defaultSelected });
+  }, [defaultSelected]);
 
   const isAttributeRowSuppressed = (attrName: string) =>
     Array.isArray(suppressAttributeRowLabels) &&

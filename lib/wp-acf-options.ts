@@ -8,7 +8,8 @@
 import { cache } from "react";
 import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
 
-export const ACF_OPTIONS_REVALIDATE = 60;
+/** Align with CMS header + product ISR windows (≥60s). */
+export const ACF_OPTIONS_REVALIDATE = 300;
 
 /** Hero repeaters sometimes appear on JSON root instead of under `acf`. */
 const ACF_ROOT_KEYS_TO_PROMOTE = [

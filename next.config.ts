@@ -70,6 +70,10 @@ const nextConfig: NextConfig = {
       '@tanstack/react-query',
       'react-hook-form',
       'lucide-react',
+      'zod',
+      '@hookform/resolvers',
+      'dompurify',
+      'isomorphic-dompurify',
     ],
     // Enable faster refresh for better HMR experience
     // optimizeCss: true, // Uncomment if using CSS optimization

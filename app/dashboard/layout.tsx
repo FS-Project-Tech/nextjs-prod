@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useUser } from "@/hooks/useUser";
+import QueryProvider from "@/components/QueryProvider";
 
 // Icon component for tabs
 const TabIcon = ({ iconId, className = "h-5 w-5" }: { iconId: string; className?: string }) => {
@@ -133,6 +134,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ) || tabs[0];
 
   return (
+    <QueryProvider>
     <div className="min-h-screen bg-gray-50">
       {/* Mobile header */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
@@ -231,5 +233,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+    </QueryProvider>
   );
 }
