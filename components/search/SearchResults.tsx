@@ -5,7 +5,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SearchProductCard from "@/components/search/ProductCard";
 import { MIN_SEARCH_LEN, useSearch } from "@/hooks/useSearch";
 import { useProductListing } from "@/contexts/ProductListingContext";
-import { LISTING_SORT_OPTIONS } from "@/lib/listing-sort-options";
+import {
+  LISTING_SORT_OPTIONS,
+  defaultListingSort,
+  shouldOmitSortParam,
+} from "@/lib/listing-sort-options";
 
 function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
   if (!pathname.startsWith("/search")) {
@@ -89,7 +93,7 @@ export default function SearchResults() {
   }, [hasMore, loading, loadingMore, loadMore]);
 
   const listingBusy = Boolean(listingCtx?.listingBusy);
-  const currentSort = searchParams.get("sortBy") || "popularity";
+  const currentSort = searchParams.get("sortBy") || defaultListingSort(pathname, searchParams);
 
   const urlQ = (searchParams.get("q") || "").trim();
   const termForHeading =
@@ -104,7 +108,7 @@ export default function SearchResults() {
       const v = e.target.value;
       const params = new URLSearchParams(searchParams.toString());
       stripDeprecatedListingParams(params, pathname);
-      if (v === "popularity") params.delete("sortBy");
+      if (shouldOmitSortParam(pathname, searchParams, v)) params.delete("sortBy");
       else params.set("sortBy", v);
       params.delete("page");
       const qs = params.toString();

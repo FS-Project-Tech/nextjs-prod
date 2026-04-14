@@ -33,6 +33,8 @@ export interface ProductCardProps {
   compact?: boolean;
   /** Sale/discount % from backend; shown in corner badge when on sale */
   sale_percentage?: number | null;
+  /** Opens PDP with this variation pre-selected (`?variation_id=`). */
+  variation_id?: number;
   tags?: { id: number; name: string; slug: string }[];
   brands?: { id: number; name: string; slug: string }[];
 }
@@ -251,6 +253,7 @@ function ProductCardComponent({
   priority = false,
   compact = false,
   sale_percentage: salePercentageFromBackend,
+  variation_id: variationId,
 }: ProductCardProps) {
   // Hooks
   const { addItem, open: openCart } = useCart();
@@ -271,7 +274,13 @@ function ProductCardComponent({
     [rating_count, average_rating]
   );
 
-  const productUrl = useMemo(() => `/product/${slug}`, [slug]);
+  const productUrl = useMemo(() => {
+    const base = `/product/${slug}`;
+    if (variationId != null && Number.isFinite(variationId) && variationId > 0) {
+      return `${base}?variation_id=${variationId}`;
+    }
+    return base;
+  }, [slug, variationId]);
 
   // Stable image source
   const imageSrc = useMemo(() => {
@@ -392,7 +401,7 @@ function ProductCardComponent({
         <div className="min-h-0 flex-1">
           <Link
             href={productUrl}
-            className="text-sm line-clamp-4 font-medium text-gray-900 md:line-clamp-2"
+            className="text-sm font-medium leading-snug text-gray-900 break-words"
           >
             {name}
           </Link>
@@ -463,7 +472,8 @@ function propsAreEqual(prev: ProductCardProps, next: ProductCardProps): boolean 
     prev.rating_count === next.rating_count &&
     prev.priority === next.priority &&
     prev.compact === next.compact &&
-    prev.sale_percentage === next.sale_percentage
+    prev.sale_percentage === next.sale_percentage &&
+    prev.variation_id === next.variation_id
   );
 }
 

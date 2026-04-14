@@ -107,6 +107,10 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
   const rt = TS_FIELDS.rating;
   const byPriceDesc = `${pf}:desc`;
   switch (sortBy) {
+    case "relevance":
+      // Typesense keyword relevance first; tie-break so UX stays stable among equal matches.
+      if (pop) return `_text_match:desc,${pop}:desc,${pf}:desc`;
+      return `_text_match:desc,${pf}:desc`;
     case "price_low":
       return `${pf}:asc`;
     case "price_high":
@@ -116,6 +120,7 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
     case "rating":
       return rt ? `${rt}:desc` : byPriceDesc;
     case "popularity":
+      return pop ? `${pop}:desc` : byPriceDesc;
     default:
       return pop ? `${pop}:desc` : byPriceDesc;
   }
@@ -207,8 +212,20 @@ function normalizeTaxStatus(v: unknown): string | undefined {
   return s;
 }
 
+/** Typesense row is a Woo variation when `type` is variation or `id` differs from `parent_id`. */
+function typesenseDocIsVariation(doc: Record<string, unknown>): boolean {
+  const t = String(doc.type ?? "").toLowerCase();
+  if (t === "variation") return true;
+  const idRaw = doc.id ?? doc.product_id;
+  const parentRaw = doc.parent_id ?? doc.parentId;
+  if (parentRaw == null || String(parentRaw).trim() === "") return false;
+  if (idRaw == null) return false;
+  return String(parentRaw).trim() !== String(idRaw).trim();
+}
+
 export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   const id = Number(doc.id ?? doc.product_id ?? 0);
+  const isVariationDoc = typesenseDocIsVariation(doc);
   const price = String(doc.price ?? doc.current_price ?? "0");
   const regular = String(doc.regular_price ?? doc.regular ?? "");
   const sale = String(doc.sale_price ?? doc.sale ?? "");
@@ -269,14 +286,15 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     /** Explicit index flag — use for UI when tax_class/status are missing on older documents. */
     gstFree: isGstFree === true,
     brand_name: brandName,
+    /** When Typesense row is a Woo variation, `id` is the variation id — use for `?variation_id=` PDP links. */
+    variation_id: isVariationDoc && id > 0 ? id : undefined,
   };
 }
 
 /** Search / listing row with parent vs variation metadata (Typesense `type`, `parent_id`, `attributes`). */
 export function typesenseHitToSearchProduct(doc: Record<string, unknown>) {
   const base = typesenseHitToListingProduct(doc);
-  const t = String(doc.type ?? "").toLowerCase();
-  const docType: "parent" | "variation" = t === "variation" ? "variation" : "parent";
+  const docType: "parent" | "variation" = typesenseDocIsVariation(doc) ? "variation" : "parent";
   const parentRaw = doc.parent_id ?? doc.parentId;
   const parentId =
     parentRaw != null && String(parentRaw).trim() !== ""

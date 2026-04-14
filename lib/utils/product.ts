@@ -609,6 +609,27 @@ export function matchVariation(
 }
 
 /**
+ * Build variation swatch `selected` state from `?variation_id=` (Woo variation post id).
+ * Keys use product attribute definition names so ProductVariations stays in sync.
+ */
+export function selectedAttributesForVariationId(
+  variationId: number,
+  variations: WooCommerceVariation[],
+  productAttributeDefs: { name: string; options?: string[] }[]
+): Record<string, string> | null {
+  const v = variations.find((x) => x.id === variationId);
+  if (!v) return null;
+  const out: Record<string, string> = {};
+  for (const def of productAttributeDefs) {
+    const va = v.attributes.find((a) => variationAttributeNamesMatch(a.name, def.name));
+    if (va && !isVariationAnyOption(va.option)) {
+      out[def.name] = va.option;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * Label for the merged packaging / unit row on the PDP. Woo often stores the concrete sell unit on
  * different variation axes (e.g. Large → "Box (100 Pcs)" on the last attr, Small → "CTN (20 Boxes)"
  * on an earlier attr) with "Any …" on the other. Reading only `selected[lastAttr]` then shows the

@@ -642,6 +642,7 @@ import {
   extractVariationUnitOptions,
 } from "@/lib/woocommerce/quantity-units-meta";
 import { useMemo, useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProductVariationGallery } from "@/components/product/ProductVariationGalleryProvider";
 import ProductVariations from "@/components/ProductVariations";
 import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
@@ -656,6 +657,7 @@ import {
   extractEtaDateDisplayForProduct,
   concretePackagingLabelFromVariation,
   overlayConcreteVariationAttributes,
+  selectedAttributesForVariationId,
 } from "@/lib/utils/product";
 import { useViewedProduct } from "@/hooks/useViewedProducts";
 import ConsultationFormModal from "@/components/ConsultationFormModal";
@@ -780,6 +782,14 @@ export default function ProductDetailPanel({
   /** Server-prefetched wc-quantity-units (and meta) keyed by lowercase SKU — instant unit row on variation change */
   initialSkuQuantityUnits?: Record<string, string[]>;
 }) {
+  const searchParams = useSearchParams();
+  const variationIdFromUrl = useMemo(() => {
+    const raw = searchParams.get("variation_id");
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+
   const [plan, setPlan] = useState<RecurringPlan>("none");
   const [selected, setSelected] = useState<{ [name: string]: string }>({});
   const [selectedSimpleAttributes, setSelectedSimpleAttributes] = useState<{ [name: string]: string }>(
@@ -820,6 +830,22 @@ export default function ProductDetailPanel({
       .filter((a: any) => (a?.variation ?? false) && Array.isArray(a.options))
       .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
   }, [product.attributes]);
+
+  /** Maps `?variation_id=` to swatch keys — ProductVariations must receive this as defaultSelected or UI stays on parent. */
+  const urlDerivedAttributeSelection = useMemo(() => {
+    if (!variationIdFromUrl || variations.length === 0 || attributes.length === 0) return {};
+    return selectedAttributesForVariationId(variationIdFromUrl, variations, attributes) ?? {};
+  }, [variationIdFromUrl, variations, attributes]);
+
+  useEffect(() => {
+    if (!variationIdFromUrl || variations.length === 0 || attributes.length > 0) return;
+    const v = variations.find((x) => x.id === variationIdFromUrl);
+    if (!v) return;
+    setMatchedVariation(v);
+    const skuStr = v.sku ? String(v.sku).trim() : "";
+    if (skuStr) setCurrentSku(skuStr);
+  }, [product.id, variationIdFromUrl, variations, attributes.length]);
+
   const simpleAttributes = useMemo(() => {
     return (product.attributes || [])
       .filter((a: any) => !(a?.variation ?? false) && Array.isArray(a.options) && a.options.length > 0)
@@ -1333,8 +1359,10 @@ export default function ProductDetailPanel({
           )}
           {attributes.length > 0 && (
             <ProductVariations
+              key={`pv-${product.id}-${variationIdFromUrl ?? "base"}`}
               attributes={attributes}
               variations={variations}
+              defaultSelected={urlDerivedAttributeSelection}
               onVariationChange={(variation, selectedAttributes) => {
                 setMatchedVariation(variation);
                 setSelected(selectedAttributes);

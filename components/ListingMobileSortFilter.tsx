@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useProductListing } from "@/contexts/ProductListingContext";
-import { LISTING_SORT_OPTIONS } from "@/lib/listing-sort-options";
+import {
+  LISTING_SORT_OPTIONS,
+  defaultListingSort,
+  shouldOmitSortParam,
+} from "@/lib/listing-sort-options";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
 
 const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
@@ -79,14 +83,15 @@ export default function ListingMobileSortFilter({
     };
   }, [sortOpen, filterOpen]);
 
-  const currentSort = searchParams?.get("sortBy") || "popularity";
+  const currentSort =
+    searchParams?.get("sortBy") || defaultListingSort(pathname, searchParams ?? null);
 
   const applySort = useCallback(
     (value: string) => {
       if (filtersLocked || !searchParams) return;
       const params = new URLSearchParams(searchParams.toString());
       stripDeprecatedListingParams(params, pathname);
-      if (value === "popularity") params.delete("sortBy");
+      if (shouldOmitSortParam(pathname, searchParams, value)) params.delete("sortBy");
       else params.set("sortBy", value);
       params.delete("page");
       const qs = params.toString();

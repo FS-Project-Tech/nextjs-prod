@@ -109,9 +109,12 @@ export async function GET(request: NextRequest) {
 
     const onSaleOnly = sp.get("on_sale") === "true" || forOnSaleCategoryFacets;
 
-    const sortBy = sp.get("sortBy") || sp.get("sort") || "popularity";
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
     const q = sanitizeSlug(qRaw, 200) || "*";
+    const explicitSort = (sp.get("sortBy") || sp.get("sort") || "").trim();
+    /** Keyword search: relevance first. Browse (`*`): popularity (or price fallback in mapSort). */
+    const sortBy =
+      explicitSort || (q !== "*" ? "relevance" : "popularity");
 
     const filterParts = buildTypesenseFilterParts({
       categorySlug: categorySlug || null,
