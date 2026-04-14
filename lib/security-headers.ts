@@ -77,18 +77,26 @@ const TAWK_CONNECT_SRC = "https://*.tawk.to wss://*.tawk.to";
 const TAWK_FORM_ACTION = "https://*.tawk.to";
 
 /**
+ * Vercel Live feedback / toolbar scripts on preview deployments.
+ * Keep scoped to vercel.live domains only.
+ */
+const VERCEL_LIVE_SCRIPT_SRC = "https://vercel.live https://*.vercel.live";
+const VERCEL_LIVE_CONNECT_SRC = "https://vercel.live https://*.vercel.live wss://vercel.live wss://*.vercel.live";
+const VERCEL_LIVE_FRAME_SRC = "https://vercel.live https://*.vercel.live";
+
+/**
  * Content Security Policy
  * Note: 'unsafe-inline' for styles is needed for Next.js
  * Maps allowlist includes 'unsafe-eval' per Google's documented example (required for some API paths).
  */
 export const CSP_HEADER = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC} ${GOOGLE_TAG_GA_SCRIPT_SRC} ${GOOGLE_ADS_SCRIPT_SRC} ${META_PIXEL_SCRIPT_SRC} ${TAWK_SCRIPT_SRC}`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC} ${GOOGLE_TAG_GA_SCRIPT_SRC} ${GOOGLE_ADS_SCRIPT_SRC} ${META_PIXEL_SCRIPT_SRC} ${TAWK_SCRIPT_SRC} ${VERCEL_LIVE_SCRIPT_SRC}`,
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${TAWK_STYLE_SRC}`,
   `img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com ${GOOGLE_TAG_GA_IMG_SRC} ${META_PIXEL_IMG_SRC} ${TAWK_IMG_SRC}`,
   `font-src 'self' data: https: https://fonts.gstatic.com ${TAWK_FONT_SRC}`,
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${GOOGLE_ADS_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC}`.trim(),
-  `frame-src *.google.com ${TAWK_FRAME_SRC}`,
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${GOOGLE_ADS_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC} ${VERCEL_LIVE_CONNECT_SRC}`.trim(),
+  `frame-src *.google.com ${TAWK_FRAME_SRC} ${VERCEL_LIVE_FRAME_SRC}`,
   /** Same-origin service workers (e.g. /sw.js); blob for bundled/worklet-style workers. */
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
