@@ -24,14 +24,29 @@ function wpAcfHeaders(): HeadersInit {
   return key ? { "x-api-key": key } : {};
 }
 
+function acfFetchTimeoutMs(): number {
+  const n = Number(process.env.WORDPRESS_ACF_FETCH_TIMEOUT_MS || 15000);
+  return Number.isFinite(n) && n > 0 ? n : 15000;
+}
+
 async function fetchAcfOptionsInternal(): Promise<Record<string, unknown> | null> {
   const base = getWordPressRestBaseUrl().replace(/\/$/, "");
   if (!base) return null;
 
-  const res = await fetch(`${base}/wp-json/acf/v3/options/options`, {
-    next: { revalidate: ACF_OPTIONS_REVALIDATE },
-    headers: wpAcfHeaders(),
-  });
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), acfFetchTimeoutMs());
+  let res: Response;
+  try {
+    res = await fetch(`${base}/wp-json/acf/v3/options/options`, {
+      next: { revalidate: ACF_OPTIONS_REVALIDATE },
+      headers: wpAcfHeaders(),
+      signal: ctrl.signal,
+    });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
 
   if (!res.ok) return null;
 

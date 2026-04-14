@@ -64,12 +64,21 @@ function mergeHeroAcf(...layers: Record<string, unknown>[]): Record<string, unkn
 async function fetchImagesByIds(ids: number[]): Promise<Map<number, { url: string; alt: string }>> {
   const baseUrl = getWordPressRestBaseUrl().replace(/\/$/, "");
   const results = new Map<number, { url: string; alt: string }>();
+  const timeoutMs = Math.max(5000, parseInt(process.env.WORDPRESS_HERO_MEDIA_TIMEOUT_MS || "12000", 10));
 
   try {
     const promises = ids.map(async (id) => {
-      const res = await fetch(`${baseUrl}/wp-json/wp/v2/media/${id}`, {
-        next: { revalidate: 3600 },
-      });
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}/wp-json/wp/v2/media/${id}`, {
+          next: { revalidate: 3600 },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(t);
+      }
       if (res.ok) {
         const data = await res.json();
         return [
