@@ -14,6 +14,7 @@ import {
   typesenseHitToListingProduct,
   typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 function sanitizeSlug(input: string | null, max = 200): string {
   if (!input) return "";
@@ -62,8 +63,10 @@ function flattenTypesenseHits(result: {
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
   if (!isTypesenseConfigured()) {
-    return NextResponse.json(
+    return withRequestId(
+      NextResponse.json(
       {
         error: "Typesense not configured",
         products: [],
@@ -72,6 +75,8 @@ export async function GET(request: NextRequest) {
         facet_counts: [],
       },
       { status: 503 }
+    ),
+    requestId
     );
   }
 
@@ -84,7 +89,8 @@ export async function GET(request: NextRequest) {
     /** Category facets for on-sale / discounted catalogue only; omit category filter. */
     const forOnSaleCategoryFacets = sp.get("for_on_sale_category_facets") === "1";
     if (forBrandCategoryFacets && !sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"))) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           error: "for_brand_category_facets requires brand_slug",
           products: [],
@@ -93,6 +99,8 @@ export async function GET(request: NextRequest) {
           facet_counts: [],
         },
         { status: 400 }
+      ),
+      requestId
       );
     }
     const perPage = Math.min(100, Math.max(1, parseInt(sp.get("per_page") || "24", 10) || 24));
@@ -182,37 +190,41 @@ export async function GET(request: NextRequest) {
           )
         );
 
-    return NextResponse.json(
-      {
-        products,
-        total: found,
-        totalPages,
-        page: facetsOnly ? 1 : page,
-        per_page: facetsOnly ? 1 : perPage,
-        facet_counts: result.facet_counts || [],
-      },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+    return withRequestId(
+      NextResponse.json(
+        {
+          products,
+          total: found,
+          totalPages,
+          page: facetsOnly ? 1 : page,
+          per_page: facetsOnly ? 1 : perPage,
+          facet_counts: result.facet_counts || [],
         },
-      }
+        {
+          headers: {
+            "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+          },
+        }
+      ),
+      requestId
     );
   } catch (e) {
-    console.error("[api/typesense/search]", e);
+    console.error("[api/typesense/search]", { requestId, error: e });
     const msg = e instanceof Error ? e.message : "Typesense search failed";
     const schemaHint = /filter field|facet field|Could not find.*field/i.test(msg)
       ? "Your Typesense collection fields differ from defaults. Set TYPESENSE_FIELD_CATEGORY_SLUG, TYPESENSE_FIELD_BRAND_SLUG, and TYPESENSE_FACET_BY (or run `node scripts/typesense-list-fields.mjs`) to match the schema."
       : undefined;
-    return NextResponse.json(
-      {
-        error: msg,
+    return createApiErrorResponse(e, {
+      requestId,
+      defaultMessage: msg,
+      fallbackBody: {
         hint: schemaHint,
         products: [],
         total: 0,
         totalPages: 0,
         facet_counts: [],
       },
-      { status: 500 }
-    );
+      logPrefix: "api/typesense/search",
+    });
   }
 }

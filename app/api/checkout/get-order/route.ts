@@ -3,6 +3,7 @@ import wcAPI from "@/lib/woocommerce";
 import { keysMatchWooOrder } from "@/lib/order/orderKeyVerify";
 import { scheduleEwayOrderReturnVerify } from "@/lib/payment/scheduleEwayOrderReturnVerify";
 import { resolveOrderPostId } from "@/lib/services/wooService";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 /**
  * GET /api/checkout/get-order?orderId=<id>&key=<wc_order_key>[&AccessCode=…]
@@ -31,6 +32,7 @@ function wooCheckoutMutationTimeoutMs(): number {
 }
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     const sp = req.nextUrl.searchParams;
     const orderIdParam = (sp.get("orderId") || sp.get("order_id") || "").trim();
@@ -38,9 +40,12 @@ export async function GET(req: NextRequest) {
     const accessCode = (sp.get("AccessCode") || sp.get("accessCode") || "").trim();
 
     if (!orderIdParam || !keyParam) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         { error: "orderId and key (WooCommerce order_key) are required" },
         { status: 400 }
+      ),
+      requestId
       );
     }
 
@@ -63,7 +68,7 @@ export async function GET(req: NextRequest) {
     if (!order) {
       const postId = await resolveOrderPostId(orderIdParam);
       if (!postId) {
-        return NextResponse.json({ error: "Order not found" }, { status: 404 });
+        return withRequestId(NextResponse.json({ error: "Order not found" }, { status: 404 }), requestId);
       }
       const { data } = await wcAPI.get(`/orders/${postId}`, {
         timeout: readTimeout,
@@ -74,7 +79,7 @@ export async function GET(req: NextRequest) {
 
     const wooKey = typeof order.order_key === "string" ? order.order_key : "";
     if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
-      return NextResponse.json({ error: "Invalid order key" }, { status: 403 });
+      return withRequestId(NextResponse.json({ error: "Invalid order key" }, { status: 403 }), requestId);
     }
 
     if (
@@ -90,7 +95,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json(
+    return withRequestId(
+      NextResponse.json(
       { order },
       {
         status: 200,
@@ -99,16 +105,24 @@ export async function GET(req: NextRequest) {
           "Cache-Control": "no-store, no-cache, must-revalidate",
         },
       }
+    ),
+    requestId
     );
   } catch (error) {
     const err = error as Error & { response?: { status?: number; data?: unknown } };
-    console.error("[checkout/get-order]", err.message, err.response?.status);
     if (err.response?.status === 404) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      return withRequestId(NextResponse.json({ error: "Order not found" }, { status: 404 }), requestId);
     }
-    return NextResponse.json(
-      { error: err.message || "Failed to load order" },
-      { status: err.response?.status || 500 }
-    );
+    if (err.response?.status && err.response.status < 500 && err.response.status !== 429) {
+      return withRequestId(
+        NextResponse.json({ error: err.message || "Failed to load order" }, { status: err.response.status }),
+        requestId
+      );
+    }
+    return createApiErrorResponse(error, {
+      requestId,
+      defaultMessage: err.message || "Failed to load order",
+      logPrefix: "api/checkout/get-order",
+    });
   }
 }

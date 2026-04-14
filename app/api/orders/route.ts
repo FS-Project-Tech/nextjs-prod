@@ -3,19 +3,21 @@ import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
 import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 /**
  * Create order in WooCommerce
  * Follows WooCommerce's default order creation flow with secure payment handling
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     if (!validateTrustedBrowserOrigin(req)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return withRequestId(NextResponse.json({ error: "Forbidden" }, { status: 403 }), requestId);
     }
 
     const limit = await rateLimit(API_RATE_LIMITS.ORDER_WRITE)(req);
-    if (limit) return limit;
+    if (limit) return withRequestId(limit, requestId);
 
     const body = await req.json();
     const paymentMethod = body.payment_method || "";
@@ -35,9 +37,12 @@ export async function POST(req: NextRequest) {
     if (paymentMethod === "paypal" && setPaid) {
       // Verify payment was processed before creating order
       if (!paymentIntentId) {
-        return NextResponse.json(
-          { error: "Payment verification required. Payment intent/transaction ID missing." },
-          { status: 400 }
+        return withRequestId(
+          NextResponse.json(
+            { error: "Payment verification required. Payment intent/transaction ID missing." },
+            { status: 400 }
+          ),
+          requestId
         );
       }
 
@@ -215,12 +220,18 @@ export async function POST(req: NextRequest) {
       `Order created: ${orderId}, Payment: ${paymentMethod}, Status: ${orderStatus}, IP: ${customerIp}`
     );
 
-    return NextResponse.json(data);
+    return withRequestId(NextResponse.json(data), requestId);
   } catch (error) {
-    console.error("Order creation error:", error);
     const axiosLike = error as { response?: { status?: number; data?: unknown } };
     const status = axiosLike.response?.status || 500;
     const message = axiosLike.response?.data || { message: "Order creation failed" };
-    return NextResponse.json(message, { status });
+    if (axiosLike.response?.data) {
+      return withRequestId(NextResponse.json(message, { status }), requestId);
+    }
+    return createApiErrorResponse(error, {
+      requestId,
+      defaultMessage: "Order creation failed",
+      logPrefix: "api/orders",
+    });
   }
 }

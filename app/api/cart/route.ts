@@ -4,6 +4,7 @@ import { validateCartLineStock } from "@/lib/woo-rest-server";
 import type { CartItem } from "@/lib/types/cart";
 import { secureResponse } from "@/lib/security-headers";
 import { applyCorsHeaders } from "@/lib/cors";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 /**
  * POST /api/cart
@@ -11,8 +12,10 @@ import { applyCorsHeaders } from "@/lib/cors";
  * Response does not include a cart body for hydrating Zustand — client store is authoritative.
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   if (req.method === "OPTIONS") {
     const response = new NextResponse(null, { status: 204 });
+    response.headers.set("X-Request-Id", requestId);
     return applyCorsHeaders(req, response);
   }
   try {
@@ -46,28 +49,29 @@ export async function POST(req: NextRequest) {
 
     return applyCorsHeaders(
       req,
-      secureResponse({
-        success: true,
-        lineCount,
-        clientLineCount: lines.length,
-        ...(process.env.NODE_ENV === "development"
-          ? { debugWooItemIds: Array.isArray(rawCart.items) ? rawCart.items.map((i) => i.id) : [] }
-          : {}),
-      })
+        withRequestId(
+          secureResponse({
+            success: true,
+            lineCount,
+            clientLineCount: lines.length,
+            ...(process.env.NODE_ENV === "development"
+              ? { debugWooItemIds: Array.isArray(rawCart.items) ? rawCart.items.map((i) => i.id) : [] }
+              : {}),
+          }),
+          requestId
+        )
     );
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
-      console.error("Cart API error:", error);
+      console.error("Cart API error:", { requestId, error });
     }
     return applyCorsHeaders(
       req,
-      secureResponse(
-        {
-          error:
-            (error instanceof Error ? error.message : "An error occurred") || "Failed to sync cart",
-        },
-        { status: 500 }
-      )
+      createApiErrorResponse(error, {
+        requestId,
+        defaultMessage: "Failed to sync cart",
+        logPrefix: "api/cart",
+      })
     );
   }
 }

@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchProduct } from "@/lib/woocommerce";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request);
   try {
     const { id } = await params;
     const productId = parseInt(id);
 
     if (isNaN(productId)) {
-      return NextResponse.json({ error: "Invalid product ID" }, { status: 400 });
+      return withRequestId(NextResponse.json({ error: "Invalid product ID" }, { status: 400 }), requestId);
     }
 
     const product = await fetchProduct(productId);
 
-    return NextResponse.json(product);
+    return withRequestId(NextResponse.json(product), requestId);
   } catch (error) {
-    console.error("Error fetching product:", error);
-    return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 });
+    return createApiErrorResponse(error, {
+      requestId,
+      defaultMessage: "Failed to fetch product",
+      logPrefix: "api/products/[id]",
+    });
   }
 }

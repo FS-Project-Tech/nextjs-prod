@@ -12,6 +12,7 @@ import { getWooStorefrontUrl } from "@/lib/checkout-woo-url";
 import { logCheckoutSession } from "@/lib/checkout-session-log";
 import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import type { CheckoutSessionRecord } from "@/types/checkout-session";
+import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
 
@@ -38,22 +39,29 @@ function parseNumericUserId(user: Record<string, unknown> | undefined): number |
  * eWay path: Next validates cart/pricing here; Woo redeems the token and creates the order.
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
     if (!validateTrustedBrowserOrigin(req)) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+      return withRequestId(
+        NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 }),
+        requestId
+      );
     }
 
     const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
-    if (limit) return limit;
+    if (limit) return withRequestId(limit, requestId);
 
     if (!process.env.CHECKOUT_SESSION_SERVER_SECRET?.trim()) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           success: false,
           error:
             "Token checkout is not enabled. Set CHECKOUT_SESSION_SERVER_SECRET and redeploy, or disable NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW.",
         },
         { status: 503 }
+      ),
+      requestId
       );
     }
 
@@ -61,13 +69,16 @@ export async function POST(req: NextRequest) {
     const payload = stripEmptyNdisHcpFromInitiatePayload(parseCheckoutPayload(rawBody));
 
     if (payload.payment_method !== "eway") {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           success: false,
           error:
             "Token checkout session is only available for card (eWAY) payments.",
         },
         { status: 400 }
+      ),
+      requestId
       );
     }
 
@@ -79,7 +90,8 @@ export async function POST(req: NextRequest) {
       totals,
     });
     if (cartCheck.ok === false) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           success: false,
           error: cartCheck.errors[0]?.message ?? "Cart validation failed",
@@ -88,6 +100,8 @@ export async function POST(req: NextRequest) {
           code: cartCheck.code,
         },
         { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+      ),
+      requestId
       );
     }
 
@@ -107,21 +121,24 @@ export async function POST(req: NextRequest) {
         if (existing && !existing.used && existing.expiresAt > now) {
           const wooUrl = getWooStorefrontUrl();
           if (!wooUrl) {
-            return NextResponse.json(
+            return withRequestId(
+              NextResponse.json(
               { success: false, error: "Store URL is not configured (NEXT_PUBLIC_WP_URL)." },
               { status: 500 }
+            ),
+            requestId
             );
           }
           const redirectUrl = `${wooUrl}/?checkout_token=${encodeURIComponent(existingToken)}`;
           logCheckoutSession("info", "create-session.idempotent_replay", { idempotencyKey });
-          return NextResponse.json({
+          return withRequestId(NextResponse.json({
             success: true,
             data: {
               redirectUrl,
               expiresAt: existing.expiresAt,
               idempotent: true,
             },
-          });
+          }), requestId);
         }
       }
     }
@@ -149,9 +166,12 @@ export async function POST(req: NextRequest) {
 
     const wooUrl = getWooStorefrontUrl();
     if (!wooUrl) {
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         { success: false, error: "Store URL is not configured. Set NEXT_PUBLIC_WP_URL." },
         { status: 500 }
+      ),
+      requestId
       );
     }
 
@@ -162,17 +182,17 @@ export async function POST(req: NextRequest) {
       lineCount: validatedLineItems.length,
     });
 
-    return NextResponse.json({
+    return withRequestId(NextResponse.json({
       success: true,
       data: {
         redirectUrl,
         expiresAt,
       },
-    });
+    }), requestId);
   } catch (error) {
     const zod = zodFail(error);
     if (zod) {
-      return NextResponse.json(zod, { status: 400 });
+      return withRequestId(NextResponse.json(zod, { status: 400 }), requestId);
     }
 
     const cartErrData = (error as any)?.data;
@@ -182,7 +202,8 @@ export async function POST(req: NextRequest) {
         message,
         missing: cartErrData.missing ?? [],
       });
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           success: false,
           error: message,
@@ -190,6 +211,8 @@ export async function POST(req: NextRequest) {
           missingItems: cartErrData.missing ?? [],
         },
         { status: 409 }
+      ),
+      requestId
       );
     }
     if (cartErrData?.type === "woo_invalid_product_mapping") {
@@ -198,18 +221,26 @@ export async function POST(req: NextRequest) {
       logCheckoutSession("error", "create-session.woo_invalid_product_mapping", {
         message,
       });
-      return NextResponse.json(
+      return withRequestId(
+        NextResponse.json(
         {
           success: false,
           error: message,
           code: "WOO_INVALID_PRODUCT_MAPPING",
         },
         { status: 502 }
+      ),
+      requestId
       );
     }
 
     const message = error instanceof Error ? error.message : "Failed to create checkout session.";
     logCheckoutSession("error", "create-session.failed", { message });
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    return createApiErrorResponse(error, {
+      requestId,
+      defaultMessage: message,
+      fallbackBody: { success: false },
+      logPrefix: "api/checkout/create-session",
+    });
   }
 }
