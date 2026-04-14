@@ -77,6 +77,18 @@ const TAWK_CONNECT_SRC = "https://*.tawk.to wss://*.tawk.to";
 const TAWK_FORM_ACTION = "https://*.tawk.to";
 
 /**
+ * AccessiBe widget / app assets.
+ * Primary script host from implementation request: https://acsbapp.com
+ */
+const ACCESSIBE_SCRIPT_SRC = "https://acsbapp.com https://*.acsbapp.com";
+const ACCESSIBE_STYLE_SRC = "https://acsbapp.com https://*.acsbapp.com";
+const ACCESSIBE_CONNECT_SRC =
+  "https://acsbapp.com https://*.acsbapp.com wss://acsbapp.com wss://*.acsbapp.com";
+const ACCESSIBE_FRAME_SRC = "https://acsbapp.com https://*.acsbapp.com";
+const ACCESSIBE_IMG_SRC = "https://acsbapp.com https://*.acsbapp.com";
+const ACCESSIBE_FONT_SRC = "https://acsbapp.com https://*.acsbapp.com";
+
+/**
  * Vercel Live feedback / toolbar scripts on preview deployments.
  * Keep scoped to vercel.live domains only.
  */
@@ -91,12 +103,12 @@ const VERCEL_LIVE_FRAME_SRC = "https://vercel.live https://*.vercel.live";
  */
 export const CSP_HEADER = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC} ${GOOGLE_TAG_GA_SCRIPT_SRC} ${GOOGLE_ADS_SCRIPT_SRC} ${META_PIXEL_SCRIPT_SRC} ${TAWK_SCRIPT_SRC} ${VERCEL_LIVE_SCRIPT_SRC}`,
-  `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${TAWK_STYLE_SRC}`,
-  `img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com ${GOOGLE_TAG_GA_IMG_SRC} ${META_PIXEL_IMG_SRC} ${TAWK_IMG_SRC}`,
-  `font-src 'self' data: https: https://fonts.gstatic.com ${TAWK_FONT_SRC}`,
-  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${GOOGLE_ADS_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC} ${VERCEL_LIVE_CONNECT_SRC}`.trim(),
-  `frame-src *.google.com ${TAWK_FRAME_SRC} ${VERCEL_LIVE_FRAME_SRC}`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${GOOGLE_MAPS_SCRIPT_SRC} ${GOOGLE_TAG_GA_SCRIPT_SRC} ${GOOGLE_ADS_SCRIPT_SRC} ${META_PIXEL_SCRIPT_SRC} ${TAWK_SCRIPT_SRC} ${ACCESSIBE_SCRIPT_SRC} ${VERCEL_LIVE_SCRIPT_SRC}`,
+  `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ${TAWK_STYLE_SRC} ${ACCESSIBE_STYLE_SRC}`,
+  `img-src 'self' data: https: blob: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com ${GOOGLE_TAG_GA_IMG_SRC} ${META_PIXEL_IMG_SRC} ${TAWK_IMG_SRC} ${ACCESSIBE_IMG_SRC}`,
+  `font-src 'self' data: https: https://fonts.gstatic.com ${TAWK_FONT_SRC} ${ACCESSIBE_FONT_SRC}`,
+  `connect-src 'self' ${process.env.WC_API_URL ? new URL(process.env.WC_API_URL).origin : ""} https: https://*.googleapis.com *.google.com https://*.gstatic.com data: blob: ${GOOGLE_TAG_GA_CONNECT_SRC} ${GOOGLE_ADS_CONNECT_SRC} ${META_PIXEL_CONNECT_SRC} ${TAWK_CONNECT_SRC} ${ACCESSIBE_CONNECT_SRC} ${VERCEL_LIVE_CONNECT_SRC}`.trim(),
+  `frame-src *.google.com ${TAWK_FRAME_SRC} ${ACCESSIBE_FRAME_SRC} ${VERCEL_LIVE_FRAME_SRC}`,
   /** Same-origin service workers (e.g. /sw.js); blob for bundled/worklet-style workers. */
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
