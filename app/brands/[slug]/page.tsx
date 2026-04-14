@@ -14,6 +14,7 @@ import { stripHTML } from "@/lib/xss-sanitizer";
 // ============================================================================
 export const revalidate = 600; // 10 minutes
 export const dynamicParams = true;
+export const dynamic = "force-dynamic";
 
 // ============================================================================
 // Static params (optional - if you want pre-render brands)

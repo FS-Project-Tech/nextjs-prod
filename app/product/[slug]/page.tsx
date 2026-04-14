@@ -24,7 +24,7 @@ import {
 // ============================================================================
 export const revalidate = 300;
 export const dynamicParams = true;
-
+export const dynamic = "force-dynamic";
 // ============================================================================
 // Metadata — Yoast SEO from WordPress REST (`yoast_head_json`)
 // ============================================================================

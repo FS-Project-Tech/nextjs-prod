@@ -25,7 +25,7 @@ function CategoryPageFallback() {
 
 export const revalidate = 600;
 export const dynamicParams = true;
-
+export const dynamic = "force-dynamic";
 function getLeafSlug(input: string[] | string): string {
   const parts = Array.isArray(input) ? input : [input];
   const clean = parts.filter(Boolean);
