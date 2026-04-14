@@ -28,8 +28,29 @@ function parseLimit(name: string, fallback: number): number {
   return n;
 }
 
+const WINDOW_SEC = 60;
 const globalPerMinute = Math.max(20, parseLimit("API_GLOBAL_RATE_PER_MINUTE", 100));
 const standardPerMinute = Math.max(30, parseLimit("API_STANDARD_RATE_PER_MINUTE", 120));
+const API_RATE = {
+  typesenseWrite: parseLimit("API_RATE_TYPESENSE_WRITE", 20),
+  auth: parseLimit("API_RATE_AUTH", 10),
+  contact: parseLimit("API_RATE_CONTACT", 5),
+  revalidate: parseLimit("API_RATE_REVALIDATE", 15),
+  checkout: parseLimit("API_RATE_CHECKOUT", 45),
+  payment: parseLimit("API_RATE_PAYMENT", 40),
+  webhook: parseLimit("API_RATE_WEBHOOK", 60),
+  orders: parseLimit("API_RATE_ORDERS", 50),
+  leadForms: parseLimit("API_RATE_LEAD_FORMS", 12),
+  dashboard: parseLimit("API_RATE_DASHBOARD", 80),
+  wc: parseLimit("API_RATE_WC", 100),
+  cms: parseLimit("API_RATE_CMS", 90),
+  shipping: parseLimit("API_RATE_SHIPPING", 50),
+  catalog: parseLimit("API_RATE_CATALOG", 120),
+  cart: parseLimit("API_RATE_CART", 120),
+  typesenseSearch: parseLimit("API_RATE_TYPESENSE_SEARCH", 60),
+  analytics: parseLimit("API_RATE_ANALYTICS", 40),
+  performance: parseLimit("API_RATE_PERFORMANCE", 30),
+} as const;
 
 function nextRateLimitResponse(r: Extract<RateLimitBackendResult, { ok: false }>): NextResponse {
   return NextResponse.json(
@@ -73,53 +94,129 @@ function isContactPath(path: string): boolean {
   return path === "/api/contact" || path.startsWith("/api/contact/");
 }
 
+function isTypesenseWritePath(path: string): boolean {
+  return (
+    path.startsWith("/api/typesense/search/sync") || path.startsWith("/api/typesense/search/delete")
+  );
+}
+
+function isCheckoutPath(path: string): boolean {
+  return (
+    path.startsWith("/api/checkout") ||
+    path.startsWith("/api/create-order") ||
+    path.startsWith("/api/verify-payment") ||
+    path.startsWith("/api/eway")
+  );
+}
+
+function isOrdersPath(path: string): boolean {
+  return path === "/api/orders" || path.startsWith("/api/orders/");
+}
+
+function isLeadFormPath(path: string): boolean {
+  return (
+    path.startsWith("/api/consultation/") ||
+    path === "/api/credit-application" ||
+    path.startsWith("/api/credit-application/") ||
+    path === "/api/catalogue-request" ||
+    path.startsWith("/api/catalogue-request/") ||
+    path.startsWith("/api/quote/") ||
+    path.startsWith("/api/empower/")
+  );
+}
+
+function isCatalogReadPath(path: string): boolean {
+  return (
+    path.startsWith("/api/products") ||
+    path.startsWith("/api/categories") ||
+    path.startsWith("/api/category-by-slug") ||
+    path.startsWith("/api/brands/") ||
+    path.startsWith("/api/filters/") ||
+    path === "/api/price" ||
+    path.startsWith("/api/price/")
+  );
+}
+
+async function enforceLimit(
+  ip: string,
+  fp: string,
+  routeKey: string,
+  limit: number,
+  windowSec: number = WINDOW_SEC
+): Promise<NextResponse | null> {
+  const r = await checkRateLimitSafe(ip, routeKey, limit, windowSec);
+  if (r.ok === false) {
+    logRateLimit(ip, routeKey, fp);
+    return nextRateLimitResponse(r);
+  }
+  return null;
+}
+
 /**
- * Stricter per-route limits (per IP, 60s window).
+ * Per-prefix limits (per IP, 60s window). One prefix bucket per request; global runs afterwards.
  */
 export async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
   const ip = getClientIp(req);
   const fp = fingerprintRequest(req);
 
+  if (isTypesenseWritePath(path)) {
+    return enforceLimit(ip, fp, "typesense-write", API_RATE.typesenseWrite);
+  }
+  if (path.startsWith("/api/revalidate")) {
+    return enforceLimit(ip, fp, "revalidate", API_RATE.revalidate);
+  }
   if (path.startsWith("/api/auth/")) {
-    const r = await checkRateLimitSafe(ip, "auth", 10, 60);
-    if (r.ok === false) {
-      logRateLimit(ip, "auth", fp);
-      return nextRateLimitResponse(r);
-    }
+    return enforceLimit(ip, fp, "auth", API_RATE.auth);
   }
-
   if (isContactPath(path)) {
-    const r = await checkRateLimitSafe(ip, "contact", 5, 60);
-    if (r.ok === false) {
-      logRateLimit(ip, "contact", fp);
-      return nextRateLimitResponse(r);
-    }
+    return enforceLimit(ip, fp, "contact", API_RATE.contact);
   }
-
-  if (isTypesenseSearchReadPath(path)) {
-    const r = await checkRateLimitSafe(ip, "typesense-search", 60, 60);
-    if (r.ok === false) {
-      logRateLimit(ip, "typesense-search", fp);
-      return nextRateLimitResponse(r);
-    }
+  if (path.startsWith("/api/webhook")) {
+    return enforceLimit(ip, fp, "webhook", API_RATE.webhook);
   }
-
+  if (path.startsWith("/api/payment/")) {
+    return enforceLimit(ip, fp, "payment", API_RATE.payment);
+  }
+  if (isCheckoutPath(path)) {
+    return enforceLimit(ip, fp, "checkout", API_RATE.checkout);
+  }
+  if (isOrdersPath(path)) {
+    return enforceLimit(ip, fp, "orders", API_RATE.orders);
+  }
+  if (isLeadFormPath(path)) {
+    return enforceLimit(ip, fp, "lead-forms", API_RATE.leadForms);
+  }
+  if (path.startsWith("/api/dashboard/")) {
+    return enforceLimit(ip, fp, "dashboard", API_RATE.dashboard);
+  }
+  if (path.startsWith("/api/wc/")) {
+    return enforceLimit(ip, fp, "wc", API_RATE.wc);
+  }
+  if (path.startsWith("/api/cms/")) {
+    return enforceLimit(ip, fp, "cms", API_RATE.cms);
+  }
+  if (path.startsWith("/api/shipping/")) {
+    return enforceLimit(ip, fp, "shipping", API_RATE.shipping);
+  }
+  if (isCatalogReadPath(path)) {
+    return enforceLimit(ip, fp, "catalog", API_RATE.catalog);
+  }
   if (path.startsWith("/api/cart")) {
-    const r = await checkRateLimitSafe(ip, "cart", 120, 60);
-    if (r.ok === false) {
-      logRateLimit(ip, "cart", fp);
-      return nextRateLimitResponse(r);
-    }
+    return enforceLimit(ip, fp, "cart", API_RATE.cart);
+  }
+  if (isTypesenseSearchReadPath(path)) {
+    return enforceLimit(ip, fp, "typesense-search", API_RATE.typesenseSearch);
+  }
+  if (path.startsWith("/api/analytics/")) {
+    return enforceLimit(ip, fp, "analytics", API_RATE.analytics);
+  }
+  if (path.startsWith("/api/performance/")) {
+    return enforceLimit(ip, fp, "performance", API_RATE.performance);
   }
 
-  // Safety net: every /api route gets at least one bucket even if no specific prefix matches.
   if (path.startsWith("/api/")) {
-    const r = await checkRateLimitSafe(ip, "api-standard", standardPerMinute, 60);
-    if (r.ok === false) {
-      logRateLimit(ip, "api-standard", fp);
-      return nextRateLimitResponse(r);
-    }
+    return enforceLimit(ip, fp, "api-standard", standardPerMinute);
   }
 
   return null;
@@ -128,7 +225,7 @@ export async function applyPerRouteApiRateLimits(req: NextRequest): Promise<Next
 export async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse | null> {
   const ip = getClientIp(req);
   const fp = fingerprintRequest(req);
-  const r = await checkRateLimitSafe(ip, "global", globalPerMinute, 60);
+  const r = await checkRateLimitSafe(ip, "global", globalPerMinute, WINDOW_SEC);
   if (r.ok === false) {
     logRateLimit(ip, "global", fp);
     return nextRateLimitResponse(r);
