@@ -73,6 +73,33 @@ function normalizedKey(input: ComputeShippingRatesInput) {
   return `${input.country}|${input.state}|${input.postcode}|${input.city}|${sub}`;
 }
 
+/** Same rules as checkout `normCountry` — must match quote-totals and `/api/shipping/rates` query handling. */
+function normalizeComputeInput(input: ComputeShippingRatesInput): ComputeShippingRatesInput {
+  let country = String(input.country || "AU").trim().toUpperCase();
+  if (country === "AUSTRALIA") country = "AU";
+  if (!country) country = "AU";
+  const cartRaw = input.cartSubtotal;
+  const cartSubtotal =
+    typeof cartRaw === "number" && Number.isFinite(cartRaw) ? cartRaw : 0;
+  return {
+    country,
+    state: String(input.state || "").trim(),
+    postcode: String(input.postcode || "").trim(),
+    city: String(input.city || "").trim(),
+    cartSubtotal,
+  };
+}
+
+/** Woo REST zone methods use `method_id` + `instance_id`; some payloads expose instance as `id`. */
+function wooZoneMethodCompositeId(row: any): string {
+  const methodId = String(row.method_id ?? "").trim();
+  const instance = row.instance_id ?? row.id;
+  const instStr =
+    instance != null && String(instance).trim() !== "" ? String(instance).trim() : "";
+  if (!methodId) return instStr || "unknown";
+  return instStr ? `${methodId}:${instStr}` : methodId;
+}
+
 // ---------------- LOADERS ----------------
 
 async function loadZonesAndLocations() {
@@ -164,7 +191,7 @@ async function computeShippingRatesUncached(
         return loc.code === postcode;
       }
       if (loc.type === "country") {
-        return loc.code === input.country;
+        return String(loc.code || "").trim().toUpperCase() === input.country;
       }
       return false;
     });
@@ -193,8 +220,8 @@ async function computeShippingRatesUncached(
     const cost = parseFloat(row.settings?.cost?.value || row.cost || "0");
 
     rates.push({
-      id: `${row.method_id}:${row.instance_id}`,
-      label: row.title || row.method_title || "Shipping",
+      id: wooZoneMethodCompositeId(row),
+      label: String(row.title || row.method_title || "Shipping"),
       cost: isNaN(cost) ? 0 : cost,
       zoneId: matchedZone.id,
       zone: matchedZone.name,
@@ -209,8 +236,9 @@ async function computeShippingRatesUncached(
 export async function computeShippingRates(
   input: ComputeShippingRatesInput
 ): Promise<{ rates: ComputedShippingRate[] }> {
+  const normalizedInput = normalizeComputeInput(input);
 
-  const key = normalizedKey(input);
+  const key = normalizedKey(normalizedInput);
 
   const cached = resultCache.get(key);
   if (cached && Date.now() - cached.at < resultTtlMs()) {
@@ -220,7 +248,7 @@ export async function computeShippingRates(
   const existing = inflightByKey.get(key);
   if (existing) return existing;
 
-  const p = computeShippingRatesUncached(input)
+  const p = computeShippingRatesUncached(normalizedInput)
     .then((res) => {
       while (resultCache.size >= MAX_RESULT_CACHE_ENTRIES) {
         resultCache.delete(resultCache.keys().next().value);

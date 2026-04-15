@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { addSecurityHeadersToResponse } from "@/lib/security-headers";
 import { isTrustedApiOrigin, rejectUnlessTrustedOriginOrApiKey } from "@/lib/api-public-guards";
 import { checkRateLimitSafe, fingerprintRequest, getClientIp } from "@/lib/rate-limit";
+import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { logBlockedBot, logRateLimit } from "@/lib/api-logging";
 import type { RateLimitBackendResult } from "@/lib/api-rate-limit";
 
@@ -67,45 +68,51 @@ function isContactPath(path: string): boolean {
 
 async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
-  const ip = getClientIp(req);
+  /** Checkout is limited in route handlers; skip middleware buckets to avoid double 429s. */
+  if (path.startsWith("/api/checkout")) return null;
+
   const fp = fingerprintRequest(req);
+  const id = await getRateLimitIdentity(req);
 
   if (path.startsWith("/api/auth/")) {
-    const r = await checkRateLimitSafe(ip, "auth", 10, 60);
+    const r = await checkRateLimitSafe(id, "auth", 10, 60);
     if (r.ok === false) {
-      logRateLimit(ip, "auth", fp);
+      logRateLimit(id, "auth", fp);
       return nextRateLimitResponse(r);
     }
   }
 
   if (isContactPath(path)) {
-    const r = await checkRateLimitSafe(ip, "contact", 5, 60);
+    const r = await checkRateLimitSafe(id, "contact", 5, 60);
     if (r.ok === false) {
-      logRateLimit(ip, "contact", fp);
+      logRateLimit(id, "contact", fp);
       return nextRateLimitResponse(r);
     }
   }
 
   if (isTypesenseSearchReadPath(path)) {
-    const r = await checkRateLimitSafe(ip, "typesense-search", 60, 60);
+    const r = await checkRateLimitSafe(id, "typesense-search", 60, 60);
     if (r.ok === false) {
-      logRateLimit(ip, "typesense-search", fp);
+      logRateLimit(id, "typesense-search", fp);
       return nextRateLimitResponse(r);
     }
   }
 
   if (path.startsWith("/api/cart")) {
-    const r = await checkRateLimitSafe(ip, "cart", 120, 60);
+    const r = await checkRateLimitSafe(id, "cart", 120, 60);
     if (r.ok === false) {
-      logRateLimit(ip, "cart", fp);
-      return nextRateLimitResponse(r);
+      console.warn("[middleware] rate-limit soft-fail (cart bucket)", { path, fp });
     }
   }
 
   if (path.startsWith("/api/")) {
-    const r = await checkRateLimitSafe(ip, "api-standard", API_STANDARD_RATE_PER_MINUTE, 60);
+    const r = await checkRateLimitSafe(id, "api-standard", API_STANDARD_RATE_PER_MINUTE, 60);
     if (r.ok === false) {
-      logRateLimit(ip, "api-standard", fp);
+      if (path.startsWith("/api/cart")) {
+        console.warn("[middleware] rate-limit soft-fail (api-standard, cart)", { path, fp });
+        return null;
+      }
+      logRateLimit(id, "api-standard", fp);
       return nextRateLimitResponse(r);
     }
   }
@@ -114,11 +121,18 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
 }
 
 async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse | null> {
-  const ip = getClientIp(req);
+  const path = req.nextUrl.pathname;
+  if (path.startsWith("/api/checkout")) return null;
+
   const fp = fingerprintRequest(req);
-  const r = await checkRateLimitSafe(ip, "global", GLOBAL_RATE_PER_MINUTE, 60);
+  const id = await getRateLimitIdentity(req);
+  const r = await checkRateLimitSafe(id, "global", GLOBAL_RATE_PER_MINUTE, 60);
   if (r.ok === false) {
-    logRateLimit(ip, "global", fp);
+    if (path.startsWith("/api/cart")) {
+      console.warn("[middleware] rate-limit soft-fail (global, cart)", { path, fp });
+      return null;
+    }
+    logRateLimit(id, "global", fp);
     return nextRateLimitResponse(r);
   }
   return null;

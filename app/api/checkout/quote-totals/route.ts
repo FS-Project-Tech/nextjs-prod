@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   const limit = await rateLimit({
     windowMs: 60 * 1000,
     maxRequests: 60,
+    softFail: true,
   })(req);
   if (limit) return withRequestId(limit, requestId);
 

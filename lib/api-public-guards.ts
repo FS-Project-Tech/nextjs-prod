@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getClientIp, rateLimitConsume } from "@/lib/api-rate-limit";
+import { checkRateLimitSafe } from "@/lib/api-rate-limit";
+import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { jsonApiError } from "@/lib/api-errors";
 
 const ALLOWED_ORIGINS = [
@@ -42,10 +43,10 @@ function collectConfiguredOrigins(): string[] {
 }
 
 export const API_RATE_LIMITS = {
-  CHECKOUT_WRITE: { maxRequests: 20 },
+  CHECKOUT_WRITE: { windowMs: 60_000, maxRequests: 30, softFail: true },
   ORDER_WRITE: { windowMs: 60 * 1000, maxRequests: 20 },
   EWAY_PAYMENT_INIT: { windowMs: 60 * 1000, maxRequests: 10 },
-  CART_MERGE: { windowMs: 60 * 1000, maxRequests: 20 },
+  CART_MERGE: { windowMs: 60 * 1000, maxRequests: 20, softFail: true },
   PRODUCTS_READ: { windowMs: 60 * 1000, maxRequests: 120 },
   TYPESENSE_SEARCH_READ: { windowMs: 60 * 1000, maxRequests: 180 },
   WEBHOOK_POST: { windowMs: 60 * 1000, maxRequests: 60 },
@@ -166,36 +167,47 @@ export function rejectUnlessTrustedOriginOrApiKey(req: NextRequest): NextRespons
 interface RouteRateLimitConfig {
   windowMs: number;
   maxRequests: number;
-  identifier?: (req: NextRequest) => string;
+  identifier?: (req: NextRequest) => string | Promise<string>;
   /** Distinct bucket; defaults from window/max */
   routeKey?: string;
+  /** When true, log and allow the request (no 429). */
+  softFail?: boolean;
 }
 
 /**
  * Route handler rate limiter — scoped per routeKey + limit tuple (not shared across unrelated routes).
+ * Uses {@link checkRateLimitSafe} (Redis when configured). Identity defaults to user id or IP.
  */
 export function rateLimit(config: Partial<RouteRateLimitConfig> = {}) {
   const windowMs = config.windowMs ?? 60_000;
   const maxRequests = config.maxRequests ?? 60;
   const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
   const routeKey = config.routeKey ?? `route:w${windowMs}:m${maxRequests}`;
+  const softFail = config.softFail === true;
 
   return async (req: NextRequest): Promise<NextResponse | null> => {
-    const id = config.identifier ? config.identifier(req) : getClientIp(req);
-    const r = rateLimitConsume(id, routeKey, maxRequests, windowSec);
-    if (r.allowed) return null;
+    const id = config.identifier
+      ? await Promise.resolve(config.identifier(req))
+      : await getRateLimitIdentity(req);
+    const r = await checkRateLimitSafe(id, routeKey, maxRequests, windowSec);
+    if (r.ok !== false) return null;
+
+    if (softFail) {
+      console.warn("[rate-limit] soft-fail", { routeKey, path: req.nextUrl.pathname });
+      return null;
+    }
 
     return NextResponse.json(
       {
         error: "Too many requests",
         code: "RATE_LIMITED",
-        message: `Rate limit exceeded. Please try again in ${r.resetSec} seconds.`,
-        retryAfter: r.resetSec,
+        message: `Rate limit exceeded. Please try again in ${r.resetSeconds} seconds.`,
+        retryAfter: r.resetSeconds,
       },
       {
         status: 429,
         headers: {
-          "Retry-After": String(r.resetSec),
+          "Retry-After": String(r.resetSeconds),
           "X-RateLimit-Limit": String(maxRequests),
           "X-RateLimit-Remaining": "0",
         },

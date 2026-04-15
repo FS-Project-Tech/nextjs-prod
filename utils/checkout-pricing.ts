@@ -206,6 +206,7 @@ import type { CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
 import type { CheckoutQuoteTotalsInput } from "@/lib/checkout/initiatePayload";
 import { calculateGST, calculateTotal } from "@/lib/cart/pricing";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
+import type { ComputedShippingRate } from "@/lib/shipping-rates-server";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
 import { splitWooZoneShippingMethodId } from "@/lib/woo/shippingMethodIds";
@@ -220,6 +221,26 @@ function normCountry(v?: string): string {
   if (!c) return "AU";
   if (c === "AUSTRALIA") return "AU";
   return c;
+}
+
+/** Match UI selection to recomputed rates (exact id, then Woo method_id + instance_id). */
+function findSelectedShippingRate(
+  rates: ComputedShippingRate[],
+  shippingMethodId: string,
+): ComputedShippingRate | undefined {
+  const want = String(shippingMethodId || "").trim();
+  if (!want) return undefined;
+
+  const exact = rates.find((r) => String(r.id).trim() === want);
+  if (exact) return exact;
+
+  const wantParts = splitWooZoneShippingMethodId(want);
+  return rates.find((r) => {
+    const got = splitWooZoneShippingMethodId(String(r.id));
+    if (got.method_id !== wantParts.method_id) return false;
+    if (!wantParts.instance_id) return true;
+    return got.instance_id === wantParts.instance_id;
+  });
 }
 
 /** Placeholder billing/shipping so {@link validateAndRecalculateCheckout} can run for quote-only (rates need a locale). */
@@ -388,7 +409,7 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     city: payload.shipping.city || "",
     cartSubtotal: subtotal,
   });
-  const selectedRate = rates.find((r: any) => String(r.id) === String(payload.shipping_method_id));
+  const selectedRate = findSelectedShippingRate(rates, payload.shipping_method_id);
   if (!selectedRate || typeof selectedRate.cost !== "number") {
     throw new Error("Selected shipping method is no longer available.");
   }

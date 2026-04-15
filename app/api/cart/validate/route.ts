@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   const rateLimitCheck = await rateLimit({
     windowMs: 60 * 1000,
     maxRequests: 20,
+    softFail: true,
   })(req);
   if (rateLimitCheck) return applyCorsHeaders(req, rateLimitCheck);
 

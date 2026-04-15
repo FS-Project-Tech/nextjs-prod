@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   const rateLimitCheck = await rateLimit({
     windowMs: 60 * 1000, // 1 minute
     maxRequests: 20, // 20 price updates per minute per IP
+    softFail: true,
   })(req);
 
   if (rateLimitCheck) {
