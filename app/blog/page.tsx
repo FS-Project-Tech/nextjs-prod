@@ -4,6 +4,9 @@ import PrefetchLink from "@/components/PrefetchLink";
 import { fetchPosts, fetchCategories } from "@/lib/cms-posts";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: "Blog",
   description: "Articles, guides, and updates from Joya Medical Supplies.",

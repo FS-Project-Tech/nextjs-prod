@@ -60,17 +60,40 @@ export async function fetchPosts(params?: {
 
 export async function fetchPostBySlug(slug: string): Promise<WpPost | null> {
   if (!WP_URL) return null;
+  const safeSlug = String(slug || "").trim();
+  if (!safeSlug) return null;
+
+  const controller = new AbortController();
+  const timeoutMs = 10_000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const res = await fetch(
-      `${WP_URL}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_embed=1`,
-      { next: { revalidate: 60 } }
+      `${WP_URL}/wp-json/wp/v2/posts?slug=${encodeURIComponent(safeSlug)}&_embed=1`,
+      { next: { revalidate: 60 }, signal: controller.signal }
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[fetchPostBySlug] non-OK response", {
+        slug: safeSlug,
+        status: res.status,
+        statusText: res.statusText,
+      });
+      return null;
+    }
     const data: unknown = await res.json();
-    if (!Array.isArray(data)) return null;
+    if (!Array.isArray(data)) {
+      console.error("[fetchPostBySlug] invalid response shape", { slug: safeSlug });
+      return null;
+    }
     return (data[0] as WpPost | undefined) ?? null;
-  } catch {
+  } catch (error) {
+    console.error("[fetchPostBySlug] fetch failed", {
+      slug: safeSlug,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

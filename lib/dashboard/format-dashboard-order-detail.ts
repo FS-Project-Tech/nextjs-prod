@@ -9,8 +9,7 @@ export function orderDateMs(iso: string): number {
 export function orderRefMatchesRow(row: Record<string, unknown>, ref: string): boolean {
   const r = ref.trim();
   const num = String(row.number ?? row.order_number ?? "").trim();
-  const id = String(row.id ?? "").trim();
-  return num === r || id === r;
+  return num === r;
 }
 
 function emptyBilling(): Record<string, string> {

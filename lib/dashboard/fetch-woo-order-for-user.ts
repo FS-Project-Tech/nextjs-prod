@@ -3,7 +3,7 @@ import { getWpBaseUrl } from "@/lib/wp-utils";
 import { orderBelongsToDashboardUser } from "@/lib/dashboard/orderOwnership";
 
 /**
- * Load a WooCommerce order by numeric post ID or display order number, scoped to dashboard user.
+ * Load a WooCommerce order by display order number (dashboard-safe), scoped to dashboard user.
  */
 export async function fetchWooOrderDetailForUser(
   orderRef: string,
@@ -33,12 +33,6 @@ export async function fetchWooOrderDetailForUser(
     return null;
   };
 
-  if (/^\d+$/.test(ref)) {
-    const asNum = parseInt(ref, 10);
-    const byId = await tryFull(asNum);
-    if (byId) return byId;
-  }
-
   let list: Record<string, unknown>[] = [];
   try {
     const { data } = await wcAPI.get("/orders", {
@@ -51,7 +45,7 @@ export async function fetchWooOrderDetailForUser(
 
   const match = list.find((o) => {
     const num = String(o.number ?? o.order_number ?? "");
-    return num === ref || String(o.id) === ref;
+    return num === ref;
   });
   if (match?.id != null) {
     const idNum = typeof match.id === "number" ? match.id : parseInt(String(match.id), 10);

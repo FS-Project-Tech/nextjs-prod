@@ -36,9 +36,8 @@ export async function POST(req: NextRequest) {
       return secureResponse({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    // Use WordPress lost password endpoint
-    // Note: This requires WordPress to be configured with email sending
-    const response = await fetch(`${wpBase}/wp-json/bdpwr/v1/reset-password`, {
+    // Use custom WordPress forgot-password endpoint
+    const response = await fetch(`${wpBase}/wp-json/custom/v1/forgot-password`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -46,6 +45,15 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ email }),
       cache: "no-store",
     });
+
+    if (!response.ok && process.env.NODE_ENV === "development") {
+      const bodyText = await response.text().catch(() => "");
+      console.warn(
+        "[auth] forgot-password endpoint returned non-OK:",
+        response.status,
+        bodyText ? `Body: ${bodyText.slice(0, 200)}` : ""
+      );
+    }
 
     // Even if the endpoint doesn't exist or fails, return success for security
     // (don't reveal if email exists)

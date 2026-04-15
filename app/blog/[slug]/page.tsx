@@ -5,9 +5,15 @@ import PrefetchLink from "@/components/PrefetchLink";
 import { fetchPostBySlug } from "@/lib/cms-posts";
 import { sanitizeHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
+ 
+// export const dynamicParams = true;
+export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
-export const dynamicParams = true;
-
+function resolveSlug(params: { slug: string }): string {
+  return String(params?.slug || "").trim();
+}
+ 
 function decodeHTMLEntities(str: string): string {
   return str
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
@@ -19,50 +25,65 @@ function decodeHTMLEntities(str: string): string {
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&nbsp;/g, " ");
 }
-
-export async function generateStaticParams() {
-  // Optional: pre-generate known slugs, or leave empty for on-demand
-  return [];
-}
-
+ 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: { slug: string };
 }): Promise<Metadata> {
-  const { slug } = await params;
-  const post = await fetchPostBySlug(slug);
-  if (!post) return { title: "Post" };
-  const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
-  const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Post";
-  const rawExcerpt =
-    post.excerpt?.rendered
-      ?.replace(/<[^>]+>/g, "")
-      .trim()
-      .slice(0, 160) || "";
-  const description = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
-  return {
-    title,
-    description,
-    alternates: { canonical: `/blog/${slug}` },
-  };
+  try {
+    const slug = resolveSlug(params);
+    if (!slug) return { title: "Post" };
+    const post = await fetchPostBySlug(slug);
+    if (!post) return { title: "Post" };
+    const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
+    const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Post";
+    const rawExcerpt =
+      post.excerpt?.rendered
+        ?.replace(/<[^>]+>/g, "")
+        .trim()
+        .slice(0, 160) || "";
+    const description = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
+    return {
+      title,
+      description,
+      alternates: { canonical: `/blog/${slug}` },
+    };
+  } catch {
+    return { title: "Post" };
+  }
 }
+ 
+export default async function BlogPostPage({ params }: { params: { slug: string } }) {
+  const slug = resolveSlug(params);
+  if (!slug) notFound();
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
   const post = await fetchPostBySlug(slug);
-  if (!post) notFound();
-
+  if (!post?.id) notFound();
+ 
   const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
   const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Untitled";
-  const content = post.content?.rendered || "";
-
+  let content = "";
+  try {
+    content = sanitizeHTML(post.content?.rendered || "");
+  } catch {
+    content = "";
+  }
+  const safeDate =
+    typeof post.date === "string" && !Number.isNaN(new Date(post.date).getTime())
+      ? new Date(post.date).toLocaleDateString("en-AU", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "";
+ 
   const breadcrumbItems = [
     { label: "Home", href: "/" },
     { label: "Blog", href: "/blog" },
     { label: title },
   ];
-
+ 
   return (
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
@@ -87,22 +108,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               </ol>
             </nav>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{title}</h1>
-            <time className="mt-2 block text-sm text-gray-500" dateTime={post.date}>
-              {new Date(post.date).toLocaleDateString("en-AU", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </time>
+            {safeDate ? (
+              <time className="mt-2 block text-sm text-gray-500" dateTime={post.date}>
+                {safeDate}
+              </time>
+            ) : null}
           </div>
         </div>
-
+ 
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
           <div className="mx-auto max-w-3xl rounded-xl border border-gray-200 bg-white p-6 sm:p-8">
             <div
               className="info-content"
               dangerouslySetInnerHTML={{
-                __html: sanitizeHTML(content),
+                __html: content,
               }}
             />
             <div className="mt-8">
