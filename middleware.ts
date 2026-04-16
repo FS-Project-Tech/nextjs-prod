@@ -1,6 +1,6 @@
+import "@/lib/rate-limit-backend";
 import { NextResponse, type NextRequest } from "next/server";
 import { addSecurityHeadersToResponse } from "@/lib/security-headers";
-import { isTrustedApiOrigin, rejectUnlessTrustedOriginOrApiKey } from "@/lib/api-public-guards";
 import { checkRateLimitSafe, fingerprintRequest, getClientIp } from "@/lib/rate-limit";
 import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { logBlockedBot, logRateLimit } from "@/lib/api-logging";
@@ -8,7 +8,14 @@ import type { RateLimitBackendResult } from "@/lib/api-rate-limit";
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-const BOT_UA_PATTERN = /amazonbot|semrush|ahrefs|mj12bot/i;
+/** Obvious SEO / crawl bots only — do not match normal browsers. */
+const BAD_BOT_UA = /ahrefs|semrush|mj12bot/i;
+
+const PUBLIC_PATHS = [
+  "/manifest.webmanifest",
+  "/favicon.ico",
+  "/robots.txt",
+];
 
 const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
   "/api/auth/",
@@ -19,10 +26,27 @@ const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
   "/api/typesense/search/delete",
 ];
 
-/** Hard cap per IP for all `/api/*` traffic (60s window). */
+/** Hard cap per identity for all `/api/*` traffic (60s window). */
 const GLOBAL_RATE_PER_MINUTE = 100;
 /** Fallback bucket for `/api/*` routes without a tighter prefix rule (60s window). */
 const API_STANDARD_RATE_PER_MINUTE = 120;
+
+function isSafeOrigin(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+
+  try {
+    const allowed = [
+      process.env.NEXT_PUBLIC_SITE_URL,
+      process.env.NEXT_PUBLIC_FRONTEND_URL,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+    ].filter(Boolean) as string[];
+
+    return allowed.some((o) => origin.includes(o));
+  } catch {
+    return true;
+  }
+}
 
 function nextRateLimitResponse(r: Extract<RateLimitBackendResult, { ok: false }>): NextResponse {
   return NextResponse.json(
@@ -45,14 +69,12 @@ function nextRateLimitResponse(r: Extract<RateLimitBackendResult, { ok: false }>
 
 function rejectBlockedBot(req: NextRequest): NextResponse | null {
   const ua = req.headers.get("user-agent") || "";
-  if (!BOT_UA_PATTERN.test(ua)) return null;
+  if (!BAD_BOT_UA.test(ua)) return null;
 
   const ip = getClientIp(req);
   logBlockedBot(ua, ip);
-  return NextResponse.json(
-    { error: "Forbidden", code: "BLOCKED_CLIENT", message: "Automated clients are not allowed." },
-    { status: 403 }
-  );
+  console.warn("[middleware] bot blocked", { ua: ua.slice(0, 200) });
+  return NextResponse.json({ error: "Bot traffic not allowed" }, { status: 403 });
 }
 
 function isTypesenseSearchReadPath(path: string): boolean {
@@ -66,9 +88,34 @@ function isContactPath(path: string): boolean {
   return path === "/api/contact" || path.startsWith("/api/contact/");
 }
 
+function shouldSkipCrossSiteGuard(pathname: string): boolean {
+  return API_SKIP_CROSS_SITE_GUARD_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+}
+
+/** Non-blocking: log suspicious mutations; never 403 from origin / Sec-Fetch alone. */
+function logSuspiciousApiMutation(req: NextRequest): void {
+  if (req.method === "OPTIONS") return;
+  if (!MUTATION_METHODS.has(req.method)) return;
+
+  const path = req.nextUrl.pathname;
+  if (shouldSkipCrossSiteGuard(path)) return;
+
+  const secFetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase();
+  if (secFetchSite === "cross-site") {
+    console.warn("[middleware] cross-site API mutation (allowed)", { path, secFetchSite });
+  }
+
+  const origin = req.headers.get("origin");
+  if (origin && !isSafeOrigin(req)) {
+    console.warn("[middleware] untrusted origin on API mutation (allowed)", {
+      path,
+      origin,
+    });
+  }
+}
+
 async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
-  /** Checkout is limited in route handlers; skip middleware buckets to avoid double 429s. */
   if (path.startsWith("/api/checkout")) return null;
 
   const fp = fingerprintRequest(req);
@@ -77,6 +124,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   if (path.startsWith("/api/auth/")) {
     const r = await checkRateLimitSafe(id, "auth", 10, 60);
     if (r.ok === false) {
+      console.warn("Rate limit exceeded", { bucket: "auth", id: fp });
       logRateLimit(id, "auth", fp);
       return nextRateLimitResponse(r);
     }
@@ -85,6 +133,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   if (isContactPath(path)) {
     const r = await checkRateLimitSafe(id, "contact", 5, 60);
     if (r.ok === false) {
+      console.warn("Rate limit exceeded", { bucket: "contact", id: fp });
       logRateLimit(id, "contact", fp);
       return nextRateLimitResponse(r);
     }
@@ -93,6 +142,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   if (isTypesenseSearchReadPath(path)) {
     const r = await checkRateLimitSafe(id, "typesense-search", 60, 60);
     if (r.ok === false) {
+      console.warn("Rate limit exceeded", { bucket: "typesense-search", id: fp });
       logRateLimit(id, "typesense-search", fp);
       return nextRateLimitResponse(r);
     }
@@ -112,6 +162,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
         console.warn("[middleware] rate-limit soft-fail (api-standard, cart)", { path, fp });
         return null;
       }
+      console.warn("Rate limit exceeded", { bucket: "api-standard", id: fp });
       logRateLimit(id, "api-standard", fp);
       return nextRateLimitResponse(r);
     }
@@ -132,104 +183,63 @@ async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse |
       console.warn("[middleware] rate-limit soft-fail (global, cart)", { path, fp });
       return null;
     }
+    console.warn("Rate limit exceeded", { bucket: "global", id: fp });
     logRateLimit(id, "global", fp);
     return nextRateLimitResponse(r);
   }
   return null;
 }
 
-function shouldSkipCrossSiteGuard(pathname: string): boolean {
-  return API_SKIP_CROSS_SITE_GUARD_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
-}
+async function handleMiddleware(request: NextRequest): Promise<NextResponse> {
+  const pathname = request.nextUrl.pathname;
 
-function rejectUntrustedApiMutation(req: NextRequest): NextResponse | null {
-  if (req.method === "OPTIONS") return null;
-  if (!MUTATION_METHODS.has(req.method)) return null;
-
-  const path = req.nextUrl.pathname;
-  if (shouldSkipCrossSiteGuard(path)) return null;
-
-  const secFetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase();
-  if (secFetchSite === "cross-site") {
-    return NextResponse.json(
-      {
-        error: "Forbidden",
-        code: "CROSS_SITE_FORBIDDEN",
-        message: "Cross-site requests are not allowed.",
-      },
-      { status: 403 }
-    );
+  if (
+    PUBLIC_PATHS.includes(pathname) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/icons")
+  ) {
+    return addSecurityHeadersToResponse(NextResponse.next());
   }
 
-  const origin = req.headers.get("origin");
-  if (origin && !isTrustedApiOrigin(req)) {
-    return NextResponse.json(
-      { error: "Forbidden", code: "ORIGIN_FORBIDDEN", message: "Request origin is not allowed." },
-      { status: 403 }
-    );
+  if (pathname.startsWith("/api/")) {
+    if (request.method === "OPTIONS") {
+      return addSecurityHeadersToResponse(NextResponse.next());
+    }
+
+    const bot = rejectBlockedBot(request);
+    if (bot) return addSecurityHeadersToResponse(bot);
+
+    const perRoute = await applyPerRouteApiRateLimits(request);
+    if (perRoute) return addSecurityHeadersToResponse(perRoute);
+
+    const globalRl = await applyGlobalApiRateLimit(request);
+    if (globalRl) return addSecurityHeadersToResponse(globalRl);
+
+    logSuspiciousApiMutation(request);
   }
 
-  return null;
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  return addSecurityHeadersToResponse(response);
 }
 
 export async function middleware(request: NextRequest) {
   try {
-    const pathname = request.nextUrl.pathname;
-
-    if (pathname.startsWith("/api/")) {
-      if (request.method === "OPTIONS") {
-        return addSecurityHeadersToResponse(NextResponse.next());
-      }
-
-      const bot = rejectBlockedBot(request);
-      if (bot) return addSecurityHeadersToResponse(bot);
-
-      const perRoute = await applyPerRouteApiRateLimits(request);
-      if (perRoute) return addSecurityHeadersToResponse(perRoute);
-
-      const globalRl = await applyGlobalApiRateLimit(request);
-      if (globalRl) return addSecurityHeadersToResponse(globalRl);
-
-      const apiKeyBlock = rejectUnlessTrustedOriginOrApiKey(request);
-      if (apiKeyBlock) return addSecurityHeadersToResponse(apiKeyBlock);
-
-      const mutationBlock = rejectUntrustedApiMutation(request);
-      if (mutationBlock) return addSecurityHeadersToResponse(mutationBlock);
-    }
-
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-pathname", pathname);
-
-    const response = NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-    return addSecurityHeadersToResponse(response);
+    return await handleMiddleware(request);
   } catch (error) {
-    console.error("[Middleware] Error:", error);
-    if (request.nextUrl.pathname.startsWith("/api/")) {
-      return addSecurityHeadersToResponse(
-        NextResponse.json(
-          {
-            error: "Service temporarily unavailable",
-            code: "API_UNAVAILABLE",
-            message: "Please retry shortly.",
-          },
-          {
-            status: 503,
-            headers: {
-              "Cache-Control": "no-store",
-              "Retry-After": "5",
-            },
-          }
-        )
-      );
-    }
+    console.error("[Middleware Error]", error);
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-pathname", request.nextUrl.pathname);
-    const response = NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-    return addSecurityHeadersToResponse(response);
+    return addSecurityHeadersToResponse(
+      NextResponse.next({
+        request: { headers: requestHeaders },
+      })
+    );
   }
 }
 

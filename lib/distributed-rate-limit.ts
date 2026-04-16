@@ -1,4 +1,4 @@
-import { getRedis, isRedisConfigured } from "@/lib/redis";
+import { getRedis, isRedisConfigured } from "@/lib/redis-tcp";
 
 export type DistributedRateLimitConfig = {
   windowSeconds: number;

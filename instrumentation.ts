@@ -1,8 +1,7 @@
 /**
- * Node.js runtime bootstrap (not Edge). Registers Redis rate-limit backend when REDIS_URL is set.
+ * Node.js runtime bootstrap (not Edge). Registers distributed rate-limit backend (Upstash + optional TCP Redis).
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { initRedisRateLimitBackend } = await import("@/lib/rate-limit-backend-init");
-  initRedisRateLimitBackend();
+  await import("@/lib/rate-limit-backend");
 }

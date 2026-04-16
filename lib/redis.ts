@@ -1,28 +1,15 @@
-import Redis from "ioredis";
+import { Redis } from "@upstash/redis";
 
-let client: Redis | null = null;
-
-export function isRedisConfigured(): boolean {
-  return Boolean(process.env.REDIS_URL?.trim());
-}
+const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 
 /**
- * Shared Redis client (singleton). Requires REDIS_URL.
+ * Upstash REST client (Edge + serverless). `null` when env is unset (local dev without Upstash).
  */
-export function getRedis(): Redis {
-  const url = process.env.REDIS_URL?.trim();
-  if (!url) {
-    throw new Error("REDIS_URL is not set");
-  }
-  if (!client) {
-    client = new Redis(url, {
-      maxRetriesPerRequest: null,
-      enableReadyCheck: true,
-      lazyConnect: false,
-    });
-    client.on("error", (err) => {
-      console.error("[redis]", err.message);
-    });
-  }
-  return client;
-}
+export const redis: Redis | null =
+  url && token
+    ? new Redis({
+        url,
+        token,
+      })
+    : null;
