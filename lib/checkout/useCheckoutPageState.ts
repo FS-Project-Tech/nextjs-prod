@@ -268,25 +268,39 @@ export function useCheckoutPageState() {
         credentials: "include",
         cache: "no-store",
       })
-        .then(async (res) => {
-          if (ac.signal.aborted) return;
-          if (quoteEpochRef.current !== epoch) return;
-          if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
-
-          const json = (await res.json().catch(() => ({}))) as {
-            success?: boolean;
-            totals?: CheckoutTotals;
-            error?: string;
+      .then(async (res) => {
+        if (ac.signal.aborted) return;
+        if (quoteEpochRef.current !== epoch) return;
+        if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
+      
+        const json = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          totals?: CheckoutTotals;
+          error?: string;
+          shippingAdjusted?: boolean; // 👈 ADD
+          shippingLine?: {
+            method_id: string;
+            method_title: string;
           };
-          if (!res.ok || !json.success || !json.totals) {
-            if (quoteEpochRef.current === epoch) setServerTotals(null);
-            return;
-          }
-          if (quoteEpochRef.current !== epoch) return;
-          if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
-
-          setServerTotals(json.totals);
-        })
+        };
+      
+        if (!res.ok || !json.success || !json.totals) {
+          if (quoteEpochRef.current === epoch) setServerTotals(null);
+          return;
+        }
+      
+        // ✅ ADD HERE
+        if (json.shippingAdjusted && json.shippingLine?.method_id) {
+          success("Shipping method updated automatically"); // your toast
+      
+          setValue("shippingMethod", {
+            id: json.shippingLine.method_id,
+            label: json.shippingLine.method_title,
+          });
+        }
+      
+        setServerTotals(json.totals);
+      })
         .catch(() => {
           if (!ac.signal.aborted && quoteEpochRef.current === epoch) setServerTotals(null);
         })

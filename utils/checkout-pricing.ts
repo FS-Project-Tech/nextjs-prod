@@ -284,6 +284,8 @@ export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Prom
     instance_id?: string;
   };
   totals: CheckoutTotals;
+  /** True when subtotal was below the selected method's minimum and a different rate was applied. */
+  shippingAdjusted: boolean;
 }> {
   return validateAndRecalculateCheckout(checkoutPayloadForQuote(input));
 }
@@ -298,6 +300,8 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     instance_id?: string;
   };
   totals: CheckoutTotals;
+  /** True when subtotal was below the selected method's minimum and a different rate was applied. */
+  shippingAdjusted: boolean;
 }> {
   const toItemKey = (productId: number, variationId?: number) => `${productId}:${variationId ?? 0}`;
 
@@ -410,18 +414,38 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     cartSubtotal: subtotal,
   });
   const selectedRate = findSelectedShippingRate(rates, payload.shipping_method_id);
-  if (!selectedRate || typeof selectedRate.cost !== "number") {
-    throw new Error("Selected shipping method is no longer available.");
+  let finalRate = selectedRate;
+
+  if (!finalRate || typeof finalRate.cost !== "number") {
+    finalRate = rates[0]; // fallback to first available
+  }
+  
+  if (!finalRate) {
+    throw new Error("No shipping methods available.");
   }
 
-  const selMin = typeof selectedRate.minimum_amount === "number" ? selectedRate.minimum_amount : undefined;
-  if (selMin !== undefined && selMin > 0 && subtotal < selMin) {
-    throw new Error(
-      "Your order total is below the minimum for the selected shipping method. Choose another option or add items to your cart."
-    );
-  }
+  const selMin =
+  typeof finalRate.minimum_amount === "number"
+    ? finalRate.minimum_amount
+    : undefined;
 
-  const shipping = Number(selectedRate.cost || 0);
+let shippingAdjusted = false;
+
+if (selMin !== undefined && selMin > 0 && subtotal < selMin) {
+  // fallback to another valid method
+  const fallback = rates.find(
+    (r) =>
+      typeof r.cost === "number" &&
+      (!r.minimum_amount || subtotal >= r.minimum_amount)
+  );
+
+  if (fallback) {
+    finalRate = fallback;
+    shippingAdjusted = true;
+  }
+}
+
+  const shipping = Number(finalRate.cost || 0);
   const insuranceFee = payload.insurance_option === "yes" ? PARCEL_PROTECTION_FEE_AUD : 0;
   const gst = calculateGST(subtotal, shipping, discount, 0, taxableSubtotal);
   const total = calculateTotal(subtotal, shipping, discount, gst, insuranceFee);
@@ -457,16 +481,17 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     return base;
   });
 
-  const { method_id, instance_id } = splitWooZoneShippingMethodId(String(selectedRate.id));
+  const { method_id, instance_id } = splitWooZoneShippingMethodId(String(finalRate.id));
   return {
     validatedLineItems,
     wooLineItems,
     shippingLine: {
       method_id,
       ...(instance_id ? { instance_id } : {}),
-      method_title: selectedRate.label || selectedRate.id,
+      method_title: finalRate.label || finalRate.id,
       total: shipping.toFixed(2),
     },
     totals,
+    shippingAdjusted,
   };
 }

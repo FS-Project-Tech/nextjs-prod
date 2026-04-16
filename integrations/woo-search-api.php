@@ -5,7 +5,10 @@ add_action('rest_api_init', function () {
         'methods' => 'GET',
         'callback' => function () {
 
-            $products = wc_get_products(['limit' => -1]);
+            $products = wc_get_products([
+                'limit' => -1,
+                'status' => 'publish', // ✅ ONLY published products
+            ]);
             $data = [];
 
             function get_all_parents($term, &$slugs = []) {

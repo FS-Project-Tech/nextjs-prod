@@ -16,6 +16,9 @@ import {
 } from "@/lib/typesense-products";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
+
+// const inStockOnly = sp.get("in_stock_only") !== "0";
+
 function sanitizeSlug(input: string | null, max = 200): string {
   if (!input) return "";
   return input
