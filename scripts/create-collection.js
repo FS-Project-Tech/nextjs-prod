@@ -47,7 +47,7 @@ const client = new Typesense.Client({
 async function createCollection() {
   try {
     const schema = {
-      name: "products",
+      name: "products_updated",
       enable_nested_fields: true,
       fields: [
         { name: "id", type: "string" },
