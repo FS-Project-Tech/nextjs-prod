@@ -89,7 +89,7 @@ function ShippingMethodBlock({
                 onRateChange={(rateId, rate) => {
                   field.onChange({
                     id: rateId,
-                    method_id: rate.id,
+                    method_id: rate.method_id,
                     label: rate.label,
                     cost: rate.cost,
                     total: rate.cost,

@@ -10,8 +10,10 @@ import { BreadcrumbStructuredData } from "@/components/StructuredData";
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
-function resolveSlug(params: { slug: string }): string {
-  return String(params?.slug || "").trim();
+type BlogSlugParams = Promise<{ slug: string }>;
+
+function resolveSlug(resolved: { slug: string }): string {
+  return String(resolved?.slug || "").trim();
 }
  
 function decodeHTMLEntities(str: string): string {
@@ -29,10 +31,10 @@ function decodeHTMLEntities(str: string): string {
 export async function generateMetadata({
   params,
 }: {
-  params: { slug: string };
+  params: BlogSlugParams;
 }): Promise<Metadata> {
   try {
-    const slug = resolveSlug(params);
+    const slug = resolveSlug(await params);
     if (!slug) return { title: "Post" };
     const post = await fetchPostBySlug(slug);
     if (!post) return { title: "Post" };
@@ -54,8 +56,8 @@ export async function generateMetadata({
   }
 }
  
-export default async function BlogPostPage({ params }: { params: { slug: string } }) {
-  const slug = resolveSlug(params);
+export default async function BlogPostPage({ params }: { params: BlogSlugParams }) {
+  const slug = resolveSlug(await params);
   if (!slug) notFound();
 
   const post = await fetchPostBySlug(slug);
@@ -117,31 +119,24 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
         </div>
  
         <div className="container mx-auto px-4 py-10 sm:px-6 md:px-8">
-          <div className="mx-auto max-w-3xl rounded-xl border border-gray-200 bg-white p-6 sm:p-8">
-            <div
-              className="info-content"
-              dangerouslySetInnerHTML={{
-                __html: content,
-              }}
-            />
-            <div className="mt-8">
-              <Link
-                href="/blog"
-                className="inline-flex items-center gap-2 text-teal-600 font-medium hover:text-teal-700"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Back to Blog
-              </Link>
-            </div>
-          </div>
-        </div>
+              <div className="info-content" dangerouslySetInnerHTML={{ __html: content,}}/>
+                <div className="mt-8">
+                  <Link
+                    href="/blog"
+                    className="inline-flex items-center gap-2 text-teal-600 font-medium hover:text-teal-700"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                    Back to Blog
+                  </Link>
+                </div>
+              </div>
       </div>
     </>
   );

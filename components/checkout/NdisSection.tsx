@@ -25,12 +25,12 @@ export default function NdisSection({
   return (
     <section className="rounded-xl bg-white p-6" aria-label="NDIS and Home Care Package">
       <div className="space-y-4">
-        <p
+        {/* <p
           className="rounded-lg border border-amber-300/80 bg-amber-100 px-4 py-3 text-sm font-semibold leading-snug text-amber-950 shadow-sm"
           role="status"
         >
           NDIS approved? Please enter your details here to enable On Account ordering.
-        </p>
+        </p> */}
         <div className="rounded-lg border border-gray-200 bg-gray-50/50">
           <button
             type="button"
@@ -40,7 +40,7 @@ export default function NdisSection({
             onClick={() => setOpenNdisSection((v) => !v)}
             className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-900 ${FOCUS_RING_BTN}`}
           >
-            <span>Enter your NDIS information</span>
+            <span>NDIS Approved? Please click here to add your details to eligible for On Account ordering</span>
             <span className="text-sm text-gray-600" aria-hidden="true">
               {openNdisSection ? "−" : "+"}
             </span>

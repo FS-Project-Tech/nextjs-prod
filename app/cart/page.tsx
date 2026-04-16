@@ -10,6 +10,7 @@ import ShippingOptions from "@/components/ShippingOptions";
 import { useShippingAddress } from "@/hooks/useShippingAddress";
 import { calculateSubtotal, calculateGST, calculateTaxableSubtotal, calculateTotal } from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
+import { formatShippingMethodCostDisplay } from "@/lib/shipping-rate-display";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 
 function CartPageContent() {
@@ -22,6 +23,7 @@ function CartPageContent() {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [shippingCost, setShippingCost] = useState<number>(0);
+  const [shippingMethodBase, setShippingMethodBase] = useState<string>("");
   const { country: shippingCountry, zone: shippingZone } = useShippingAddress();
 
   // Ensure component is mounted before accessing browser APIs
@@ -252,7 +254,10 @@ function CartPageContent() {
                 zone={shippingZone}
                 subtotal={subtotal}
                 items={items}
-                onRateChange={(rateId, rate) => setShippingCost(rate.cost)}
+                onRateChange={(_rateId, rate) => {
+                  setShippingCost(rate.cost);
+                  setShippingMethodBase(rate.method_id);
+                }}
                 showLabel={true}
               />
             </div>
@@ -265,7 +270,9 @@ function CartPageContent() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">Shipping</span>
-                <span className="font-medium">{formatPrice(shippingCost)}</span>
+                <span className="font-medium">
+                  {formatShippingMethodCostDisplay(shippingMethodBase || undefined, shippingCost)}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">GST (10%)</span>

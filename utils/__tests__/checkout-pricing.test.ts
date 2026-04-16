@@ -33,7 +33,16 @@ describe("validateAndRecalculateCheckout", () => {
     computeShippingRates.mockReset();
     wcGet.mockReset();
     computeShippingRates.mockResolvedValue({
-      rates: [{ id: "flat_rate:1", label: "Flat", cost: 0 }],
+      rates: [
+        {
+          id: "flat_rate:1",
+          method_id: "flat_rate",
+          label: "Flat",
+          cost: 0,
+          zoneId: 1,
+          zone: "AU",
+        },
+      ],
     });
   });
 

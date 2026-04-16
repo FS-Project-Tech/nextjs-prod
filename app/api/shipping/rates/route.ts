@@ -1,7 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { computeShippingRates } from "@/lib/shipping-rates-server";
+import type { ComputedShippingRate } from "@/lib/shipping-rates-server";
 
 export const dynamic = "force-dynamic";
+
+function isAddressComplete(input: { country: string; state: string; city: string; postcode: string }): boolean {
+  return Boolean(
+    String(input.country || "").trim() &&
+      String(input.state || "").trim() &&
+      String(input.city || "").trim() &&
+      String(input.postcode || "").trim()
+  );
+}
+
+function shouldShowFreeShipping(rate: ComputedShippingRate, cartSubtotal: number): boolean {
+  const minimumOk =
+    typeof rate.minimum_amount === "number" ? cartSubtotal >= rate.minimum_amount : true;
+  const requires = String(rate.requires || "").trim().toLowerCase();
+
+  // Hide when Woo requires coupon (or min+coupon) because coupon context is not passed here.
+  if (requires === "coupon" || requires === "both") return false;
+  return minimumOk;
+}
+
+function applyShippingDisplayCriteria(
+  rates: ComputedShippingRate[],
+  input: { country: string; state: string; city: string; postcode: string; cartSubtotal: number }
+): ComputedShippingRate[] {
+  const addressReady = isAddressComplete(input);
+  return rates.filter((rate) => {
+    if (String(rate.method_id).trim().toLowerCase() !== "free_shipping") return true;
+    if (!addressReady) return false;
+    return shouldShowFreeShipping(rate, input.cartSubtotal);
+  });
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,9 +79,18 @@ export async function GET(req: NextRequest) {
       timeout,
     ]) as { rates: any[] };
 
+    const ratesRaw = Array.isArray(result?.rates) ? (result.rates as ComputedShippingRate[]) : [];
+    const rates = applyShippingDisplayCriteria(ratesRaw, {
+      country,
+      state,
+      city,
+      postcode,
+      cartSubtotal: cartSubtotalSafe,
+    });
+
     // ✅ 3. SAFE RESPONSE
     return NextResponse.json(
-      { rates: result?.rates || [] },
+      { rates },
       { status: 200 }
     );
 

@@ -2,6 +2,8 @@ import { wcGet } from "@/lib/woocommerce/wc-fetch";
 
 export type ComputedShippingRate = {
   id: string;
+  /** Woo base method, e.g. `flat_rate`, `free_shipping`, `local_pickup` — used for display rules. */
+  method_id: string;
   label: string;
   cost: number;
   zoneId: number;
@@ -64,8 +66,101 @@ const inflightByKey = new Map<string, Promise<{ rates: ComputedShippingRate[] }>
 
 // ---------------- HELPERS ----------------
 
-function isValidPostcode(pc: string) {
-  return /^\d{4,6}$/.test(pc);
+function normalizePostcodeForMatch(pc: string): string {
+  return String(pc || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+/**
+ * WooCommerce-style postcode rules: exact, `*` wildcard, `...` inclusive range.
+ * @see https://woocommerce.com/document/setting-up-shipping-zones/
+ */
+function matchesPostcodePattern(patternRaw: string, customerPostcode: string): boolean {
+  const pattern = normalizePostcodeForMatch(patternRaw);
+  const pc = normalizePostcodeForMatch(customerPostcode);
+  if (!pattern || !pc) return false;
+
+  if (pattern === pc) return true;
+
+  if (pattern.includes("...")) {
+    const parts = pattern.split("...").map((p) => p.trim()).filter(Boolean);
+    if (parts.length !== 2) return false;
+    const [minP, maxP] = parts;
+    const minN = parseInt(minP.replace(/\D/g, ""), 10);
+    const maxN = parseInt(maxP.replace(/\D/g, ""), 10);
+    const pcN = parseInt(pc.replace(/\D/g, ""), 10);
+    if (!Number.isFinite(minN) || !Number.isFinite(maxN) || !Number.isFinite(pcN)) {
+      return pc >= minP && pc <= maxP;
+    }
+    return pcN >= minN && pcN <= maxN;
+  }
+
+  if (pattern.includes("*")) {
+    const esc = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp(`^${esc}$`, "i").test(pc);
+  }
+
+  return false;
+}
+
+function normalizeStateToken(state: string): string {
+  return String(state || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+/**
+ * Zone location `type: state` uses Woo codes like `AU:NSW` or `AU:VIC`.
+ */
+function stateLocationMatches(locCode: string, country: string, state: string): boolean {
+  const code = String(locCode || "").trim().toUpperCase();
+  const c = String(country || "").trim().toUpperCase();
+  const s = normalizeStateToken(state);
+  if (!c || !s) return false;
+
+  if (code === `${c}:${s}`) return true;
+  if (code === `${c}-${s}`) return true;
+  if (code === s) return true;
+  return false;
+}
+
+function countryLocationMatches(locCode: string, country: string): boolean {
+  const code = String(locCode || "").trim().toUpperCase();
+  const c = String(country || "").trim().toUpperCase();
+  if (!code || !c) return false;
+  if (code === "*") return true;
+  return code === c;
+}
+
+function locationMatchesCustomer(
+  loc: { code: string; type: string },
+  input: ComputeShippingRatesInput,
+): boolean {
+  const type = String(loc.type || "").toLowerCase();
+  const postcode = String(input.postcode || "").trim();
+
+  if (type === "country") {
+    return countryLocationMatches(loc.code, input.country);
+  }
+
+  if (type === "state") {
+    return stateLocationMatches(loc.code, input.country, input.state);
+  }
+
+  if (type === "postcode") {
+    if (!postcode) return false;
+    return matchesPostcodePattern(loc.code, postcode);
+  }
+
+  if (type === "continent") {
+    // Rare in core setups; avoid false positives
+    return false;
+  }
+
+  return false;
 }
 
 function normalizedKey(input: ComputeShippingRatesInput) {
@@ -88,6 +183,27 @@ function normalizeComputeInput(input: ComputeShippingRatesInput): ComputeShippin
     city: String(input.city || "").trim(),
     cartSubtotal,
   };
+}
+
+function parseMethodMinimumAmount(row: any): number | undefined {
+  const raw =
+    row?.settings?.min_amount?.value ??
+    row?.settings?.minimum_order_amount?.value ??
+    row?.settings?.minimum_amount?.value;
+  if (raw == null || String(raw).trim() === "") return undefined;
+  const n = parseFloat(String(raw));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function parseFreeShippingRequires(row: any): string | undefined {
+  const raw =
+    row?.settings?.requires?.value ??
+    row?.settings?.free_shipping_requires?.value ??
+    row?.requires;
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  return v || undefined;
 }
 
 /** Woo REST zone methods use `method_id` + `instance_id`; some payloads expose instance as `id`. */
@@ -165,36 +281,24 @@ async function loadZoneMethods(zoneId: number) {
 async function computeShippingRatesUncached(
   input: ComputeShippingRatesInput
 ): Promise<{ rates: ComputedShippingRate[] }> {
-
-  const postcode = (input.postcode || "").trim();
-
-  // ✅ HARD GUARD (MOST IMPORTANT)
-  if (!postcode || !isValidPostcode(postcode)) {
-    return { rates: [] };
-  }
-
   if (input.cartSubtotal <= 0) {
     return { rates: [] };
   }
 
   const { zones, locationsByZoneId } = await loadZonesAndLocations();
 
+  if (!zones.length) return { rates: [] };
+
   let matchedZone: ZoneRow | null = null;
 
+  // WooCommerce: evaluate custom zones (id !== 0) in zone_order; first full match wins.
   for (const z of zones) {
     if (z.id === 0) continue;
 
     const locations = locationsByZoneId.get(z.id) || [];
 
-    const match = locations.some((loc) => {
-      if (loc.type === "postcode") {
-        return loc.code === postcode;
-      }
-      if (loc.type === "country") {
-        return String(loc.code || "").trim().toUpperCase() === input.country;
-      }
-      return false;
-    });
+    const match =
+      locations.length > 0 && locations.some((loc) => locationMatchesCustomer(loc, input));
 
     if (match) {
       matchedZone = z;
@@ -202,8 +306,9 @@ async function computeShippingRatesUncached(
     }
   }
 
+  // "Locations not covered by your other zones" — Woo zone id 0.
   if (!matchedZone) {
-    matchedZone = zones.find((z) => z.id > 0) || null;
+    matchedZone = zones.find((z) => z.id === 0) || null;
   }
 
   if (!matchedZone) return { rates: [] };
@@ -218,13 +323,19 @@ async function computeShippingRatesUncached(
     if (row.enabled !== true && row.enabled !== "yes") continue;
 
     const cost = parseFloat(row.settings?.cost?.value || row.cost || "0");
+    const minimum_amount = parseMethodMinimumAmount(row);
+    const method_id = String(row.method_id ?? "").trim() || "flat_rate";
+    const requires = parseFreeShippingRequires(row);
 
     rates.push({
       id: wooZoneMethodCompositeId(row),
+      method_id,
       label: String(row.title || row.method_title || "Shipping"),
       cost: isNaN(cost) ? 0 : cost,
       zoneId: matchedZone.id,
       zone: matchedZone.name,
+      ...(minimum_amount != null ? { minimum_amount } : {}),
+      ...(requires ? { requires } : {}),
     });
   }
 

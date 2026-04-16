@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem } from "@/lib/types/cart";
 import type { ComputedShippingRate } from "@/lib/shipping-rates-server";
-import { formatPrice } from "@/lib/format-utils";
+import { formatShippingMethodCostDisplay } from "@/lib/shipping-rate-display";
 
 export type ShippingOptionRate = {
   id: string;
+  /** WooCommerce base shipping method id (not the composite `id`). */
+  method_id: string;
   label: string;
   cost: number;
   description?: string;
@@ -29,6 +31,21 @@ export type ShippingOptionsProps = {
 
 type RatesApiJson = { rates?: ComputedShippingRate[]; error?: string };
 
+function toCustomerFriendlyShippingError(raw: string): string {
+  const msg = String(raw || "").trim().toLowerCase();
+  if (!msg) return "Shipping options are temporarily unavailable. Please check your address and try again.";
+  if (msg.includes("missing required fields")) {
+    return "Please Add your address to view available shipping.";
+  }
+  if (msg.includes("invalid subtotal")) {
+    return "Your cart total needs to be updated before shipping methods can be shown.";
+  }
+  if (msg.includes("timeout")) {
+    return "Shipping services are taking longer than expected. Please try again in a moment.";
+  }
+  return "Shipping options are temporarily unavailable. Please check your address and try again.";
+}
+
 /** Woo flat_rate settings often store HTML; show plain text in checkout. */
 function stripHtmlToPlainText(raw: string): string {
   return raw
@@ -40,6 +57,7 @@ function stripHtmlToPlainText(raw: string): string {
 function toOption(rate: ComputedShippingRate): ShippingOptionRate {
   return {
     id: rate.id,
+    method_id: rate.method_id,
     label: rate.label,
     cost: rate.cost,
     description: rate.description,
@@ -87,7 +105,8 @@ export default function ShippingOptions({
       .then(async (res) => {
         const data = (await res.json()) as RatesApiJson;
         if (!res.ok) {
-          throw new Error(typeof data.error === "string" ? data.error : "Failed to load shipping");
+          const reason = typeof data.error === "string" ? data.error : "Failed to load shipping";
+          throw new Error(toCustomerFriendlyShippingError(reason));
         }
         return data.rates ?? [];
       })
@@ -139,7 +158,7 @@ export default function ShippingOptions({
   if (error) {
     return (
       <div className={className}>
-        <p className="text-sm text-rose-700" role="alert">
+        <p className="text-sm text-gray-600" role="status" aria-live="polite">
           {error}
         </p>
       </div>
@@ -183,7 +202,7 @@ export default function ShippingOptions({
                   ) : null}
                 </span>
                 <span className="shrink-0 text-sm font-semibold text-gray-900">
-                  {formatPrice(rate.cost)}
+                  {formatShippingMethodCostDisplay(rate.method_id, rate.cost)}
                 </span>
               </label>
             </li>
