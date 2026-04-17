@@ -1,5 +1,3 @@
-//D:\nextjs\lib\email\sendViaBrevo.ts
-
 /**
  * Send a plain-text email via Brevo (Sendinblue) transactional API.
  * https://developers.brevo.com/reference/sendtransacemail
@@ -77,13 +75,14 @@ export async function sendPlainEmailViaBrevo(opts: {
     text: string;
     replyTo?: string;
     senderName?: string;
+    senderEmail?: string;
   }): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
     const apiKey = process.env.BREVO_API_KEY?.trim();
     if (!apiKey) {
       return { ok: false, status: 500, detail: "BREVO_API_KEY not set" };
     }
    
-    const senderEmail = resolveBrevoSenderEmail(opts.to);
+    const senderEmail = (opts.senderEmail || resolveBrevoSenderEmail(opts.to)).trim();
 
     const senderName =
       opts.senderName ||
@@ -159,6 +158,7 @@ export async function sendPlainEmailWithAttachmentsViaBrevo(opts: {
   text: string;
   replyTo?: string;
   senderName?: string;
+  senderEmail?: string;
   attachments?: BrevoAttachment[];
 }): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
   const apiKey = process.env.BREVO_API_KEY?.trim();
@@ -166,7 +166,7 @@ export async function sendPlainEmailWithAttachmentsViaBrevo(opts: {
     return { ok: false, status: 500, detail: "BREVO_API_KEY not set" };
   }
 
-  const senderEmail = resolveBrevoSenderEmail(opts.to);
+  const senderEmail = (opts.senderEmail || resolveBrevoSenderEmail(opts.to)).trim();
 
   const senderName =
     opts.senderName ||

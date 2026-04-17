@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { CloudUpload } from "lucide-react";
 import Link from "next/link";
 
-const NDIS_EMAIL = "ndis@joyamedicalsupplies.com.au";
+const NDIS_EMAIL = "NDIS@joyamedicalsupplies.com.au";
 
 export default function NDISRegisterForm() {
   const [name, setName] = useState("");
@@ -13,6 +13,7 @@ export default function NDISRegisterForm() {
   const [agree, setAgree] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,8 +32,33 @@ export default function NDISRegisterForm() {
       return;
     }
 
-    // Optional: send to API; for now show success and mailto link
-    setSubmitted(true);
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("email", email);
+      if (file) {
+        formData.append("file", file);
+      }
+
+      const response = await fetch("/api/ndis/register", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to submit your form.");
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to submit your form. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -120,9 +146,10 @@ export default function NDISRegisterForm() {
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               type="submit"
+              disabled={isSubmitting}
               className="rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 transition-colors"
             >
-              Submit
+              {isSubmitting ? "Submitting..." : "Submit"}
             </button>
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
