@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem } from "@/lib/types/cart";
@@ -29,7 +29,12 @@ export type ShippingOptionsProps = {
   className?: string;
 };
 
-type RatesApiJson = { rates?: ComputedShippingRate[]; error?: string };
+type RatesApiJson = {
+  rates?: ComputedShippingRate[];
+  error?: string;
+  molicareFreeShippingApplied?: boolean;
+  notice?: string;
+};
 
 function toCustomerFriendlyShippingError(raw: string): string {
   const msg = String(raw || "").trim().toLowerCase();
@@ -79,6 +84,7 @@ export default function ShippingOptions({
   const [rates, setRates] = useState<ComputedShippingRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const onRateChangeRef = useRef(onRateChange);
   onRateChangeRef.current = onRateChange;
 
@@ -98,6 +104,7 @@ export default function ShippingOptions({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     const usp = new URLSearchParams();
     usp.set("country", country || "AU");
@@ -119,11 +126,18 @@ export default function ShippingOptions({
           const reason = typeof data.error === "string" ? data.error : "Failed to load shipping";
           throw new Error(toCustomerFriendlyShippingError(reason));
         }
-        return data.rates ?? [];
+        return {
+          rates: data.rates ?? [],
+          notice:
+            data.molicareFreeShippingApplied && typeof data.notice === "string"
+              ? data.notice
+              : null,
+        };
       })
-      .then((list) => {
+      .then(({ rates: list, notice: nextNotice }) => {
         if (!cancelled) {
           setRates(Array.isArray(list) ? list : []);
+          setNotice(nextNotice);
           setLoading(false);
         }
       })
@@ -188,6 +202,11 @@ export default function ShippingOptions({
     <div className={className}>
       {showLabel ? (
         <p className="mb-2 text-sm font-medium text-gray-700">Shipping method</p>
+      ) : null}
+      {notice ? (
+        <p className="mb-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+          {notice}
+        </p>
       ) : null}
       <ul className="space-y-2">
         {rates.map((rate) => {

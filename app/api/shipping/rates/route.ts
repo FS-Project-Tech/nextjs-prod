@@ -169,10 +169,17 @@ export async function GET(req: NextRequest) {
       postcode,
       cartSubtotal: cartSubtotalSafe,
     }, hasMolicareBrand);
+    const molicareFreeShippingApplied =
+      hasMolicareBrand &&
+      rates.some((r) => String(r.method_id).trim().toLowerCase() === "free_shipping");
 
     // ✅ 3. SAFE RESPONSE
     return NextResponse.json(
-      { rates },
+      {
+        rates,
+        molicareFreeShippingApplied,
+        notice: molicareFreeShippingApplied ? "Molicare FREE Shipping applied" : undefined,
+      },
       { status: 200 }
     );
 
