@@ -77,11 +77,10 @@ export default async function Home() {
           <ProductSection
             title="Continence care products"
             viewAllHref={`/product-category/${encodeURIComponent(continenceSlug)}`}
-            query={{ categorySlug: continenceSlug }}
-            shuffle
-            shufflePoolSize={40}
+            query={{ categorySlug: continenceSlug , orderby: "popularity", order: "random" }}
+            // shuffle={true}
           />
-        </Suspense>
+        </Suspense> 
         {/* CTA */}
         <NDISCTASection />
         {/* Trending */}
