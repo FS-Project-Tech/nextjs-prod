@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem } from "@/lib/types/cart";
@@ -70,6 +70,7 @@ export default function ShippingOptions({
   state = "",
   city = "",
   subtotal,
+  items = [],
   selectedRateId,
   onRateChange,
   showLabel = true,
@@ -81,9 +82,16 @@ export default function ShippingOptions({
   const onRateChangeRef = useRef(onRateChange);
   onRateChangeRef.current = onRateChange;
 
+  const cartProductIds = useMemo(() => {
+    const ids = items
+      .map((i) => i.productId)
+      .filter((id): id is number => Number.isFinite(id) && id > 0);
+    return [...new Set(ids)].sort((a, b) => a - b);
+  }, [items]);
+
   const queryKey = useMemo(
-    () => `${country}|${postcode}|${state}|${city}|${subtotal}`,
-    [country, postcode, state, city, subtotal],
+    () => `${country}|${postcode}|${state}|${city}|${subtotal}|${cartProductIds.join(",")}`,
+    [country, postcode, state, city, subtotal, cartProductIds],
   );
 
   useEffect(() => {
@@ -97,6 +105,9 @@ export default function ShippingOptions({
     usp.set("postcode", postcode);
     usp.set("city", city);
     usp.set("subtotal", String(Number.isFinite(subtotal) ? subtotal : 0));
+    if (cartProductIds.length) {
+      usp.set("productIds", cartProductIds.join(","));
+    }
 
     void fetch(`/api/shipping/rates?${usp.toString()}`, {
       cache: "no-store",
@@ -127,7 +138,7 @@ export default function ShippingOptions({
     return () => {
       cancelled = true;
     };
-  }, [queryKey, country, postcode, state, city, subtotal]);
+  }, [queryKey, country, postcode, state, city, subtotal, cartProductIds]);
 
   useEffect(() => {
     if (loading || rates.length === 0) return;
