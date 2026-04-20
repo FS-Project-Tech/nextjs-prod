@@ -5,16 +5,26 @@ import { checkRateLimitSafe, fingerprintRequest, getClientIp } from "@/lib/rate-
 import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { logBlockedBot, logRateLimit } from "@/lib/api-logging";
 import type { RateLimitBackendResult } from "@/lib/api-rate-limit";
+import { getRedis } from "@/lib/redis";
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Obvious SEO / crawl bots only — do not match normal browsers. */
-const BAD_BOT_UA = /ahrefs|semrush|mj12bot/i;
+const BAD_BOT_UA = /amazonbot|semrush|ahrefs|mj12bot/i;
 
 const PUBLIC_PATHS = [
   "/manifest.webmanifest",
   "/favicon.ico",
   "/robots.txt",
+];
+
+const TRUSTED_BOTS = [
+  /googlebot/i,
+  /google-inspectiontool/i,
+  /adsbot-google/i,
+  /googleother/i,
+  /bingbot/i,
+  /duckduckbot/i,
 ];
 
 const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
@@ -25,6 +35,13 @@ const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
   "/api/typesense/search/sync",
   "/api/typesense/search/delete",
 ];
+
+const IP_WHITELIST = new Set(
+  (process.env.IP_WHITELIST || "")
+    .split(",")
+    .map((ip) => ip.trim())
+    .filter(Boolean)
+);
 
 /** Hard cap per identity for all `/api/*` traffic (60s window). */
 const GLOBAL_RATE_PER_MINUTE = 100;
