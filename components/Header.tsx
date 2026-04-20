@@ -180,7 +180,7 @@ export default function Header({
               href="tel:+07 2146 3568"
               className="whitespace-nowrap text-sm text-gray-700 hover:text-teal-800"
             >
-              07 2146 3568
+              + 07 2146 3568
             </a>
           </div>
 
@@ -297,7 +297,7 @@ export default function Header({
       {open && (
         <div className="lg:hidden border-t px-4 py-4 space-y-3 bg-white">
           <a href="tel:+07 2146 3568" className="block text-sm text-gray-700">
-            Hotline: 07 2146 3568
+            Hotline: + 07 2146 3568
           </a>
 
           <PrefetchLink href="/" className="block rounded-lg px-2 py-2 hover:bg-gray-50">
