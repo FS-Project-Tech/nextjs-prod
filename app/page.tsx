@@ -76,9 +76,10 @@ export default async function Home() {
         <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
           <ProductSection
             title="Continence care products"
-            subtitle="Trusted protection for daily confidence."
             viewAllHref={`/product-category/${encodeURIComponent(continenceSlug)}`}
             query={{ categorySlug: continenceSlug }}
+            shuffle
+            shufflePoolSize={40}
           />
         </Suspense>
         {/* CTA */}
