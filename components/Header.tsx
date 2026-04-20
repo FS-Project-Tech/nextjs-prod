@@ -177,7 +177,7 @@ export default function Header({
               <path d="M3 5a2 2 0 0 1 2-2h3.28l1.5 4.5-2.3 1.1a11 11 0 0 0 5.5 5.5l1.1-2.3 4.5 1.5V19a2 2 0 0 1-2 2h-1C9.7 21 3 14.3 3 6V5z" />
             </svg>
             <a
-              href="tel:+1234567890"
+              href="tel:+07 2146 3568"
               className="whitespace-nowrap text-sm text-gray-700 hover:text-teal-800"
             >
               07 2146 3568
@@ -296,8 +296,8 @@ export default function Header({
       {/* Mobile Menu */}
       {open && (
         <div className="lg:hidden border-t px-4 py-4 space-y-3 bg-white">
-          <a href="tel:+1234567890" className="block text-sm text-gray-700">
-            Hotline: +1 234 567 890
+          <a href="tel:+07 2146 3568" className="block text-sm text-gray-700">
+            Hotline: 07 2146 3568
           </a>
 
           <PrefetchLink href="/" className="block rounded-lg px-2 py-2 hover:bg-gray-50">

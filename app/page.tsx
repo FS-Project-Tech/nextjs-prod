@@ -78,8 +78,8 @@ export default async function Home() {
             title="Continence care products"
             viewAllHref={`/product-category/${encodeURIComponent(continenceSlug)}`}
             query={{ categorySlug: continenceSlug }}
-            shuffle
-            shufflePoolSize={40}
+            // shuffle
+            // shufflePoolSize={40}
           />
         </Suspense>
         {/* CTA */}
