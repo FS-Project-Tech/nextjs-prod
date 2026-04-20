@@ -92,7 +92,7 @@ export default async function Home() {
           <ProductSection
             title="Latest Published"
             subtitle="Fresh arrivals from our catalog."
-            viewAllHref="/shop?orderby=date&order=desc"
+            viewAllHref="/shop?sortBy=newest"
             query={{ orderby: "date", order: "desc" }}
           />
         </Suspense>

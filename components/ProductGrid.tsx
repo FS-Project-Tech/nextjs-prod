@@ -10,6 +10,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   LISTING_SORT_OPTIONS,
   defaultListingSort,
+  resolveListingSortFromUrl,
   shouldOmitSortParam,
 } from "@/lib/listing-sort-options";
 
@@ -114,6 +115,8 @@ function stripDeprecatedListingParams(params: URLSearchParams, pathname: string)
   }
   params.delete("minPrice");
   params.delete("maxPrice");
+  params.delete("orderby");
+  params.delete("order");
 }
 
 export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: ProductGridProps) {
@@ -151,7 +154,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
     const urlBrands = searchParams.get("brands")?.trim();
     if (!brandSlug && urlBrands) params.brands = urlBrands;
 
-    const sortBy = searchParams.get("sortBy");
+    const sortBy = resolveListingSortFromUrl(searchParams);
     if (sortBy) params.sortBy = sortBy;
 
     const minP = searchParams.get("min_price") || searchParams.get("minPrice");
@@ -322,7 +325,8 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
   }, [state.hasMore, state.loading, state.page, fetchProducts]);
 
   const listingBusy = Boolean(listingCtx?.listingBusy);
-  const currentSort = searchParams.get("sortBy") || defaultListingSort(pathname, searchParams);
+  const currentSort =
+    resolveListingSortFromUrl(searchParams) || defaultListingSort(pathname, searchParams);
 
   const handleSortChange = useCallback(
     (e: ChangeEvent<HTMLSelectElement>) => {

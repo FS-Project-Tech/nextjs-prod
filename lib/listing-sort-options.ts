@@ -10,7 +10,48 @@ export const LISTING_SORT_OPTIONS = [
 
 export type ListingSortValue = (typeof LISTING_SORT_OPTIONS)[number]["value"];
 
+/** Valid `sortBy` query values (URL + API). */
+export const LISTING_SORT_VALUES = new Set<string>(
+  LISTING_SORT_OPTIONS.map((o) => o.value),
+);
+
 type SearchParamsLike = { get(name: string): string | null } | null;
+
+/** Returns a known sort token or null (ignore typos / legacy Woo `sortBy=date` etc.). */
+export function parseListingSortQueryValue(
+  raw: string | null | undefined,
+): ListingSortValue | null {
+  const v = raw?.trim();
+  if (!v || !LISTING_SORT_VALUES.has(v)) return null;
+  return v as ListingSortValue;
+}
+
+/**
+ * Maps legacy WooCommerce-style `orderby` + `order` query params to our `sortBy` values when `sortBy` is absent.
+ * Keeps old links like `/shop?orderby=date&order=desc` working alongside `/shop?sortBy=newest`.
+ */
+export function resolveListingSortFromUrl(searchParams: SearchParamsLike): string | null {
+  const explicit = parseListingSortQueryValue(searchParams?.get("sortBy"));
+  if (explicit) return explicit;
+
+  const orderby = searchParams?.get("orderby")?.trim().toLowerCase();
+  if (!orderby) return null;
+
+  const order = (searchParams?.get("order")?.trim().toLowerCase()) || "desc";
+
+  switch (orderby) {
+    case "date":
+      return order === "asc" ? null : "newest";
+    case "popularity":
+      return "popularity";
+    case "price":
+      return order === "asc" ? "price_low" : "price_high";
+    case "rating":
+      return "rating";
+    default:
+      return null;
+  }
+}
 
 /**
  * When `sortBy` is omitted from the URL, the UI assumes this value (must match API defaults per path).
