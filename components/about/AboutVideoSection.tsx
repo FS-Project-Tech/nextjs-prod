@@ -57,11 +57,12 @@ export default function AboutVideoSection() {
               <iframe
                 src={videoUrl}
                 title="About JOYA on Vimeo"
-                allow="autoplay; fullscreen; picture-in-picture; clipboard-write"
+                allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media;"
                 allowFullScreen
-                className="absolute inset-0 h-full w-full border-0"
+                className={`absolute inset-0 h-full w-full border-0 transition-opacity duration-300 ${
+                  isVideoLoaded ? "opacity-100" : "opacity-0"
+                }`}
                 onLoad={() => setIsVideoLoaded(true)}
-                style={{ display: isVideoLoaded ? "block" : "none" }}
               />
             </div>
             <p className="text-sm text-gray-500 mt-4 text-center">

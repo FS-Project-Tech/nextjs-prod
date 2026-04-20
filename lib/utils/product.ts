@@ -787,10 +787,14 @@ export function extractProductBrands(product: WooCommerceProduct): ProductBrandI
   const seen = new Set<string>();
   const addBrand = (brand: ProductBrandInfo | null | undefined) => {
     if (!brand || !brand.name) return;
-    const key = `${brand.id ?? ""}:${brand.slug ?? ""}:${brand.name.toLowerCase()}`;
+    const label = String(brand.name).trim();
+    if (!label) return;
+    // Hide duplicate brand rows where the "name" is only a numeric term ID (e.g. 4898)
+    if (/^\d+$/.test(label)) return;
+    const key = `${brand.id ?? ""}:${brand.slug ?? ""}:${label.toLowerCase()}`;
     if (seen.has(key)) return;
     seen.add(key);
-    brands.push(brand);
+    brands.push(label === brand.name ? brand : { ...brand, name: label });
   };
 
   const productWithBrands = product as ProductWithBrands;

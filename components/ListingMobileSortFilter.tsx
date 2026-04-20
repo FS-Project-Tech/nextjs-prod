@@ -7,6 +7,7 @@ import { useProductListing } from "@/contexts/ProductListingContext";
 import {
   LISTING_SORT_OPTIONS,
   defaultListingSort,
+  resolveListingSortFromUrl,
   shouldOmitSortParam,
 } from "@/lib/listing-sort-options";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
@@ -22,6 +23,8 @@ function stripDeprecatedListingParams(params: URLSearchParams, pathname: string)
   }
   params.delete("minPrice");
   params.delete("maxPrice");
+  params.delete("orderby");
+  params.delete("order");
 }
 
 function useActiveFilterCount() {
@@ -86,7 +89,8 @@ function ListingMobileSortFilterImpl({
   }, [sortOpen, filterOpen]);
 
   const currentSort =
-    searchParams?.get("sortBy") || defaultListingSort(pathname, searchParams ?? null);
+    resolveListingSortFromUrl(searchParams ?? null) ||
+    defaultListingSort(pathname, searchParams ?? null);
 
   const applySort = useCallback(
     (value: string) => {

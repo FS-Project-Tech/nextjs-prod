@@ -14,6 +14,7 @@ import {
   typesenseHitToListingProduct,
   typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
+import { parseListingSortQueryValue } from "@/lib/listing-sort-options";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 
@@ -122,10 +123,12 @@ export async function GET(request: NextRequest) {
 
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
     const q = sanitizeSlug(qRaw, 200) || "*";
-    const explicitSort = (sp.get("sortBy") || sp.get("sort") || "").trim();
+    const explicitSort =
+      parseListingSortQueryValue(sp.get("sortBy")) ||
+      parseListingSortQueryValue(sp.get("sort"));
     /** Keyword search: relevance first. Browse (`*`): popularity (or price fallback in mapSort). */
     const sortBy =
-      explicitSort || (q !== "*" ? "relevance" : "popularity");
+      explicitSort ?? (q !== "*" ? "relevance" : "popularity");
 
     const filterParts = buildTypesenseFilterParts({
       categorySlug: categorySlug || null,
