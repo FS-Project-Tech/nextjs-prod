@@ -15,48 +15,68 @@ export default function TawkToWidget() {
   return (
     <Script id="tawk-to" strategy="lazyOnload">
       {`
-        var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-        /** Lift floating button above mobile bottom nav (icons + labels + safe area). Tailwind lg = 1024px. */
-        Tawk_API.onLoad = function () {
-          try {
-            function syncTawkOffset() {
-              if (typeof Tawk_API.setWidgetStyle !== "function") return;
-              var mobile =
-                typeof window.matchMedia !== "undefined" &&
-                window.matchMedia("(max-width: 1023px)").matches;
-              if (mobile) {
-                /** Keep chat clear of bottom-right cart CTA on mobile. */
-                Tawk_API.setWidgetStyle({
-                  verticalOffset: 132,
-                  horizontalOffset: 88,
-                  zIndex: 2147483646,
-                });
-              } else {
-                Tawk_API.setWidgetStyle({
-                  verticalOffset: 20,
-                  horizontalOffset: 20,
-                });
+  var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+
+  Tawk_API.onLoad = function () {
+    try {
+      function applyMobileFix() {
+        var isMobile =
+          typeof window.matchMedia !== "undefined" &&
+          window.matchMedia("(max-width: 1023px)").matches;
+
+        if (!isMobile) return;
+
+        // 1️⃣ Tawk API positioning (fallback)
+        if (typeof Tawk_API.setWidgetStyle === "function") {
+          Tawk_API.setWidgetStyle({
+            verticalOffset: 150,
+            horizontalOffset: 90,
+            zIndex: 2147483646,
+          });
+        }
+
+        // 2️⃣ Inject CSS dynamically (NO global.css needed)
+        if (!document.getElementById("tawk-mobile-fix")) {
+          var style = document.createElement("style");
+          style.id = "tawk-mobile-fix";
+          style.innerHTML = \`
+            @media (max-width: 1023px) {
+              iframe[src*="tawk.to"] {
+                bottom: 150px !important;
+                right: 90px !important;
               }
             }
-            syncTawkOffset();
-            setTimeout(syncTawkOffset, 300);
-            setTimeout(syncTawkOffset, 1200);
-            if (typeof window.matchMedia !== "undefined") {
-              window
-                .matchMedia("(max-width: 1023px)")
-                .addEventListener("change", syncTawkOffset);
-            }
-          } catch (e) {}
-        };
-        (function(){
-          var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-          s1.async=true;
-          s1.src='https://embed.tawk.to/${propertyId}/${widgetId}?nonce=${nonce}';
-          s1.charset='UTF-8';
-          s1.setAttribute('crossorigin','*');
-          s0.parentNode.insertBefore(s1,s0);
-        })();
-      `}
+          \`;
+          document.head.appendChild(style);
+        }
+      }
+
+      // Run multiple times (important for async iframe)
+      applyMobileFix();
+      setTimeout(applyMobileFix, 500);
+      setTimeout(applyMobileFix, 1500);
+      setTimeout(applyMobileFix, 3000);
+
+      // Re-apply on screen change
+      if (typeof window.matchMedia !== "undefined") {
+        window
+          .matchMedia("(max-width: 1023px)")
+          .addEventListener("change", applyMobileFix);
+      }
+
+    } catch (e) {}
+  };
+
+  (function(){
+    var s1=document.createElement("script"),
+        s0=document.getElementsByTagName("script")[0];
+    s1.async=true;
+    s1.src='https://embed.tawk.to/${propertyId}/${widgetId}?nonce=${nonce}';
+    s1.charset='UTF-8';
+    s1.setAttribute('crossorigin','*');
+    s0.parentNode.insertBefore(s1,s0);
+  })();
+`}
     </Script>
   );
 }
