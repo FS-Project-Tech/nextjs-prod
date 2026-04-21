@@ -1001,3 +1001,17 @@ main{background-color: #fff;}
   margin: 1rem 0;
   border-radius: 16px;
 }
+
+
+/* ===== Tawk Chat Fix (Mobile Only) ===== */
+@media (max-width: 1023px) {
+
+  /* Target all Tawk iframes */
+  iframe[src*="tawk.to"] {
+    position: fixed !important;
+    bottom: 160px !important;   /* move above bottom nav + cart */
+    right: 95px !important;     /* avoid cart overlap */
+    z-index: 2147483646 !important;
+  }
+
+}
