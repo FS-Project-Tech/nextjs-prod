@@ -94,6 +94,7 @@ function rejectBlockedBot(req: NextRequest): NextResponse | null {
   return NextResponse.json({ error: "Bot traffic not allowed" }, { status: 403 });
 }
 
+/** GET search proxy only — excluded from api-standard + global caps. Sync/delete stay limited. */
 function isTypesenseSearchReadPath(path: string): boolean {
   if (!path.startsWith("/api/typesense/search")) return false;
   if (path.startsWith("/api/typesense/search/sync")) return false;
@@ -156,15 +157,6 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
     }
   }
 
-  if (isTypesenseSearchReadPath(path)) {
-    const r = await checkRateLimitSafe(id, "typesense-search", 60, 60);
-    if (r.ok === false) {
-      console.warn("Rate limit exceeded", { bucket: "typesense-search", id: fp });
-      logRateLimit(id, "typesense-search", fp);
-      return nextRateLimitResponse(r);
-    }
-  }
-
   if (path.startsWith("/api/cart")) {
     const r = await checkRateLimitSafe(id, "cart", 120, 60);
     if (r.ok === false) {
@@ -172,7 +164,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
     }
   }
 
-  if (path.startsWith("/api/")) {
+  if (path.startsWith("/api/") && !isTypesenseSearchReadPath(path)) {
     const r = await checkRateLimitSafe(id, "api-standard", API_STANDARD_RATE_PER_MINUTE, 60);
     if (r.ok === false) {
       if (path.startsWith("/api/cart")) {
@@ -191,6 +183,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
 async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/checkout")) return null;
+  if (isTypesenseSearchReadPath(path)) return null;
 
   const fp = fingerprintRequest(req);
   const id = await getRateLimitIdentity(req);
