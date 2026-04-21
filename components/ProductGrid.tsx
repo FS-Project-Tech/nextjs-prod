@@ -14,6 +14,10 @@ import {
   shouldOmitSortParam,
 } from "@/lib/listing-sort-options";
 
+/** When `woocommerce`, grid loads rows from Woo REST (`/api/catalog/woo-listing`); facets stay Typesense. */
+const SHOP_PRODUCTS_FROM_WOO =
+  process.env.NEXT_PUBLIC_SHOP_PRODUCTS_SOURCE?.trim().toLowerCase() === "woocommerce";
+
 interface ProductGridProps {
   categorySlug?: string;
   brandSlug?: string;
@@ -227,7 +231,11 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         }
         if (onSaleOnly) usp.set("on_sale", "true");
 
-        const res = await fetch(`/api/typesense/search?${usp.toString()}`, {
+        const listingEndpoint = SHOP_PRODUCTS_FROM_WOO
+          ? `/api/catalog/woo-listing?${usp.toString()}`
+          : `/api/typesense/search?${usp.toString()}`;
+
+        const res = await fetch(listingEndpoint, {
           signal: controller.signal,
         });
 
@@ -388,9 +396,15 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
       ) : state.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {state.error}
-          {state.error.includes("not configured") && (
+          {state.error.includes("not configured") && !SHOP_PRODUCTS_FROM_WOO && (
             <p className="mt-2 text-xs text-amber-800">
               Set TYPESENSE_HOST and TYPESENSE_API_KEY (see lib/typesenseClient.ts).
+            </p>
+          )}
+          {SHOP_PRODUCTS_FROM_WOO && (
+            <p className="mt-2 text-xs text-amber-800">
+              Listing uses WooCommerce REST — ensure WC_API_URL, WC_CONSUMER_KEY, and WC_CONSUMER_SECRET
+              are set. Filters still use Typesense when configured.
             </p>
           )}
         </div>

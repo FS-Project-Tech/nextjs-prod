@@ -26,7 +26,8 @@ function parseIncludeParam(raw: string | null): number[] {
 }
 
 /**
- * Wishlist / batch-by-id only. Product listing uses `/api/typesense/search`.
+ * Wishlist / batch-by-id only. Product listing uses `/api/typesense/search` or
+ * `/api/catalog/woo-listing` when `NEXT_PUBLIC_SHOP_PRODUCTS_SOURCE=woocommerce`.
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);

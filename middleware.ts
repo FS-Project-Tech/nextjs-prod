@@ -102,6 +102,15 @@ function isTypesenseSearchReadPath(path: string): boolean {
   return true;
 }
 
+/** Woo-backed shop listing GET — same rate-limit treatment as Typesense search reads. */
+function isCatalogWooListingReadPath(path: string): boolean {
+  return path === "/api/catalog/woo-listing";
+}
+
+function isListingCatalogReadPath(path: string): boolean {
+  return isTypesenseSearchReadPath(path) || isCatalogWooListingReadPath(path);
+}
+
 function isContactPath(path: string): boolean {
   return path === "/api/contact" || path.startsWith("/api/contact/");
 }
@@ -164,7 +173,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
     }
   }
 
-  if (path.startsWith("/api/") && !isTypesenseSearchReadPath(path)) {
+  if (path.startsWith("/api/") && !isListingCatalogReadPath(path)) {
     const r = await checkRateLimitSafe(id, "api-standard", API_STANDARD_RATE_PER_MINUTE, 60);
     if (r.ok === false) {
       if (path.startsWith("/api/cart")) {
@@ -183,7 +192,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
 async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/checkout")) return null;
-  if (isTypesenseSearchReadPath(path)) return null;
+  if (isListingCatalogReadPath(path)) return null;
 
   const fp = fingerprintRequest(req);
   const id = await getRateLimitIdentity(req);

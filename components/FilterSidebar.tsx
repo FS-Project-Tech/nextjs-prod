@@ -937,7 +937,7 @@ export default function FilterSidebar({
             } disabled:opacity-50 disabled:pointer-events-none`}
             style={{ marginLeft: `${level * 10}px` }}
           >
-            <span className="truncate">{category.name}</span>
+            <span className="whitespace-normal break-words leading-tight">{category.name}</span>
           </button>
         </div>
 
@@ -1018,7 +1018,7 @@ export default function FilterSidebar({
                       : "text-gray-700 hover:bg-gray-100"
                   } disabled:opacity-50 disabled:pointer-events-none`}
                 >
-                  <span className="truncate">{cat.name}</span>
+                  <span className="whitespace-normal break-words leading-tight">{cat.name}</span>
                 </button>
               ))
             )}
@@ -1066,7 +1066,7 @@ export default function FilterSidebar({
                       onClick={() => handleCategorySelect(parent.slug)}
                       className="flex min-w-0 flex-1 items-center px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-50"
                     >
-                      <span className="truncate">{parent.name}</span>
+                      <span className="whitespace-normal break-words leading-tight">{parent.name}</span>
                     </button>
                     {hasItems ? (
                       <button
@@ -1095,7 +1095,7 @@ export default function FilterSidebar({
                               : "text-gray-700 hover:bg-gray-100"
                           } disabled:opacity-50 disabled:pointer-events-none`}
                         >
-                          <span className="truncate">{item.name}</span>
+                          <span className="whitespace-normal break-words leading-tight">{item.name}</span>
                         </button>
                       ))}
                     </div>
@@ -1140,7 +1140,7 @@ export default function FilterSidebar({
                       } disabled:opacity-50 disabled:pointer-events-none`}
                       style={{ marginLeft: `${row.level * 10}px` }}
                     >
-                      <span className="truncate">{row.cat.name}</span>
+                      <span className="whitespace-normal break-words leading-tight">{row.cat.name}</span>
                     </button>
                   </div>
                   {isExpanded && (
@@ -1157,7 +1157,7 @@ export default function FilterSidebar({
                               : "text-gray-700 hover:bg-gray-100"
                           } disabled:opacity-50 disabled:pointer-events-none`}
                         >
-                          <span className="truncate">{child.name}</span>
+                          <span className="whitespace-normal break-words leading-tight">{child.name}</span>
                         </button>
                       ))}
                     </div>
@@ -1179,7 +1179,7 @@ export default function FilterSidebar({
                 } disabled:opacity-50 disabled:pointer-events-none`}
                 style={{ marginLeft: `${row.level * 10}px` }}
               >
-                <span className="truncate">{row.cat.name}</span>
+                <span className="whitespace-normal break-words leading-tight">{row.cat.name}</span>
               </button>
             );
           })

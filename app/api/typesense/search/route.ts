@@ -66,6 +66,11 @@ function flattenTypesenseHits(result: {
   return result.hits || [];
 }
 
+function isPublishedStatus(status: unknown): boolean {
+  const s = String(status ?? "").trim().toLowerCase();
+  return !s || s === "publish" || s === "published";
+}
+
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   if (!isTypesenseConfigured()) {
@@ -186,7 +191,9 @@ export async function GET(request: NextRequest) {
     const found = result.found ?? 0;
     const totalPages = facetsOnly ? 1 : Math.max(1, Math.ceil(found / perPage));
 
-    const hits = flattenTypesenseHits(result as Parameters<typeof flattenTypesenseHits>[0]);
+    const hits = flattenTypesenseHits(result as Parameters<typeof flattenTypesenseHits>[0]).filter(
+      (h) => isPublishedStatus((h.document || {}).status)
+    );
     const useSearchShape = sp.get("search_ui") === "1";
     const products = useSearchShape
       ? hits.map((h) => typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>))

@@ -25,6 +25,7 @@ export const fetchProducts = async (params?: {
   sortBy?: string;
   include?: number[];
   on_sale?: boolean;
+  status?: "publish" | "draft" | "pending" | "private" | "trash";
   context?: "view" | "edit";
 }): Promise<PaginatedProductResponse> => {
   try {
@@ -61,6 +62,11 @@ export const fetchProducts = async (params?: {
           cleanParams.order = "desc";
           break;
         case "popularity":
+          cleanParams.orderby = "popularity";
+          cleanParams.order = "desc";
+          break;
+        /** WC REST has no `relevance` orderby; use popularity (search term still narrows results). */
+        case "relevance":
           cleanParams.orderby = "popularity";
           cleanParams.order = "desc";
           break;
@@ -259,6 +265,9 @@ export const fetchProducts = async (params?: {
     }
     if (params?.on_sale === true) {
       cleanParams.on_sale = true;
+    }
+    if (params?.status) {
+      cleanParams.status = params.status;
     }
 
     if (params?.context === "edit" || params?.context === "view") {
