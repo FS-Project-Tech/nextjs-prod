@@ -32,7 +32,7 @@ export default function TawkToWidget() {
                 });
               } else {
                 Tawk_API.setWidgetStyle({
-                  verticalOffset: 20,
+                  verticalOffset: 70,
                   horizontalOffset: 20,
                 });
               }
