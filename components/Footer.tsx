@@ -384,10 +384,10 @@ export default async function Footer() {
             </p>
 
             <div className="flex flex-wrap justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-white/90 order-1 md:order-2">
-              <PrefetchLink href="/privacy-policy" className="hover:text-white">
+              <PrefetchLink href="/info/privacy" className="hover:text-white">
                 Privacy Policy
               </PrefetchLink>
-              <PrefetchLink href="/terms" className="hover:text-white">
+              <PrefetchLink href="/info/terms" className="hover:text-white">
                 Terms & Conditions
               </PrefetchLink>
             </div>
