@@ -16,7 +16,7 @@ export default function TawkToWidget() {
     <Script id="tawk-to" strategy="lazyOnload">
       {`
         var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-        /** Lift floating button above mobile bottom nav (~64px bar + safe area). Matches Tailwind lg breakpoint. */
+        /** Lift floating button above mobile bottom nav (icons + labels + safe area). Tailwind lg = 1024px. */
         Tawk_API.onLoad = function () {
           try {
             function syncTawkOffset() {
@@ -26,18 +26,20 @@ export default function TawkToWidget() {
                 window.matchMedia("(max-width: 1023px)").matches;
               if (mobile) {
                 Tawk_API.setWidgetStyle({
-                  verticalOffset: 72,
+                  verticalOffset: 96,
                   horizontalOffset: 14,
                   zIndex: 2147483646,
                 });
               } else {
                 Tawk_API.setWidgetStyle({
-                  verticalOffset: 70,
+                  verticalOffset: 20,
                   horizontalOffset: 20,
                 });
               }
             }
             syncTawkOffset();
+            setTimeout(syncTawkOffset, 300);
+            setTimeout(syncTawkOffset, 1200);
             if (typeof window.matchMedia !== "undefined") {
               window
                 .matchMedia("(max-width: 1023px)")
