@@ -25,9 +25,10 @@ export default function TawkToWidget() {
                 typeof window.matchMedia !== "undefined" &&
                 window.matchMedia("(max-width: 1023px)").matches;
               if (mobile) {
+                /** Keep chat clear of bottom-right cart CTA on mobile. */
                 Tawk_API.setWidgetStyle({
-                  verticalOffset: 96,
-                  horizontalOffset: 14,
+                  verticalOffset: 132,
+                  horizontalOffset: 88,
                   zIndex: 2147483646,
                 });
               } else {
