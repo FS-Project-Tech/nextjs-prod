@@ -110,7 +110,8 @@ export function buildCreateOrderPayload(params: {
       country: destination.country || "AU",
     },
     line_items: lineItemsFromCart(cartLines),
-    ...(paymentMethod === "eway" ? { cart_items: cartLines } : {}),
+    /** Needed for delivery plan → Woo line meta (COD + eWAY). eWAY still validates these server-side. */
+    cart_items: cartLines,
     shipping_method_id: shippingMethod?.id,
     payment_method: paymentMethod,
     /** Store API COD expects `payment_data: []`; kept on payload for parity and future direct Store calls. */

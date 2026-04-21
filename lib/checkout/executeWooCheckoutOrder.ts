@@ -17,6 +17,10 @@ import { updateWooOrder } from "@/services/woocommerce";
 import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
 import { HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY } from "@/lib/checkout/checkoutSessionConstants";
 import { flatHcpOrderMetaRowsFromHcpInfoJson } from "@/lib/checkout/ndisHcpPayload";
+import {
+  deliveryPlanOrderMetaRows,
+  enrichWooLineItemsWithDeliveryPlans,
+} from "@/lib/checkout/deliveryPlanOrder";
 
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
@@ -74,6 +78,7 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
     value: payload.insurance_option === "yes" ? "yes" : "no",
   });
   rows.push({ key: "headless_payment_method", value: payload.payment_method });
+  rows.push(...deliveryPlanOrderMetaRows(payload.cart_items));
   return rows;
 }
 
@@ -141,7 +146,7 @@ export async function executeWooCheckoutOrder(input: {
     set_paid: false,
     status: orderStatus,
     customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
-    line_items: wooLineItems,
+    line_items: enrichWooLineItemsWithDeliveryPlans(wooLineItems, payload.cart_items),
     billing: {
       ...payload.billing,
       country: normalizeCountry(payload.billing.country),

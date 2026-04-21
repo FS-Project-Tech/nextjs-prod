@@ -31,6 +31,11 @@ export function buildWooLineItemsFullReplacePayload(
     if (li.variation_id != null && li.variation_id > 0) {
       row.variation_id = li.variation_id;
     }
+    if (li.subtotal != null && String(li.subtotal).trim() !== "") row.subtotal = li.subtotal;
+    if (li.total != null && String(li.total).trim() !== "") row.total = li.total;
+    if (li.meta_data != null && li.meta_data.length > 0) {
+      row.meta_data = li.meta_data;
+    }
     return row;
   });
 

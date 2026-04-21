@@ -12,6 +12,8 @@ export type WooLineItem = {
    */
   subtotal?: string;
   total?: string;
+  /** Line-item meta (e.g. delivery plan) — persisted on REST order lines. */
+  meta_data?: Array<{ key: string; value: unknown }>;
 };
 
 export type WooFeeLineInput = {
