@@ -29,7 +29,12 @@ export type ShippingOptionsProps = {
   className?: string;
 };
 
-type RatesApiJson = { rates?: ComputedShippingRate[]; error?: string };
+type RatesApiJson = {
+  rates?: ComputedShippingRate[];
+  error?: string;
+  molicareFreeShippingApplied?: boolean;
+  notice?: string;
+};
 
 function toCustomerFriendlyShippingError(raw: string): string {
   const msg = String(raw || "").trim().toLowerCase();
@@ -70,6 +75,7 @@ export default function ShippingOptions({
   state = "",
   city = "",
   subtotal,
+  items = [],
   selectedRateId,
   onRateChange,
   showLabel = true,
@@ -78,18 +84,27 @@ export default function ShippingOptions({
   const [rates, setRates] = useState<ComputedShippingRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const onRateChangeRef = useRef(onRateChange);
   onRateChangeRef.current = onRateChange;
 
+  const cartProductIds = useMemo(() => {
+    const ids = items
+      .map((i) => i.productId)
+      .filter((id): id is number => Number.isFinite(id) && id > 0);
+    return [...new Set(ids)].sort((a, b) => a - b);
+  }, [items]);
+
   const queryKey = useMemo(
-    () => `${country}|${postcode}|${state}|${city}|${subtotal}`,
-    [country, postcode, state, city, subtotal],
+    () => `${country}|${postcode}|${state}|${city}|${subtotal}|${cartProductIds.join(",")}`,
+    [country, postcode, state, city, subtotal, cartProductIds],
   );
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     const usp = new URLSearchParams();
     usp.set("country", country || "AU");
@@ -97,6 +112,9 @@ export default function ShippingOptions({
     usp.set("postcode", postcode);
     usp.set("city", city);
     usp.set("subtotal", String(Number.isFinite(subtotal) ? subtotal : 0));
+    if (cartProductIds.length) {
+      usp.set("productIds", cartProductIds.join(","));
+    }
 
     void fetch(`/api/shipping/rates?${usp.toString()}`, {
       cache: "no-store",
@@ -108,11 +126,18 @@ export default function ShippingOptions({
           const reason = typeof data.error === "string" ? data.error : "Failed to load shipping";
           throw new Error(toCustomerFriendlyShippingError(reason));
         }
-        return data.rates ?? [];
+        return {
+          rates: data.rates ?? [],
+          notice:
+            data.molicareFreeShippingApplied && typeof data.notice === "string"
+              ? data.notice
+              : null,
+        };
       })
-      .then((list) => {
+      .then(({ rates: list, notice: nextNotice }) => {
         if (!cancelled) {
           setRates(Array.isArray(list) ? list : []);
+          setNotice(nextNotice);
           setLoading(false);
         }
       })
@@ -127,7 +152,7 @@ export default function ShippingOptions({
     return () => {
       cancelled = true;
     };
-  }, [queryKey, country, postcode, state, city, subtotal]);
+  }, [queryKey, country, postcode, state, city, subtotal, cartProductIds]);
 
   useEffect(() => {
     if (loading || rates.length === 0) return;
@@ -177,6 +202,11 @@ export default function ShippingOptions({
     <div className={className}>
       {showLabel ? (
         <p className="mb-2 text-sm font-medium text-gray-700">Shipping method</p>
+      ) : null}
+      {notice ? (
+        <p className="mb-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+          {notice}
+        </p>
       ) : null}
       <ul className="space-y-2">
         {rates.map((rate) => {

@@ -7,7 +7,7 @@ import { FileText, CloudUpload, User, MailCheck, Send } from "lucide-react";
 /* Brand colors – also in globals.css as --ndis-primary, --ndis-secondary (hex here for alpha variants) */
 const NDIS_PRIMARY = "#5B1D65";
 const NDIS_SECONDARY = "#1F605F";
-const NDIS_EMAIL = "ndis@joyamedicalsupplies.com.au";
+const NDIS_EMAIL = "NDIS@joyamedicalsupplies.com.au";
 
 const STEPS = [
   { id: 1, label: "Getting Started" },
@@ -24,12 +24,13 @@ export default function NDISWizard() {
   const [file, setFile] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const goNext = () => setCurrentStep((s) => Math.min(5, s + 1));
   const goPrev = () => setCurrentStep((s) => Math.max(1, s - 1));
 
-  const handleStep2Submit = (e: React.FormEvent) => {
+  const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!name.trim()) {
@@ -40,7 +41,34 @@ export default function NDISWizard() {
       setError("Please enter your email address.");
       return;
     }
-    setSubmitted(true);
+
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("email", email);
+      if (file) {
+        formData.append("file", file);
+      }
+
+      const response = await fetch("/api/ndis/register", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to submit your form.");
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to submit your form. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -226,10 +254,11 @@ export default function NDISWizard() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="submit"
+                    disabled={isSubmitting}
                     className="rounded-lg px-5 py-2.5 font-semibold text-white transition-opacity hover:opacity-90"
                     style={{ backgroundColor: NDIS_SECONDARY }}
                   >
-                    Submit
+                    {isSubmitting ? "Submitting..." : "Submit"}
                   </button>
                 </div>
               </form>

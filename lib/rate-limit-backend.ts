@@ -1,5 +1,5 @@
 import { setRateLimitBackend, type RateLimitBackendResult } from "./api-rate-limit";
-import { redis } from "./redis";
+import { getRedis } from "./redis";
 
 /** Middleware runs on Edge — avoid loading `ioredis` (TCP) there. */
 const isEdgeRuntime =
@@ -11,14 +11,14 @@ async function tryUpstashBackend(args: {
   windowSeconds: number;
   maxRequests: number;
 }) {
-  if (!redis) return null;
+  if (!getRedis()) return null;
 
   const { compositeKey, windowSeconds, maxRequests } = args;
   try {
-    const count = await redis.incr(compositeKey);
+    const count = await getRedis().incr(compositeKey);
 
     if (count === 1) {
-      await redis.expire(compositeKey, windowSeconds);
+      await getRedis().expire(compositeKey, windowSeconds);
     }
 
     const limit = maxRequests;

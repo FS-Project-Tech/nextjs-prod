@@ -5,16 +5,26 @@ import { checkRateLimitSafe, fingerprintRequest, getClientIp } from "@/lib/rate-
 import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { logBlockedBot, logRateLimit } from "@/lib/api-logging";
 import type { RateLimitBackendResult } from "@/lib/api-rate-limit";
+import { getRedis } from "@/lib/redis";
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Obvious SEO / crawl bots only — do not match normal browsers. */
-const BAD_BOT_UA = /ahrefs|semrush|mj12bot/i;
+const BAD_BOT_UA = /amazonbot|semrush|ahrefs|mj12bot/i;
 
 const PUBLIC_PATHS = [
   "/manifest.webmanifest",
   "/favicon.ico",
   "/robots.txt",
+];
+
+const TRUSTED_BOTS = [
+  /googlebot/i,
+  /google-inspectiontool/i,
+  /adsbot-google/i,
+  /googleother/i,
+  /bingbot/i,
+  /duckduckbot/i,
 ];
 
 const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
@@ -25,6 +35,13 @@ const API_SKIP_CROSS_SITE_GUARD_PREFIXES: string[] = [
   "/api/typesense/search/sync",
   "/api/typesense/search/delete",
 ];
+
+const IP_WHITELIST = new Set(
+  (process.env.IP_WHITELIST || "")
+    .split(",")
+    .map((ip) => ip.trim())
+    .filter(Boolean)
+);
 
 /** Hard cap per identity for all `/api/*` traffic (60s window). */
 const GLOBAL_RATE_PER_MINUTE = 100;
@@ -77,6 +94,7 @@ function rejectBlockedBot(req: NextRequest): NextResponse | null {
   return NextResponse.json({ error: "Bot traffic not allowed" }, { status: 403 });
 }
 
+/** GET search proxy only — excluded from api-standard + global caps. Sync/delete stay limited. */
 function isTypesenseSearchReadPath(path: string): boolean {
   if (!path.startsWith("/api/typesense/search")) return false;
   if (path.startsWith("/api/typesense/search/sync")) return false;
@@ -139,15 +157,6 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
     }
   }
 
-  if (isTypesenseSearchReadPath(path)) {
-    const r = await checkRateLimitSafe(id, "typesense-search", 60, 60);
-    if (r.ok === false) {
-      console.warn("Rate limit exceeded", { bucket: "typesense-search", id: fp });
-      logRateLimit(id, "typesense-search", fp);
-      return nextRateLimitResponse(r);
-    }
-  }
-
   if (path.startsWith("/api/cart")) {
     const r = await checkRateLimitSafe(id, "cart", 120, 60);
     if (r.ok === false) {
@@ -155,7 +164,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
     }
   }
 
-  if (path.startsWith("/api/")) {
+  if (path.startsWith("/api/") && !isTypesenseSearchReadPath(path)) {
     const r = await checkRateLimitSafe(id, "api-standard", API_STANDARD_RATE_PER_MINUTE, 60);
     if (r.ok === false) {
       if (path.startsWith("/api/cart")) {
@@ -174,6 +183,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
 async function applyGlobalApiRateLimit(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/checkout")) return null;
+  if (isTypesenseSearchReadPath(path)) return null;
 
   const fp = fingerprintRequest(req);
   const id = await getRateLimitIdentity(req);
