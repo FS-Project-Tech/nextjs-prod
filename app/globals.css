@@ -1007,7 +1007,7 @@ main{background-color: #fff;}
 @media (max-width: 1023px) {
 
   /* Target all Tawk iframes */
-  iframe[src*="tawk.to"] {
+  #k51pjj3pvc741776770791730 iframe {
     position: fixed !important;
     bottom: 160px !important;   /* move above bottom nav + cart */
     right: 95px !important;     /* avoid cart overlap */
