@@ -409,6 +409,7 @@ export default function NDISWizard() {
 
   const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError("");
     if (!name.trim()) {
       setError("Please enter your name.");
@@ -625,7 +626,7 @@ export default function NDISWizard() {
                       {file ? file.name : "No file chosen"}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-500">Upload Here Your BA/SA Updated File</p>
+                  {/* <p className="text-sm text-gray-500">Upload Here Your BA/SA Updated File</p> */}
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <div className="flex flex-wrap items-center gap-3">

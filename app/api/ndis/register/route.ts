@@ -255,7 +255,7 @@ function logNdisMailDelivery(
   channel: "brevo" | "wp",
   meta?: Record<string, unknown>
 ) {
-  if (process.env.NODE_ENV !== "development") return;
+  if (process.env.NODE_ENV !== "production") return;
   const labels = {
     brevo: "[NDIS mail] Brevo work — admin + customer emails sent via Brevo API",
     wp: "[NDIS mail] WP work — admin + customer emails sent via WordPress send-email endpoint",
@@ -268,9 +268,22 @@ function logNdisMailDelivery(
  * Sends NDIS registration details to admin and acknowledgement to customer.
  */
 export async function POST(req: NextRequest) {
+  const rateLimitWindowMs = Number(
+    process.env.NDIS_RATE_LIMIT_WINDOW_MS || 60 * 60 * 1000
+  );
+  const rateLimitMax = Number(
+    process.env.NDIS_RATE_LIMIT_MAX ||
+      (process.env.NODE_ENV === "production" ? 25 : 100)
+  );
+  const rateLimitSoftFail =
+    process.env.NODE_ENV !== "production" &&
+    process.env.NDIS_RATE_LIMIT_SOFT_FAIL === "1";
+
   const rateLimitCheck = await rateLimit({
-    windowMs: 60 * 60 * 1000,
-    maxRequests: 10,
+    windowMs: Number.isFinite(rateLimitWindowMs) ? rateLimitWindowMs : 60 * 60 * 1000,
+    maxRequests: Number.isFinite(rateLimitMax) ? rateLimitMax : 25,
+    routeKey: "ndis-register",
+    softFail: rateLimitSoftFail,
   })(req);
 
   if (rateLimitCheck) return rateLimitCheck;
@@ -389,7 +402,7 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
           isBrevoUnauthorizedIpError(customerBrevo.status, customerBrevo.detail);
 
         if (adminIpBlocked && customerIpBlocked) {
-          if (process.env.NODE_ENV === "development") {
+          if (process.env.NODE_ENV === "production") {
             console.warn(
               "[NDIS] Brevo skipped (authorised IP restriction). Trying WordPress mail fallback."
             );
@@ -462,12 +475,12 @@ ${process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies"}
     return secureResponse(
       {
         error: "Email delivery failed. Please contact support.",
-        ...(process.env.NODE_ENV === "development" && lastError ? { detail: lastError } : {}),
+        ...(process.env.NODE_ENV === "production" && lastError ? { detail: lastError } : {}),
       },
       { status: 502 }
     );
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
+    if (process.env.NODE_ENV === "production") {
       console.error("ndis register error:", error);
     }
     return secureResponse(

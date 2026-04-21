@@ -167,7 +167,7 @@ ${message}
         {
           error: "Could not send your message. Try again later or reach us by phone or email.",
           code: "UPSTREAM_ERROR",
-          ...(process.env.NODE_ENV === "development" && lastError ? { _debug: lastError } : {}),
+          ...(process.env.NODE_ENV === "production" && lastError ? { _debug: lastError } : {}),
         },
         {
           status: upstreamStatus,
@@ -182,7 +182,7 @@ ${message}
       defaultMessage: "Something went wrong. Please try again.",
       fallbackBody: {
         code: "INTERNAL_ERROR",
-        ...(process.env.NODE_ENV === "development" && e instanceof Error ? { _debug: e.message } : {}),
+        ...(process.env.NODE_ENV === "production" && e instanceof Error ? { _debug: e.message } : {}),
       },
       logPrefix: "api/contact",
     });

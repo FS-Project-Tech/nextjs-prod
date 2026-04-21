@@ -158,7 +158,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   }
 
   if (isContactPath(path)) {
-    const r = await checkRateLimitSafe(id, "contact", 5, 60);
+    const r = await checkRateLimitSafe(id, "contact", 25, 60);
     if (r.ok === false) {
       console.warn("Rate limit exceeded", { bucket: "contact", id: fp });
       logRateLimit(id, "contact", fp);
