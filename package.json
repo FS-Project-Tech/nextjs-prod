@@ -85,6 +85,7 @@
     "@types/google.maps": "^3.58.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.19.37",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",

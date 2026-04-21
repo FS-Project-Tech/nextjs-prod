@@ -181,7 +181,7 @@ export default function ContactUsForm({ variant = "light" }: ContactUsFormProps)
  
           {status === "ok" && (
             <p className={okMsg} role="status">
-              Thanks — we&apos;ll get back to you soon.
+              Thank you for the contact. We will get back to you soon.
             </p>
           )}
           {status === "err" && errMsg && (
