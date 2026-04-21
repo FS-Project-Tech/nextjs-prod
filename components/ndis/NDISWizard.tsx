@@ -131,7 +131,7 @@ export default function NDISWizard() {
               For Agency Manage / Plan Manage Participant
             </p>
             <a
-              href="https://joyamedicalsupplies.com.au/wp-content/uploads/2024/11/NDIS-Service-Agreement-Editable.pdf"
+              href="/ndisform/NDIS-Service-Agreement-Editable-form.docx"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-medium underline mb-6 block"
