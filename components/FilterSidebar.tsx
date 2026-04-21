@@ -23,6 +23,18 @@ interface Brand {
   count?: number;
 }
 
+type SidebarCategoryRow =
+  | { kind: "heading"; label: string }
+  /** Parent category bar + list (siblings under parent, or children under current root). */
+  | { kind: "focusedBranch"; parent: Category; items: Category[] }
+  | {
+      kind: "cat";
+      cat: Category;
+      level: number;
+      /** When true, root row shows ▸/▾ and lists direct children when expanded (All categories section). */
+      accordionToggle?: boolean;
+    };
+
 interface Props {
   categorySlug?: string;
   /** When set (e.g. /brands/3m), sidebar lists only categories that contain this brand's products */
@@ -425,32 +437,63 @@ export default function FilterSidebar({
   }, [categoryBrands, mobileBrandSearch]);
 
   const visibleCategoryRows = useMemo(() => {
-    if (showAllCategories) return [] as Array<{ cat: Category; level: number }>;
+    if (showAllCategories) return [] as SidebarCategoryRow[];
     if (!activeCategory || !categoriesBySlug[activeCategory]) {
       return rootCategorySlugs
         .map((slug) => categoriesBySlug[slug])
         .filter(Boolean)
-        .map((cat) => ({ cat, level: 0 }));
+        .map((cat) => ({ kind: "cat" as const, cat, level: 0, accordionToggle: true }));
     }
 
-    const rows: Array<{ cat: Category; level: number }> = [];
-    const pushUnique = (cat?: Category, level = 0) => {
+    const rows: SidebarCategoryRow[] = [];
+    const shownSlugs = new Set<string>();
+
+    const pushHeading = (label: string) => {
+      rows.push({ kind: "heading", label });
+    };
+
+    const pushCat = (cat: Category | undefined, level: number, accordionToggle?: boolean) => {
       if (!cat) return;
-      if (rows.some((r) => r.cat.slug === cat.slug)) return;
-      rows.push({ cat, level });
+      if (shownSlugs.has(cat.slug)) return;
+      shownSlugs.add(cat.slug);
+      rows.push({ kind: "cat", cat, level, ...(accordionToggle ? { accordionToggle: true } : {}) });
     };
 
     const parentSlug = parentBySlug[activeCategory];
     const current = categoriesBySlug[activeCategory];
     const children = childrenBySlug[activeCategory] || [];
 
+    const sortByName = (a: Category, b: Category) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+    const rootsSorted = [...rootCategorySlugs]
+      .map((slug) => categoriesBySlug[slug])
+      .filter(Boolean) as Category[];
+    rootsSorted.sort(sortByName);
+
     if (parentSlug) {
-      pushUnique(categoriesBySlug[parentSlug], 0);
-      pushUnique(current, 1);
-      children.forEach((c) => pushUnique(c, 2));
+      const parentCat = categoriesBySlug[parentSlug];
+      const siblings = (childrenBySlug[parentSlug] || []).slice().sort(sortByName);
+      if (parentCat) {
+        rows.push({ kind: "focusedBranch", parent: parentCat, items: siblings });
+        shownSlugs.add(parentCat.slug);
+        siblings.forEach((s) => shownSlugs.add(s.slug));
+      }
+
+      pushHeading("All categories");
+      for (const root of rootsSorted) {
+        if (!shownSlugs.has(root.slug)) pushCat(root, 0, true);
+      }
     } else {
-      pushUnique(current, 0);
-      children.forEach((c) => pushUnique(c, 1));
+      const sortedChildren = children.slice().sort(sortByName);
+      rows.push({ kind: "focusedBranch", parent: current, items: sortedChildren });
+      shownSlugs.add(current.slug);
+      sortedChildren.forEach((c) => shownSlugs.add(c.slug));
+
+      pushHeading("All categories");
+      for (const root of rootsSorted) {
+        if (!shownSlugs.has(root.slug)) pushCat(root, 0, true);
+      }
     }
 
     return rows;
@@ -804,13 +847,15 @@ export default function FilterSidebar({
     return { lo, hi, minN, maxN };
   }, [priceBounds.min, priceBounds.max, priceMinDraft, priceMaxDraft]);
 
-  const toggleCategory = (slug: string) => {
+  /** Flip expanded state; when never toggled, `defaultWhenUnset` is the assumed open state (then first click closes). */
+  const toggleCategory = useCallback((slug: string, defaultWhenUnset: boolean) => {
     if (filtersLocked) return;
-    setExpandedCategories((prev) => ({
-      ...prev,
-      [slug]: !prev[slug],
-    }));
-  };
+    setExpandedCategories((prev) => {
+      const v = prev[slug];
+      const isOpen = v !== undefined ? v : defaultWhenUnset;
+      return { ...prev, [slug]: !isOpen };
+    });
+  }, [filtersLocked]);
 
   const clearFilters = useCallback(() => {
     if (filtersLocked) return;
@@ -861,7 +906,9 @@ export default function FilterSidebar({
     if (!category) return null;
     const children = childrenBySlug[slug] || [];
     const hasChildren = children.length > 0;
-    const isExpanded = expandedCategories[slug] || activeAncestors.has(slug);
+    const defaultWhenUnset = activeAncestors.has(slug);
+    const isExpanded =
+      expandedCategories[slug] !== undefined ? expandedCategories[slug]! : defaultWhenUnset;
     const isActive = activeCategory === slug;
 
     return (
@@ -870,7 +917,7 @@ export default function FilterSidebar({
           <button
             type="button"
             disabled={filtersLocked}
-            onClick={() => hasChildren && toggleCategory(slug)}
+            onClick={() => hasChildren && toggleCategory(slug, defaultWhenUnset)}
             className={`h-5 w-5 rounded text-xs ${hasChildren ? "text-gray-600 hover:bg-gray-100" : "text-transparent"} disabled:opacity-50`}
             aria-label={
               hasChildren ? (isExpanded ? "Collapse category" : "Expand category") : "No children"
@@ -983,22 +1030,159 @@ export default function FilterSidebar({
         ) : showAllCategories ? (
           rootCategorySlugs.map((slug) => renderTree(slug, 0))
         ) : (
-          visibleCategoryRows.map(({ cat, level }) => (
-            <button
-              key={cat.slug}
-              type="button"
-              disabled={filtersLocked}
-              onClick={() => handleCategorySelect(cat.slug)}
-              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                activeCategory === cat.slug
-                  ? "bg-teal-600 text-white font-semibold shadow-sm"
-                  : "text-gray-700 hover:bg-gray-100"
-              } disabled:opacity-50 disabled:pointer-events-none`}
-              style={{ marginLeft: `${level * 10}px` }}
-            >
-              <span className="truncate">{cat.name}</span>
-            </button>
-          ))
+          visibleCategoryRows.map((row, idx) => {
+            if (row.kind === "heading") {
+              return (
+                <div
+                  key={`h-${row.label}-${idx}`}
+                  className={
+                    idx === 0
+                      ? "pt-0"
+                      : "mt-2 border-t border-gray-100 pt-3"
+                  }
+                >
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    {row.label}
+                  </p>
+                </div>
+              );
+            }
+
+            if (row.kind === "focusedBranch") {
+              const { parent, items } = row;
+              const hasItems = items.length > 0;
+              const defaultOpen = true;
+              const isExpanded =
+                expandedCategories[parent.slug] !== undefined
+                  ? expandedCategories[parent.slug]!
+                  : defaultOpen;
+
+              return (
+                <div key={`focused-${parent.slug}`} className="space-y-1">
+                  <div className="flex min-h-[2.5rem] items-stretch overflow-hidden rounded-lg bg-teal-600 shadow-sm">
+                    <button
+                      type="button"
+                      disabled={filtersLocked}
+                      onClick={() => handleCategorySelect(parent.slug)}
+                      className="flex min-w-0 flex-1 items-center px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      <span className="truncate">{parent.name}</span>
+                    </button>
+                    {hasItems ? (
+                      <button
+                        type="button"
+                        disabled={filtersLocked}
+                        onClick={() => toggleCategory(parent.slug, true)}
+                        className="flex w-11 shrink-0 items-center justify-center border-l border-teal-500/60 text-base leading-none text-white hover:bg-teal-700 disabled:opacity-50"
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? "Hide subcategories" : "Show subcategories"}
+                      >
+                        {isExpanded ? "▾" : "▸"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {hasItems && isExpanded ? (
+                    <div className="space-y-1 pl-0.5">
+                      {items.map((item) => (
+                        <button
+                          key={item.slug}
+                          type="button"
+                          disabled={filtersLocked}
+                          onClick={() => handleCategorySelect(item.slug)}
+                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                            activeCategory === item.slug
+                              ? "bg-teal-600 text-white font-semibold shadow-sm"
+                              : "text-gray-700 hover:bg-gray-100"
+                          } disabled:opacity-50 disabled:pointer-events-none`}
+                        >
+                          <span className="truncate">{item.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
+            const kids = (childrenBySlug[row.cat.slug] || []).slice().sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+            );
+            const hasKids = kids.length > 0;
+            const useAccordion = Boolean(row.accordionToggle && hasKids);
+            const accordionDefaultOpen = activeAncestors.has(row.cat.slug);
+            const isExpanded =
+              expandedCategories[row.cat.slug] !== undefined
+                ? expandedCategories[row.cat.slug]!
+                : accordionDefaultOpen;
+            const isActive = activeCategory === row.cat.slug;
+
+            if (useAccordion) {
+              return (
+                <div key={row.cat.slug} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={filtersLocked}
+                      onClick={() => toggleCategory(row.cat.slug, accordionDefaultOpen)}
+                      className="h-5 w-5 shrink-0 rounded text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                      aria-label={isExpanded ? "Collapse subcategories" : "Expand subcategories"}
+                    >
+                      {isExpanded ? "▾" : "▸"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={filtersLocked}
+                      onClick={() => handleCategorySelect(row.cat.slug)}
+                      className={`flex min-w-0 flex-1 items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                        isActive
+                          ? "bg-teal-600 text-white font-semibold shadow-sm"
+                          : "text-gray-700 hover:bg-gray-100"
+                      } disabled:opacity-50 disabled:pointer-events-none`}
+                      style={{ marginLeft: `${row.level * 10}px` }}
+                    >
+                      <span className="truncate">{row.cat.name}</span>
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    <div className="space-y-1 pl-7">
+                      {kids.map((child) => (
+                        <button
+                          key={child.slug}
+                          type="button"
+                          disabled={filtersLocked}
+                          onClick={() => handleCategorySelect(child.slug)}
+                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                            activeCategory === child.slug
+                              ? "bg-teal-600 text-white font-semibold shadow-sm"
+                              : "text-gray-700 hover:bg-gray-100"
+                          } disabled:opacity-50 disabled:pointer-events-none`}
+                        >
+                          <span className="truncate">{child.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={row.cat.slug}
+                type="button"
+                disabled={filtersLocked}
+                onClick={() => handleCategorySelect(row.cat.slug)}
+                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                  activeCategory === row.cat.slug
+                    ? "bg-teal-600 text-white font-semibold shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
+                } disabled:opacity-50 disabled:pointer-events-none`}
+                style={{ marginLeft: `${row.level * 10}px` }}
+              >
+                <span className="truncate">{row.cat.name}</span>
+              </button>
+            );
+          })
         )}
       </div>
     </div>

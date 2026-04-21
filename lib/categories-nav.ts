@@ -1,5 +1,9 @@
 import { unstable_cache } from "next/cache";
-import { getUnifiedCategories, type UnifiedCategory } from "@/lib/categories-unified";
+import {
+  getUnifiedCategories,
+  getRootCategoriesNonEmpty,
+  type UnifiedCategory,
+} from "@/lib/categories-unified";
 import { CACHE_TAGS } from "@/lib/cache";
 
 const NAV_PARENT_SLUGS = ["continence-care", "woundcare", "urinary-care", "skincare", "nutrition"];
@@ -16,7 +20,7 @@ async function getCategoriesForNavUncached(): Promise<{
   const parentCategories =
     preferredParents.length > 0
       ? preferredParents
-      : payload.roots.filter((cat) => cat.count > 0).slice(0, 8);
+      : getRootCategoriesNonEmpty(payload).slice(0, 8);
 
   const parentIds = parentCategories.map((cat) => cat.id);
 
@@ -42,7 +46,7 @@ async function getCategoriesForNavUncached(): Promise<{
   };
 }
 
-const getCategoriesForNavCached = unstable_cache(getCategoriesForNavUncached, ["categories-for-nav-v1"], {
+const getCategoriesForNavCached = unstable_cache(getCategoriesForNavUncached, ["categories-for-nav-v2"], {
   revalidate: 300,
   tags: [CACHE_TAGS.CATEGORIES],
 });

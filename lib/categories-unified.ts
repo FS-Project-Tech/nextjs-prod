@@ -1,8 +1,8 @@
 import { fetchCategories, type WooCommerceCategory } from "@/lib/woocommerce";
 import { cached, CACHE_TTL, CACHE_TAGS } from "@/lib/cache";
 
-/** Single WooCommerce query: full category list (all pages, include empty). */
-const UNIFIED_CACHE_KEY = "categories:unified:v1";
+/** WooCommerce fetch is full tree; {@link filterCategoryTreeWithProducts} strips empty branches. */
+const UNIFIED_CACHE_KEY = "categories:unified:v2";
 
 export interface UnifiedCategory {
   id: number;
@@ -41,10 +41,35 @@ function byName(a: UnifiedCategory, b: UnifiedCategory) {
   return a.name.localeCompare(b.name);
 }
 
+/**
+ * Drop categories with no products, but keep ancestor folders so navigation still works.
+ */
+function filterCategoryTreeWithProducts(flat: WooCommerceCategory[]): WooCommerceCategory[] {
+  const byId = new Map(flat.map((c) => [c.id, c]));
+  const withProducts = flat.filter((c) => (c.count ?? 0) > 0);
+  const keepIds = new Set<number>();
+
+  for (const cat of withProducts) {
+    keepIds.add(cat.id);
+    let pid =
+      typeof cat.parent === "number" ? cat.parent : Number(cat.parent) || 0;
+    while (pid > 0) {
+      keepIds.add(pid);
+      const p = byId.get(pid);
+      if (!p) break;
+      pid =
+        typeof p.parent === "number" ? p.parent : Number(p.parent) || 0;
+    }
+  }
+
+  return flat.filter((c) => keepIds.has(c.id));
+}
+
 export function buildUnifiedCategoriesPayload(
   flat: WooCommerceCategory[]
 ): UnifiedCategoriesPayload {
-  const categories = flat.map((c) =>
+  const pruned = filterCategoryTreeWithProducts(flat);
+  const categories = pruned.map((c) =>
     normalizeCategory(c as WooCommerceCategory & { image?: { src?: string; alt?: string } })
   );
 
@@ -94,11 +119,22 @@ export function getChildrenForParent(
 ): UnifiedCategory[] {
   const list = payload.childrenByParentId[String(parentId)] || [];
   if (options.hideEmpty === false) return list;
-  return list.filter((c) => c.count > 0);
+  /** IDs that have at least one child in the pruned tree (folder nodes may have count 0). */
+  const parentIdsInTree = new Set(
+    payload.categories
+      .filter((c) => c.parent && c.parent > 0)
+      .map((c) => c.parent)
+  );
+  return list.filter((c) => c.count > 0 || parentIdsInTree.has(c.id));
 }
 
 export function getRootCategoriesNonEmpty(payload: UnifiedCategoriesPayload): UnifiedCategory[] {
-  return payload.roots.filter((c) => c.count > 0);
+  const parentIdsInTree = new Set(
+    payload.categories
+      .filter((c) => c.parent && c.parent > 0)
+      .map((c) => c.parent)
+  );
+  return payload.roots.filter((r) => r.count > 0 || parentIdsInTree.has(r.id));
 }
 
 export function findCategoryBySlug(

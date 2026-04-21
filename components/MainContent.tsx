@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 
-const CONTAINER_CLASS = "container mx-auto px-3 sm:px-4 md:px-5 lg:px-0";
+const CONTAINER_CLASS = "mx-auto px-3 sm:px-4 md:px-5 lg:px-0";
 
 /**
  * Wraps page content: container for most routes. Home (`/`) and `/ndis` are full-width so heroes

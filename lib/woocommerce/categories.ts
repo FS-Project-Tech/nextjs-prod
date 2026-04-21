@@ -3,8 +3,33 @@ import {
   getAxiosErrorDetails,
   isTimeoutError,
 } from "@/lib/utils/errors";
+import { decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import type { WooCommerceCategory } from "./types";
 import { wcGet } from "./wc-fetch";
+
+/** WooCommerce stores HTML entities in plain fields (e.g. &amp; → show as &) */
+function sanitizeCategory(cat: WooCommerceCategory): WooCommerceCategory {
+  const image =
+    cat.image?.src ?
+      {
+        src: cat.image.src,
+        alt:
+          cat.image.alt !== undefined && cat.image.alt !== null ?
+            decodeHTMLEntities(String(cat.image.alt))
+          : undefined,
+      }
+    : cat.image;
+
+  return {
+    ...cat,
+    name: decodeHTMLEntities(String(cat.name ?? "")),
+    description:
+      cat.description !== undefined && cat.description !== null ?
+        decodeHTMLEntities(String(cat.description))
+      : cat.description,
+    ...(image !== undefined ? { image } : {}),
+  };
+}
 
 export const fetchCategories = async (params?: {
   per_page?: number;
@@ -37,7 +62,7 @@ export const fetchCategories = async (params?: {
       }
     }
 
-    return all;
+    return all.map(sanitizeCategory);
   } catch (error: unknown) {
     if (process.env.NODE_ENV === "development" && hasAxiosResponse(error)) {
       const details = getAxiosErrorDetails(error);
@@ -58,7 +83,7 @@ export const fetchCategoryBySlug = async (slug: string): Promise<WooCommerceCate
       { slug },
       "categories",
     );
-    return categories.length ? categories[0] : null;
+    return categories.length ? sanitizeCategory(categories[0]) : null;
   } catch (error: unknown) {
     const isTimeout =
       isTimeoutError(error) ||
