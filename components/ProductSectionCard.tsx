@@ -46,7 +46,7 @@ export default function ProductSectionCard({
   return (
     <section className={`mb-10 ${className}`}>
       <Container>
-        <div className={`rounded-xl px-0 py-6`}>
+        <div className={`rounded-xl px-2 py-6 sm:px-0`}>
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">{title}</h2>

@@ -14,7 +14,7 @@ export default function NewsletterSection() {
             <p className="text-white/80 mb-6 text-lg max-w-md">
               Subscribe to our Newsletter and never miss an update!
             </p>
-            <div className="relative h-64 md:h-full w-full">
+            <div className="relative w-full md:h-full">
               <SubscribeForm />
             </div>
           </div>
