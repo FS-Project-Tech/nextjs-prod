@@ -123,7 +123,7 @@ export default async function RootLayout({
           <CoreProviders>
             <CommerceProviders>
               <div className="app-shell">
-                <div className="sticky top-0 z-50 bg-white shadow-sm">
+                <div className="relative z-40 bg-white shadow-sm md:sticky md:top-0 md:z-50">
                   <Header initialCms={headerCms} />
                   <Suspense fallback={<CategoriesNavSkeleton />}>
                     <CategoriesNav />
