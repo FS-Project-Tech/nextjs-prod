@@ -24,18 +24,28 @@ export default function TawkToWidget() {
               typeof window.matchMedia !== "undefined" &&
               window.matchMedia("(max-width: 1023px)").matches;
 
-            if (!isMobile) return;
-
             // 🔥 IMPORTANT: target correct iframe
             const iframe =
               document.querySelector('iframe[title="chat widget"]') ||
               document.querySelector('iframe[src*="tawk"]');
 
-            if (iframe) {
-              iframe.style.setProperty("bottom", "120px", "important");
-              iframe.style.setProperty("right", "20px", "important");
-              iframe.style.setProperty("z-index", "2147483647", "important");
+            if (!iframe) return;
+
+            if (!isMobile) {
+              // Reset overrides on larger screens
+              iframe.style.removeProperty("bottom");
+              iframe.style.removeProperty("right");
+              return;
             }
+
+            // Keep chat above mobile bottom nav/cart + iOS safe area
+            iframe.style.setProperty(
+              "bottom",
+              "calc(env(safe-area-inset-bottom, 0px) + 128px)",
+              "important"
+            );
+            iframe.style.setProperty("right", "14px", "important");
+            iframe.style.setProperty("z-index", "2147483647", "important");
           }
 
           // Run multiple times (critical)
