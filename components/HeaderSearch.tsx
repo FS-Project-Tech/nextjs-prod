@@ -452,6 +452,7 @@ export default function HeaderSearch() {
             per_page: 10,
             facet_by: "category,brand",
             sort_by: "_text_match:desc",
+            split_join_tokens: "always",
           });
 
         if (searchGenerationRef.current !== gen) return;
@@ -605,15 +606,15 @@ export default function HeaderSearch() {
           id={panelId}
           role="region"
           aria-label="Search suggestions"
-          className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(24rem,70vh)] w-full overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
+          className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(40rem,85vh)] w-full overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
         >
           {categories.length > 0 && (
-            <div className="border-b border-gray-100 px-3 py-3">
-              <p className="mb-2 text-sm font-semibold text-gray-800">Categories</p>
+            <div className="border-b border-gray-100 px-3 py-2">
+              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Categories</p>
               <div
                 role="group"
                 aria-label="Matching categories"
-                className="-mx-1 flex flex-wrap gap-2 px-1 pb-1"
+                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
               >
                 {categories.map((cat: { value: string; count: number }) => (
                   <button
@@ -627,7 +628,7 @@ export default function HeaderSearch() {
                         `/search?category=${encodeURIComponent(cat.value)}`
                       );
                     }}
-                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600"
+                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
                   >
                     <span className="whitespace-nowrap">{categoryLabel(cat.value)}</span>
                     <span className="ml-1 tabular-nums text-gray-600">({cat.count})</span>
@@ -638,12 +639,12 @@ export default function HeaderSearch() {
           )}
 
           {brands.length > 0 && (
-            <div className="border-b border-gray-100 px-3 py-3">
-              <p className="mb-2 text-sm font-semibold text-gray-800">Brands</p>
+            <div className="border-b border-gray-100 px-3 py-2">
+              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Brands</p>
               <div
                 role="group"
                 aria-label="Matching brands"
-                className="-mx-1 flex flex-wrap gap-2 px-1 pb-1"
+                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
               >
                 {brands.map((brand: { value: string; count: number }) => (
                   <button
@@ -657,7 +658,7 @@ export default function HeaderSearch() {
                         `/search?q=${encodeURIComponent(query)}&brand=${encodeURIComponent(brand.value)}`
                       );
                     }}
-                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600"
+                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
                   >
                     <span className="whitespace-nowrap">{prettyFacetValue(brand.value)}</span>
                     <span className="ml-1 tabular-nums text-gray-600">({brand.count})</span>

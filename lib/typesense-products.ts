@@ -7,14 +7,13 @@
  * - TYPESENSE_FACET_BY — comma-separated facet fields (default: brand + category fields above)
  * - TYPESENSE_FIELD_ON_SALE — if unset/empty, `on_sale=true` branch is skipped (no field in schema)
  * - TYPESENSE_FIELD_SALE_PRICE — optional; default `sale_price`. Clearance uses `(on_sale:true || sale_price>0)` when both exist.
- * - TYPESENSE_FIELD_POPULARITY / RATING — if unset, sort falls back to `price:desc`
- * - TYPESENSE_FIELD_DATE_CREATED — defaults to `updated_at` (see `scripts/create-collection.js` int64 field)
+ * - TYPESENSE_FIELD_POPULARITY / DATE_CREATED / RATING — if unset, sort falls back to `price:desc`
  * - TYPESENSE_QUERY_BY — comma-separated fields for full-text search (default below)
  */
 
 /** Default `query_by` when `TYPESENSE_QUERY_BY` is unset; keep in sync with `HeaderSearch`. */
 export const TYPESENSE_DEFAULT_QUERY_BY =
-  "name,description,sku,category,brand,tags";
+  "name,sku,category,brand,tags";
 
 export const TS_FIELDS = {
   categorySlug: process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
@@ -26,8 +25,7 @@ export const TS_FIELDS = {
   salePrice: (process.env.TYPESENSE_FIELD_SALE_PRICE ?? "sale_price").trim(),
   /** Empty = popularity sort uses price fallback. */
   popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "").trim(),
-  /** Defaults to `updated_at` so "newest" sort matches the standard collection schema. Set to "" only to disable. */
-  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "updated_at").trim(),
+  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "").trim(),
   rating: (process.env.TYPESENSE_FIELD_RATING ?? "").trim(),
 } as const;
 

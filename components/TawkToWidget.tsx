@@ -15,57 +15,43 @@ export default function TawkToWidget() {
   return (
     <Script id="tawk-to" strategy="lazyOnload">
       {`
-  var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+        var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
 
-  Tawk_API.onLoad = function () {
-    try {
-      function applyMobileFix() {
-        var isMobile =
-          typeof window.matchMedia !== "undefined" &&
-          window.matchMedia("(max-width: 1023px)").matches;
+        Tawk_API.onLoad = function () {
+        try {
+          function moveWidget() {
+            const isMobile =
+              typeof window.matchMedia !== "undefined" &&
+              window.matchMedia("(max-width: 1023px)").matches;
 
-        if (!isMobile) return;
+            if (!isMobile) return;
 
-        // 1️⃣ Tawk API positioning (fallback)
-        if (typeof Tawk_API.setWidgetStyle === "function") {
-          Tawk_API.setWidgetStyle({
-            verticalOffset: 150,
-            horizontalOffset: 90,
-            zIndex: 2147483646,
-          });
-        }
+            // 🔥 IMPORTANT: target correct iframe
+            const iframe =
+              document.querySelector('iframe[title="chat widget"]') ||
+              document.querySelector('iframe[src*="tawk"]');
 
-        // 2️⃣ Inject CSS dynamically (NO global.css needed)
-        if (!document.getElementById("tawk-mobile-fix")) {
-          var style = document.createElement("style");
-          style.id = "tawk-mobile-fix";
-          style.innerHTML = \`
-            @media (max-width: 1023px) {
-              iframe[src*="tawk.to"] {
-                bottom: 150px !important;
-                right: 90px !important;
-              }
+            if (iframe) {
+              iframe.style.setProperty("bottom", "120px", "important");
+              iframe.style.setProperty("right", "20px", "important");
+              iframe.style.setProperty("z-index", "2147483647", "important");
             }
-          \`;
-          document.head.appendChild(style);
+          }
+
+          // Run multiple times (critical)
+          moveWidget();
+          const interval = setInterval(moveWidget, 500);
+
+          // Stop after few seconds (performance safe)
+          setTimeout(() => clearInterval(interval), 6000);
+
+          // Re-run on resize
+          window.addEventListener("resize", moveWidget);
+
+        } catch (e) {
+          console.error("Tawk fix error:", e);
         }
-      }
-
-      // Run multiple times (important for async iframe)
-      applyMobileFix();
-      setTimeout(applyMobileFix, 500);
-      setTimeout(applyMobileFix, 1500);
-      setTimeout(applyMobileFix, 3000);
-
-      // Re-apply on screen change
-      if (typeof window.matchMedia !== "undefined") {
-        window
-          .matchMedia("(max-width: 1023px)")
-          .addEventListener("change", applyMobileFix);
-      }
-
-    } catch (e) {}
-  };
+      };
 
   (function(){
     var s1=document.createElement("script"),

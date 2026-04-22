@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import ProductGrid from "@/components/ProductGrid";
@@ -9,7 +9,6 @@ import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton"
 import Container from "@/components/Container";
 import ShopListingLayout from "@/components/ShopListingLayout";
 import ListingMobileSortFilter from "@/components/ListingMobileSortFilter";
-import { Suspense } from "react";
 import { createSafeHTML } from "@/lib/xss-sanitizer";
 
 const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
@@ -28,10 +27,14 @@ export default function BrandPageClient({
 }) {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
+  useEffect(() => {
+    setIsDescriptionExpanded(false);
+  }, [brandSlug]);
+
   return (
     <ShopListingLayout>
-      <div className="min-h-screen py-4">
-        <Container>
+      <div className="min-h-screen py-4" suppressHydrationWarning>
+        <Container suppressHydrationWarning>
           <Breadcrumbs
             items={[
               { label: "Home", href: "/" },
@@ -41,25 +44,25 @@ export default function BrandPageClient({
             ]}
           />
 
-          <ListingMobileSortFilter brandSlug={brandSlug} />
+          <div className="flex flex-col lg:flex-row gap-6" suppressHydrationWarning>
+            <ListingMobileSortFilter brandSlug={brandSlug} />
 
-          <div className="flex flex-col lg:flex-row gap-6">
-            <aside className="hidden lg:block lg:w-64 flex-shrink-0">
-              <div className="sticky top-24">
-                <FilterSidebar brandSlug={brandSlug} />
-              </div>
+            <aside className="hidden lg:block lg:w-64 flex-shrink-0" suppressHydrationWarning>
+              <FilterSidebar brandSlug={brandSlug} />
             </aside>
-            <div className="flex-1 min-w-0">
-              <div className="mt-2 mb-8 w-full">
-                <h1 className="text-3xl font-bold text-gray-900">{brandName}</h1>
+
+            <div className="flex-1 min-w-0" suppressHydrationWarning>
+              <div className="mb-6" suppressHydrationWarning>
+                <h1 className="text-2xl font-semibold text-gray-900">{brandName}</h1>
                 {brandDescription && (
                   <div className="mt-3">
                     <div
                       className={`w-full text-sm leading-relaxed text-gray-600 ${
                         isDescriptionExpanded ? "" : "line-clamp-4"
                       }`}
-                      dangerouslySetInnerHTML={createSafeHTML(brandDescription)}
-                    />
+                    >
+                      <div dangerouslySetInnerHTML={createSafeHTML(brandDescription)} />
+                    </div>
                     <button
                       type="button"
                       onClick={() => setIsDescriptionExpanded((prev) => !prev)}
