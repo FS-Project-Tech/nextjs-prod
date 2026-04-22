@@ -19,12 +19,12 @@ export default function TawkToWidget() {
             desktop: {
               position: "br",
               xOffset: 20,
-              yOffset: 20
+              yOffset: 0
             },
             mobile: {
               position: "br",
               xOffset: 12,
-              yOffset: 150 // 👈 adjust for your bottom cart/navbar
+              yOffset: 80 // 👈 adjust for your bottom cart/navbar
             }
           }
         };
