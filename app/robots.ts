@@ -1,35 +1,80 @@
-/**
- * Dynamic Robots.txt Generation
- * Controls search engine crawling
- */
+//D:\stage-joya\nextjs-stage\app\robots.ts
+
 
 import { MetadataRoute } from "next";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://joyamedicalsupplies.com.au";
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
+        crawlDelay: 30,
         allow: "/",
         disallow: [
+          "/wp-admin/",
           "/api/",
-          "/dashboard/",
-          "/checkout/",
           "/cart/",
-          "/account/",
-          "/admin/",
+          "/checkout/",
+          "/login/",
+          "/register",
+          "/forgot/",
+          "/*.pdf",
+          "/dashboard/",
+          "/search?q=*",
+          "/*?sortBy=*",
+          "/feed/",
+          "/blog?page=*",
+          "/blog?category=*",
+          "/product-category/*/*?brands=*",
+          "/shop?min_price=*&max_price=*",
+          "/shop?sortBy=*",
+          "/shop?brands=*",
+          "/brands/*?category=*",
+          "/brands/*?min_price=*&max_price=*",
+          "/brands/*?sortBy=*",
+          "/product-category/*/*?sortBy=*",
+          "/product-category/*?min_price=*&max_price=*",
+          "/clearance?category=*",
+          "/clearance?sortBy=*",
+          "/clearance?brands=*",
+          "/clearance?min_price=*&max_price=*",
+          "/wp-content/uploads/wp-import-export-lite/",
           "/_next/",
           "/private/",
         ],
       },
+
       {
-        userAgent: "Googlebot",
+        userAgent: "BLEXBot",
+        disallow: ["/?"],
+      },
+
+      {
+        userAgent: "MJ12Bot",
+        disallow: ["/"],
+      },
+
+      {
+        userAgent: "Storebot-Google",
         allow: "/",
-        disallow: ["/api/", "/dashboard/", "/checkout/", "/cart/", "/account/", "/admin/"],
+        disallow: ["/login/"],
+      },
+
+      {
+        userAgent: "AdsBot-Google-Mobile",
+        allow: "/",
+        disallow: ["/login/"],
+      },
+
+      {
+        userAgent: "AdsBot-Google",
+        allow: "/",
       },
     ],
+
     sitemap: `${siteUrl}/sitemap.xml`,
   };
 }

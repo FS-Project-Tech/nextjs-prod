@@ -1,24 +1,24 @@
 "use client";
-
+ 
 import dynamic from "next/dynamic";
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import SubcategoryDigitalCatalogue from "./SubcategoryDigitalCatalogue";
 import { generateCataloguePDF } from "@/lib/catalogue-pdf";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
-
+ 
 const HTMLFlipBook = dynamic(() => import("react-pageflip"), { ssr: false });
-
+ 
 type SubcategoryInfo = {
   id: number;
   slug: string;
   name: string;
 };
-
+ 
 type CategorySubcategoryBookProps = {
   parentName: string;
   subcategories: SubcategoryInfo[];
 };
-
+ 
 const Page = forwardRef<HTMLDivElement, { number: number; children: React.ReactNode }>(
   ({ number, children }, ref) => (
     <div
@@ -31,13 +31,13 @@ const Page = forwardRef<HTMLDivElement, { number: number; children: React.ReactN
   )
 );
 Page.displayName = "CategorySubcategoryBookPage";
-
+ 
 const BOOK_PAGE_WIDTH = 600;
 const COVER_HEIGHT = 560; // main category cover page – keep fixed
 const BOOK_SPREAD_HEIGHT = 760; // open book (spread) – taller so product table shows more rows
 const COVER_WIDTH = 300;
 const FLIP_DURATION_MS = 600;
-
+ 
 export default function CategorySubcategoryBook({
   parentName,
   subcategories,
@@ -47,7 +47,7 @@ export default function CategorySubcategoryBook({
   const [isFlippingOpen, setIsFlippingOpen] = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const bookRef = useRef<{ pageFlip: () => { flipNext: () => void; flipPrev: () => void } }>(null);
-
+ 
   const handleDownloadPdf = useCallback(async () => {
     setPdfDownloading(true);
     try {
@@ -67,7 +67,7 @@ export default function CategorySubcategoryBook({
       setPdfDownloading(false);
     }
   }, [parentName, subcategories]);
-
+ 
   if (!subcategories.length) {
     return (
       <div className="flex items-center justify-center min-h-[360px] bg-white rounded-xl shadow-sm">
@@ -75,13 +75,13 @@ export default function CategorySubcategoryBook({
       </div>
     );
   }
-
+ 
   const totalPages = subcategories.length * 2;
-
+ 
   const handleFlip = useCallback((e: { data: number }) => {
     setCurrentPage(e.data);
   }, []);
-
+ 
   const openWithFlip = useCallback(() => {
     setIsFlippingOpen(true);
     setTimeout(() => {
@@ -89,11 +89,11 @@ export default function CategorySubcategoryBook({
       setIsFlippingOpen(false);
     }, FLIP_DURATION_MS);
   }, []);
-
+ 
   const goNext = useCallback(() => {
     bookRef.current?.pageFlip?.()?.flipNext?.();
   }, []);
-
+ 
   const goPrev = useCallback(() => {
     if (currentPage === 0) {
       setBookOpen(false);
@@ -101,11 +101,22 @@ export default function CategorySubcategoryBook({
     }
     bookRef.current?.pageFlip?.()?.flipPrev?.();
   }, [currentPage]);
-
+ 
   const canGoNext = currentPage < totalPages - 1;
   const canGoPrev = true;
-  const activeTableSubcategoryIndex = Math.floor((currentPage - 1) / 2);
-
+ 
+  /**
+   * Each subcategory uses two flip pages: intro at 2*index, table at 2*index+1.
+   * react-pageflip's `currentPage` is 0 when the first spread (intro + table for sub 0) is visible.
+   * The old formula floor((currentPage - 1) / 2) is -1 on page 0, so nothing loaded until the user
+   * flipped away and back. Load whenever intro or table for this subcategory is in view.
+   */
+  const shouldLoadSubcategoryTable = useCallback((index: number) => {
+    const introIdx = index * 2;
+    const tableIdx = index * 2 + 1;
+    return currentPage >= introIdx && currentPage <= tableIdx;
+  }, [currentPage]);
+ 
   // First view: only the main category cover; open via arrow (no click on cover so product clicks work later)
   if (!bookOpen) {
     return (
@@ -156,7 +167,7 @@ export default function CategorySubcategoryBook({
       </div>
     );
   }
-
+ 
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex items-center justify-end gap-3 w-full max-w-[600px]">
@@ -235,7 +246,7 @@ export default function CategorySubcategoryBook({
                         subcategorySlug={sub.slug}
                         subcategoryName={sub.name}
                         parentName={parentName}
-                        shouldLoad={index === activeTableSubcategoryIndex}
+                        shouldLoad={shouldLoadSubcategoryTable(index)}
                       />
                     </div>
                   </div>
