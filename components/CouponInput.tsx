@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
+import { useState, FormEvent } from "react";
 import { useCoupon } from "./CouponProvider";
 import { useCart } from "./CartProvider";
 import { X, Tag, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { parseCartTotal } from "@/lib/cart/pricing";
-import { formatPrice } from "@/lib/format-utils";
 
 interface CouponInputProps {
   className?: string;
@@ -17,24 +16,9 @@ interface CouponInputProps {
 export default function CouponInput({ className = "", onApplied, onRemoved }: CouponInputProps) {
   const [code, setCode] = useState("");
   const { items, total } = useCart();
-  const {
-    appliedCoupon,
-    discount,
-    isLoading,
-    error,
-    applyCoupon,
-    removeCoupon,
-    calculateDiscount,
-  } = useCoupon();
+  const { appliedCoupon, isLoading, error, applyCoupon, removeCoupon } = useCoupon();
 
   const subtotal = parseCartTotal(total);
-
-  // Recalculate discount when items or total changes
-  useEffect(() => {
-    if (appliedCoupon && items.length > 0) {
-      calculateDiscount(items, subtotal);
-    }
-  }, [items, total, appliedCoupon, calculateDiscount, subtotal]);
 
   const handleSubmit = async (e?: FormEvent | React.MouseEvent | React.KeyboardEvent) => {
     if (e) {
@@ -47,9 +31,7 @@ export default function CouponInput({ className = "", onApplied, onRemoved }: Co
     const success = await applyCoupon(code.trim(), items, subtotal);
 
     if (success) {
-      // The hook will update the discount state, which will trigger re-render
-      // The useEffect will handle recalculation if needed
-      setCode(""); // Clear input after successful application
+      setCode("");
     }
   };
 
@@ -116,15 +98,11 @@ export default function CouponInput({ className = "", onApplied, onRemoved }: Co
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <div>
                 <div className="text-sm font-semibold text-emerald-900">
-                  Coupon Applied: {appliedCoupon.code}
+                  Coupon saved: {appliedCoupon.code}
                 </div>
-                {discount > 0 && (
-                  <div className="text-xs text-emerald-700">
-                    {appliedCoupon.type === "percent"
-                      ? `${appliedCoupon.amount}% off`
-                      : `$${appliedCoupon.amount} off`}
-                  </div>
-                )}
+                <div className="text-xs text-emerald-700">
+                  Final discount is confirmed when you complete checkout.
+                </div>
               </div>
             </div>
             <button
@@ -135,11 +113,6 @@ export default function CouponInput({ className = "", onApplied, onRemoved }: Co
               <X className="w-4 h-4" />
             </button>
           </div>
-          {discount > 0 && (
-            <div className="text-sm text-emerald-600 font-medium">
-              You saved {formatPrice(discount)}!
-            </div>
-          )}
         </div>
       )}
     </div>

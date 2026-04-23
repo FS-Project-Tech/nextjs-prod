@@ -96,7 +96,7 @@ function CartPageContent() {
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
+    <div className="container px-4 sm:px-6 lg:px-8">
       <h1 className="mb-6 text-2xl font-semibold pt-4">Shopping Cart</h1>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -191,9 +191,9 @@ function CartPageContent() {
                                       : totalInfo.price}
                                   </div>
                                   <div className="text-xs text-gray-500">
-                                    {priceInfo.label
+                                    {/* {priceInfo.label
                                       ? `${priceInfo.label}: ${priceInfo.price}`
-                                      : priceInfo.price}{" "}
+                                      : priceInfo.price}{" "} */}
                                     each
                                   </div>
                                   {totalInfo.exclPrice && (

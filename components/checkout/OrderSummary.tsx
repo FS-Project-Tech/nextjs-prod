@@ -113,6 +113,14 @@ function OrderSummary({
             <span className="font-medium">-{formatPrice(couponDiscount)}</span>
           </div>
         )}
+        {appliedCoupon && couponDiscount <= 0 && (
+          <div className="flex flex-col gap-0.5 text-xs text-gray-600">
+            <span>
+              Coupon <span className="font-medium text-gray-800">{appliedCoupon.code}</span>
+            </span>
+            <span>Discount amount is confirmed when your order is placed.</span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <span className="text-gray-800">Shipping</span>
           <span className="font-medium text-gray-900">{formatPrice(shippingCost)}</span>

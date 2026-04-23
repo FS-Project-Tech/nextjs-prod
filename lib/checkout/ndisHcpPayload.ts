@@ -1,18 +1,19 @@
+ 
 import type { CheckoutInitiatePayload } from "@/types/checkout";
-
+ 
 const PLEASE_CHOOSE = /^please\s*choose$/i;
-
+ 
 function trimStr(v: unknown): string {
   return String(v ?? "").trim();
 }
-
+ 
 /** NDIS funding dropdown placeholder — do not send to Woo or treat as selected. */
 export function normalizeNdisFundingType(raw: unknown): string | undefined {
   const t = trimStr(raw);
   if (!t || PLEASE_CHOOSE.test(t)) return undefined;
   return t;
 }
-
+ 
 export function hasSubstantiveNdisRecord(record: Record<string, unknown>): boolean {
   const digits = trimStr(record.number).replace(/\D/g, "");
   if (digits.length > 0) return true;
@@ -23,14 +24,14 @@ export function hasSubstantiveNdisRecord(record: Record<string, unknown>): boole
   if (ft && !PLEASE_CHOOSE.test(ft)) return true;
   return false;
 }
-
+ 
 export function hasSubstantiveHcpRecord(record: Record<string, unknown>): boolean {
   if (trimStr(record.number)) return true;
   if (trimStr(record.participant_name)) return true;
   if (trimStr(record.provider_email)) return true;
   return false;
 }
-
+ 
 function jsonInfoBlock(record: Record<string, unknown>): string | undefined {
   const entries = Object.entries(record).filter(
     ([, v]) => v !== undefined && v !== "" && v !== false && v !== null,
@@ -42,7 +43,7 @@ function jsonInfoBlock(record: Record<string, unknown>): string | undefined {
     return undefined;
   }
 }
-
+ 
 /** Build `ndis_info` JSON only when at least one NDIS field is meaningfully filled (not approval-only). */
 export function buildNdisInfoJsonFromForm(data: {
   cust_woo_ndis_number?: string | null;
@@ -76,7 +77,7 @@ export function buildNdisInfoJsonFromForm(data: {
   if (!hasSubstantiveNdisRecord(record)) return undefined;
   return jsonInfoBlock(record);
 }
-
+ 
 export function buildHcpInfoJsonFromForm(data: {
   cust_woo_hcp_participant_name?: string | null;
   hcp_participant_name?: string | null;
@@ -99,7 +100,7 @@ export function buildHcpInfoJsonFromForm(data: {
   if (!hasSubstantiveHcpRecord(record)) return undefined;
   return jsonInfoBlock(record);
 }
-
+ 
 function parseJsonObject(raw: string | undefined): Record<string, unknown> | null {
   if (!raw?.trim()) return null;
   try {
@@ -110,7 +111,7 @@ function parseJsonObject(raw: string | undefined): Record<string, unknown> | nul
   }
   return null;
 }
-
+ 
 /**
  * Remove empty NDIS/HCP blobs from the initiate payload so Woo meta, emails, and receipts stay clean.
  */
@@ -136,14 +137,14 @@ export function stripEmptyNdisHcpFromInitiatePayload(
     ndis_type,
   };
 }
-
+ 
 /** Digit count in NDIS number field from client `ndis_info` JSON (for guest on-account gate). */
 export function countNdisDigitsInCheckoutPayload(payload: CheckoutInitiatePayload): number {
   const obj = parseJsonObject(payload.ndis_info);
   if (!obj) return 0;
   return trimStr(obj.number).replace(/\D/g, "").length;
 }
-
+ 
 export type HcpInfoDisplay = {
   participantName: string | null;
   number: string | null;
@@ -151,7 +152,7 @@ export type HcpInfoDisplay = {
   /** `true` / `false` when checkbox was present in JSON; `null` if unknown */
   fundingApproved: boolean | null;
 };
-
+ 
 /** Parse `hcp_info` JSON for receipts / UI (same shape as {@link buildHcpInfoJsonFromForm}). */
 export function parseHcpInfoJson(raw: string | undefined | null): HcpInfoDisplay | null {
   const obj = parseJsonObject(raw ?? undefined);
@@ -166,7 +167,7 @@ export function parseHcpInfoJson(raw: string | undefined | null): HcpInfoDisplay
   if (!participantName && !number && !providerEmail && fundingApproved === null) return null;
   return { participantName, number, providerEmail, fundingApproved };
 }
-
+ 
 /**
  * Flat Woo order meta rows so wp-admin and email templates can show HCP without parsing JSON.
  * Call only when `hcp_info` is already validated / substantive.
@@ -185,7 +186,78 @@ export function flatHcpOrderMetaRowsFromHcpInfoJson(
   }
   return rows;
 }
-
+ 
+export type NdisInfoDisplay = {
+  number: string | null;
+  participantName: string | null;
+  dob: string | null;
+  fundingType: string | null;
+  invoiceEmail: string | null;
+  /** `null` when `approval` was not present in JSON */
+  approval: boolean | null;
+};
+ 
+/** Parse `ndis_info` JSON for flat meta / integrations (same shape as {@link buildNdisInfoJsonFromForm}). */
+export function parseNdisInfoJson(raw: string | undefined | null): NdisInfoDisplay | null {
+  const obj = parseJsonObject(raw ?? undefined);
+  if (!obj || !hasSubstantiveNdisRecord(obj)) return null;
+  const funding = normalizeNdisFundingType(obj.funding_type);
+  let approval: boolean | null = null;
+  if (Object.prototype.hasOwnProperty.call(obj, "approval")) {
+    approval = Boolean(obj.approval);
+  }
+  return {
+    number: trimStr(obj.number) || null,
+    participantName: trimStr(obj.participant_name) || null,
+    dob: trimStr(obj.dob) || null,
+    fundingType: funding ?? null,
+    invoiceEmail: trimStr(obj.invoice_email) || null,
+    approval,
+  };
+}
+ 
+/**
+ * Flat Woo order meta rows so wp-admin, ERP/EDB hooks, and email templates can read NDIS without parsing JSON.
+ * Also writes `cust_woo_*` keys matching theme `save_ndis_fields_to_order` (`$_POST` keys) — headless orders
+ * never hit that hook, but integrations (e.g. EDB) often key off the same meta names.
+ * Call only when `ndis_info` is already validated / substantive.
+ */
+export function flatNdisOrderMetaRowsFromNdisInfoJson(
+  ndisInfoJson: string | undefined,
+  ndisTypeFallback?: string | undefined,
+): Array<{ key: string; value: unknown }> {
+  const n = parseNdisInfoJson(ndisInfoJson);
+  if (!n) return [];
+  const ft = n.fundingType ?? normalizeNdisFundingType(ndisTypeFallback);
+  const rows: Array<{ key: string; value: unknown }> = [{ key: "ndis_customer", value: "yes" }];
+  if (n.number) {
+    rows.push({ key: "ndis_number", value: n.number });
+    rows.push({ key: "cust_woo_ndis_number", value: n.number });
+  }
+  if (n.participantName) {
+    rows.push({ key: "ndis_participant_name", value: n.participantName });
+    rows.push({ key: "cust_woo_ndis_participant_name", value: n.participantName });
+  }
+  if (n.dob) {
+    rows.push({ key: "ndis_dob", value: n.dob });
+    rows.push({ key: "cust_woo_ndis_dob", value: n.dob });
+  }
+  if (n.invoiceEmail) {
+    rows.push({ key: "ndis_invoice_email", value: n.invoiceEmail });
+    rows.push({ key: "cust_woo_invoice_email", value: n.invoiceEmail });
+  }
+  if (ft) {
+    rows.push({ key: "ndis_funding_type", value: ft });
+    rows.push({ key: "cust_woo_ndis_funding_type", value: ft });
+  }
+  if (n.approval !== null) {
+    const yn = n.approval ? "yes" : "no";
+    rows.push({ key: "ndis_approval", value: yn });
+    rows.push({ key: "cust_woo_ndis_approval", value: yn });
+  }
+  return rows;
+}
+ 
 /** Order-review / PDF: read HCP from `hcp_info` JSON or flat Woo meta keys. */
 export function hcpDisplayFromOrderMeta(
   meta: Array<{ key?: string; value?: unknown }> | undefined,

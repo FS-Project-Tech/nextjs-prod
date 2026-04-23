@@ -1,10 +1,6 @@
 import { useEffect } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import type { CheckoutFormData } from "./schema";
-import type { CartItem } from "@/lib/types/cart";
-import { parseCartTotal } from "@/lib/cart/parseCartTotal";
-
-type CouponCalc = (lines: CartItem[], subtotal: number) => void;
 
 export function useMountFlag(setMounted: (v: boolean) => void): void {
   useEffect(() => {
@@ -92,17 +88,4 @@ export function useMirrorBillingToShipping(
     billingState,
     setValue,
   ]);
-}
-
-export function useRecalculateCouponWhenCartChanges(
-  appliedCoupon: unknown,
-  cartLines: CartItem[],
-  cartTotal: string | null | undefined,
-  calculateDiscount: CouponCalc
-): void {
-  useEffect(() => {
-    if (!appliedCoupon || cartLines.length === 0) return;
-    const subtotal = parseCartTotal(cartTotal);
-    calculateDiscount(cartLines, subtotal);
-  }, [cartLines, cartTotal, appliedCoupon, calculateDiscount]);
 }
