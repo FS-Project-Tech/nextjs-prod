@@ -49,7 +49,84 @@ function sanitizeGroupByField(raw: string | null): string {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : "";
 }
 
+function parseSkuTokens(rawQuery: string): string[] {
+  const tokens = String(rawQuery || "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    if (!/^[A-Za-z0-9._-]+$/.test(t)) continue;
+    const k = t.toUpperCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+function isLikelySkuToken(token: string): boolean {
+  if (!/^[A-Za-z0-9._-]+$/.test(token)) return false;
+  return /\d/.test(token) || token.includes("-") || token.includes("_");
+}
+
+function toTypesenseExactArray(values: string[]): string {
+  const escaped = values.map((v) => `\`${String(v).replace(/`/g, "\\`")}\``);
+  return `[${escaped.join(",")}]`;
+}
+
 type TypesenseHitLike = { document?: Record<string, unknown> };
+
+type SearchUiProductLike = {
+  id?: unknown;
+  sku?: unknown;
+  docType?: unknown;
+};
+
+function dedupeSearchProductsBySku<T extends SearchUiProductLike>(items: T[]): T[] {
+  const out: T[] = [];
+  const bySku = new Map<string, number>();
+  const byId = new Set<number>();
+
+  const rank = (p: T): number => {
+    const docType = String(p.docType || "").toLowerCase();
+    // Prefer concrete variation rows over generic parent rows for exact SKU searches.
+    if (docType === "variation") return 2;
+    if (docType === "parent") return 1;
+    return 0;
+  };
+
+  for (const item of items) {
+    const id = Number(item?.id ?? 0);
+    if (Number.isFinite(id) && id > 0) {
+      if (byId.has(id)) continue;
+      byId.add(id);
+    }
+
+    const sku = String(item?.sku ?? "")
+      .trim()
+      .toUpperCase();
+    if (!sku) {
+      out.push(item);
+      continue;
+    }
+
+    const existingIdx = bySku.get(sku);
+    if (existingIdx == null) {
+      bySku.set(sku, out.length);
+      out.push(item);
+      continue;
+    }
+
+    const existing = out[existingIdx];
+    if (rank(item) > rank(existing)) {
+      out[existingIdx] = item;
+    }
+  }
+
+  return out;
+}
 
 function flattenTypesenseHits(result: {
   hits?: TypesenseHitLike[];
@@ -127,7 +204,12 @@ export async function GET(request: NextRequest) {
     const onSaleOnly = sp.get("on_sale") === "true" || forOnSaleCategoryFacets;
 
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
-    const q = sanitizeSlug(qRaw, 200) || "*";
+    const qSanitized = sanitizeSlug(qRaw, 200);
+    const skuTokens = parseSkuTokens(qSanitized);
+    const useSkuFilterSearch =
+      skuTokens.length > 1 &&
+      (/[,&;\n\r\t]/.test(qRaw) || skuTokens.every((t) => isLikelySkuToken(t)));
+    const q = useSkuFilterSearch ? "*" : qSanitized || "*";
     const explicitSort =
       parseListingSortQueryValue(sp.get("sortBy")) ||
       parseListingSortQueryValue(sp.get("sort"));
@@ -144,7 +226,8 @@ export async function GET(request: NextRequest) {
       onSaleOnly,
     });
 
-    const filter_by = filterParts.length ? filterParts.join(" && ") : "";
+    const skuFilter = useSkuFilterSearch ? `sku:=${toTypesenseExactArray(skuTokens)}` : "";
+    const filter_by = [...filterParts, ...(skuFilter ? [skuFilter] : [])].join(" && ");
     const sort_by = mapSortToTypesense(sortBy);
 
     const client = getTypesenseClient();
@@ -157,8 +240,9 @@ export async function GET(request: NextRequest) {
     // Typesense requires per_page >= 1; use 1 for facet-only to minimize payload.
     const searchParams: Record<string, unknown> = {
       q,
-      query_by:
-        (process.env.TYPESENSE_QUERY_BY || "").trim() || TYPESENSE_DEFAULT_QUERY_BY,
+      query_by: useSkuFilterSearch
+        ? "name,sku"
+        : (process.env.TYPESENSE_QUERY_BY || "").trim() || TYPESENSE_DEFAULT_QUERY_BY,
       per_page: facetsOnly ? 1 : perPage,
       page: facetsOnly ? 1 : page,
       sort_by,
@@ -196,7 +280,15 @@ export async function GET(request: NextRequest) {
     );
     const useSearchShape = sp.get("search_ui") === "1";
     const products = useSearchShape
-      ? hits.map((h) => typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>))
+      ? (() => {
+          const mapped = hits.map((h) =>
+            typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>)
+          );
+          if (!useSkuFilterSearch) return mapped;
+          const onlyVariations = mapped.filter((p) => String(p.docType) === "variation");
+          const base = onlyVariations.length > 0 ? onlyVariations : mapped;
+          return dedupeSearchProductsBySku(base);
+        })()
       : dedupeProductsById(
           hits.map((h) =>
             typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)

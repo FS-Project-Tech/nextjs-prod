@@ -291,6 +291,35 @@ function parseVariationDropdown(doc: Record<string, unknown>): VariationDropdown
   }
 }
 
+function parseSkuTokens(rawQuery: string): string[] {
+  const tokens = rawQuery
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    // Keep this permissive for common SKU formats: ABC123, ID-PANTS-MAX, A.B_01
+    if (!/^[A-Za-z0-9._-]+$/.test(t)) continue;
+    const k = t.toUpperCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+function isLikelySkuToken(token: string): boolean {
+  if (!/^[A-Za-z0-9._-]+$/.test(token)) return false;
+  // Prefer tokens that are identifier-like, not regular words.
+  return /\d/.test(token) || token.includes("-") || token.includes("_");
+}
+
+function toTypesenseExactArray(values: string[]): string {
+  const escaped = values.map((v) => `\`${String(v).replace(/`/g, "\\`")}\``);
+  return `[${escaped.join(",")}]`;
+}
+
 function MagnifierIcon() {
   return (
     <svg
@@ -443,17 +472,30 @@ export default function HeaderSearch() {
           .filter(Boolean)
           .join(" || ");
 
+        const skuTokens = parseSkuTokens(query);
+        const useSkuFilterSearch =
+          skuTokens.length > 1 &&
+          (/[,&;\n\r\t]/.test(query) || skuTokens.every((t) => isLikelySkuToken(t)));
+
+        const searchRequest: Record<string, unknown> = {
+          q: formattedQuery,
+          query_by: TYPESENSE_DEFAULT_QUERY_BY,
+          per_page: 10,
+          facet_by: "category,brand",
+          sort_by: "_text_match:desc",
+          split_join_tokens: "always",
+        };
+
+        if (useSkuFilterSearch) {
+          searchRequest.q = "*";
+          searchRequest.query_by = "name,sku";
+          searchRequest.filter_by = `sku:=${toTypesenseExactArray(skuTokens)}`;
+        }
+
         const res = await client
           .collections(process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME)
           .documents()
-          .search({
-            q: formattedQuery,
-            query_by: TYPESENSE_DEFAULT_QUERY_BY,
-            per_page: 10,
-            facet_by: "category,brand",
-            sort_by: "_text_match:desc",
-            split_join_tokens: "always",
-          });
+          .search(searchRequest);
 
         if (searchGenerationRef.current !== gen) return;
 
