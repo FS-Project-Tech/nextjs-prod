@@ -14,17 +14,17 @@ import {
 import { logWooOrderLineItems, logValidatedItems } from "@/lib/woo/debugLogger";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { getAxiosErrorDetails, hasAxiosResponse, isTimeoutError } from "@/lib/utils/errors";
-
+ 
 export type { WooCreateOrderInput };
 export { addWooOrderNote, createWooOrder, updateWooOrder, updateWooOrderAsync };
-
+ 
 export async function getWooOrder(orderRef: string): Promise<unknown> {
   const ref = String(orderRef || "").trim();
   if (!ref) throw new Error("orderRef required");
   const { data } = await wcAPI.get(`/orders/${encodeURIComponent(ref)}`);
   return data;
 }
-
+ 
 /** REST fallback when Store API checkout omits `order_key` (some hosts/plugins). */
 export async function fetchWooOrderKeyById(
   orderId: string | number,
@@ -43,11 +43,11 @@ export async function fetchWooOrderKeyById(
     return null;
   }
 }
-
+ 
 export async function resolveOrderPostId(orderRef: string): Promise<number | null> {
   const ref = String(orderRef || "").trim();
   if (!ref) return null;
-
+ 
   try {
     const { data } = await wcAPI.get(`/orders/${encodeURIComponent(ref)}`);
     const id = Number((data as { id?: unknown })?.id);
@@ -56,7 +56,7 @@ export async function resolveOrderPostId(orderRef: string): Promise<number | nul
     const status = Number((err as { response?: { status?: number } })?.response?.status || 0);
     if (status !== 404) throw err;
   }
-
+ 
   const { data: orders } = await wcAPI.get("/orders", {
     params: { search: ref, per_page: 20 },
   });
@@ -69,7 +69,7 @@ export async function resolveOrderPostId(orderRef: string): Promise<number | nul
   const id = Number(match?.id || 0);
   return Number.isFinite(id) && id > 0 ? id : null;
 }
-
+ 
 function pickIdCandidates(o: Record<string, unknown>): unknown[] {
   return [
     o.id,
@@ -80,7 +80,7 @@ function pickIdCandidates(o: Record<string, unknown>): unknown[] {
     (o as { woocommerce_order_id?: unknown }).woocommerce_order_id,
   ];
 }
-
+ 
 function firstResolvedId(candidates: unknown[]): number | string | null {
   for (const raw of candidates) {
     if (raw == null) continue;
@@ -95,14 +95,14 @@ function firstResolvedId(candidates: unknown[]): number | string | null {
   }
   return null;
 }
-
+ 
 export function extractWooOrderKey(order: unknown): string | null {
   if (order == null || typeof order !== "object") return null;
   const k = (order as { order_key?: unknown }).order_key;
   if (typeof k === "string" && k.trim()) return k.trim();
   return null;
 }
-
+ 
 export function extractWooOrderId(order: unknown): number | string | null {
   if (order == null || typeof order !== "object") return null;
   const root = order as Record<string, unknown>;
@@ -117,10 +117,10 @@ export function extractWooOrderId(order: unknown): number | string | null {
       nested.number != null ||
       nested.order_number != null);
   const o = nestedHasId ? (nested as Record<string, unknown>) : root;
-
+ 
   const fromPrimary = firstResolvedId(pickIdCandidates(o));
   if (fromPrimary != null) return fromPrimary;
-
+ 
   const orderObj =
     o.order != null && typeof o.order === "object" && !Array.isArray(o.order)
       ? (o.order as Record<string, unknown>)
@@ -131,10 +131,10 @@ export function extractWooOrderId(order: unknown): number | string | null {
     const fromNestedOrder = firstResolvedId(pickIdCandidates(orderObj));
     if (fromNestedOrder != null) return fromNestedOrder;
   }
-
+ 
   return null;
 }
-
+ 
 /**
  * Single timeout source of truth: axios only (do not combine with AbortController timers — both
  * firing at the same ms produces CanceledError: "canceled" and flaky retries).
@@ -143,39 +143,39 @@ function minimalCreateFirstTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_MINIMAL_CREATE_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 5_000;
 }
-
+ 
 /** Second attempt with a higher budget (slow Woo). */
 function minimalCreateRetryTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_MINIMAL_CREATE_RETRY_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 8_000;
 }
-
+ 
 function extensionPutFirstTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_EXTENSION_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 10_000;
 }
-
+ 
 function extensionPutRetryTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_EXTENSION_RETRY_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 16_000;
 }
-
+ 
 function isAbortLike(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   return e.name === "AbortError" || e.name === "CanceledError";
 }
-
+ 
 function orderCreateRetriable(e: unknown): boolean {
   if (isTimeoutError(e) || isAbortLike(e)) return true;
   if (!hasAxiosResponse(e)) return true;
   const s = getAxiosErrorDetails(e).status || 0;
   return s === 408 || s === 429 || (s >= 500 && s < 600);
 }
-
+ 
 /** Shipping, fees, coupons, meta — phase-2 PUT only. COD → `processing` after extras are applied. */
 export function buildCheckoutExtensionPatch(
   input: WooCreateOrderInput,
-  options?: { omitMeta?: boolean },
+  options?: { omitMeta?: boolean; existingShippingLineId?: number },
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (String(input.payment_method || "").toLowerCase() === "cod") {
@@ -189,6 +189,13 @@ export function buildCheckoutExtensionPatch(
       total_tax: "0",
       taxes: [],
     };
+    if (
+      typeof options?.existingShippingLineId === "number" &&
+      Number.isFinite(options.existingShippingLineId) &&
+      options.existingShippingLineId > 0
+    ) {
+      sl.id = options.existingShippingLineId;
+    }
     const inst = input.shipping_line.instance_id?.trim();
     if (inst) {
       sl.instance_id = inst;
@@ -206,7 +213,7 @@ export function buildCheckoutExtensionPatch(
   }
   return patch;
 }
-
+ 
 export async function applyOrderExtensionWithRetry(
   orderId: number,
   patch: Record<string, unknown>,
@@ -216,6 +223,34 @@ export async function applyOrderExtensionWithRetry(
   for (let attempt = 0; attempt < timeouts.length; attempt++) {
     const ms = timeouts[attempt];
     try {
+      const shippingPatch = Array.isArray((patch as { shipping_lines?: unknown }).shipping_lines)
+        ? ((patch as { shipping_lines?: Array<Record<string, unknown>> }).shipping_lines ?? [])
+        : [];
+      // If a previous attempt may have already created shipping lines, retry by updating
+      // the existing line id instead of appending another shipping line.
+      if (
+        attempt > 0 &&
+        shippingPatch.length === 1 &&
+        shippingPatch[0] &&
+        (shippingPatch[0].id == null || Number(shippingPatch[0].id) <= 0)
+      ) {
+        try {
+          const current = (await getWooOrder(String(orderId))) as {
+            shipping_lines?: Array<{ id?: number }>;
+          };
+          const existingShippingId = Number(current.shipping_lines?.[0]?.id || 0);
+          if (Number.isFinite(existingShippingId) && existingShippingId > 0) {
+            shippingPatch[0] = { ...shippingPatch[0], id: existingShippingId };
+          }
+        } catch (readErr) {
+          console.warn("[checkout] retry pre-read failed", {
+            phase: "woo_extension_put",
+            orderId,
+            attempt,
+            message: readErr instanceof Error ? readErr.message : String(readErr),
+          });
+        }
+      }
       console.log("[checkout] async update start", { orderId, attempt, timeoutMs: ms });
       const updated = await updateWooOrderAsync(orderId, patch, { timeoutMs: ms });
       console.log("[checkout] async update success", { orderId, attempt });
@@ -237,24 +272,24 @@ export async function applyOrderExtensionWithRetry(
   }
   throw lastErr;
 }
-
+ 
 export type OrderExtensionTiming =
   | { mode: "inline" }
   | { mode: "after_response"; schedule: (task: () => Promise<void>) => void };
-
+ 
 export function validateCreatedLineItems(order: unknown): void {
   const lineItems = Array.isArray((order as { line_items?: unknown })?.line_items)
     ? ((order as { line_items: Array<Record<string, unknown>> }).line_items as Array<
         Record<string, unknown>
       >)
     : [];
-
+ 
   if (lineItems.length === 0) {
     const err = new Error("Cart is empty");
     (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
     throw err;
   }
-
+ 
   logWooOrderLineItems(
     lineItems.map((li) => ({
       product_id: Number(li?.product_id || 0),
@@ -264,7 +299,7 @@ export function validateCreatedLineItems(order: unknown): void {
       subtotal: String(li?.subtotal ?? ""),
     })),
   );
-
+ 
   const invalidMap = lineItems.some((li) => Number(li?.product_id || 0) <= 0);
   if (invalidMap) {
     const err = new Error(
@@ -277,7 +312,7 @@ export function validateCreatedLineItems(order: unknown): void {
     throw err;
   }
 }
-
+ 
 /**
  * Phase 1: minimal POST /orders (fast). Phase 2: PUT shipping, fees, meta, coupons.
  * COD can defer phase 2 with `after()` so the HTTP response returns immediately after phase 1.
@@ -292,7 +327,7 @@ export async function createValidatedCheckoutOrder(
     (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
     throw err;
   }
-
+ 
   logValidatedItems(
     input.line_items.map((li) => ({
       product_id: li.product_id,
@@ -300,7 +335,7 @@ export async function createValidatedCheckoutOrder(
       quantity: li.quantity,
     })),
   );
-
+ 
   const t1 = minimalCreateFirstTimeoutMs();
   const t2 = minimalCreateRetryTimeoutMs();
   const minimalInput = {
@@ -316,7 +351,7 @@ export async function createValidatedCheckoutOrder(
       ? { meta_data: options.checkoutSessionMeta }
       : {}),
   };
-
+ 
   console.log("[checkout] start", {
     phase: "woo_minimal_create",
     payment_method: input.payment_method,
@@ -324,7 +359,7 @@ export async function createValidatedCheckoutOrder(
     lineCount: input.line_items.length,
     firstTimeoutMs: t1,
   });
-
+ 
   let orderMinimal: unknown;
   try {
     orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t1 });
@@ -337,29 +372,29 @@ export async function createValidatedCheckoutOrder(
     });
     orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t2 });
   }
-
+ 
   console.log("[checkout] woo create success", {
     orderId: extractWooOrderId(orderMinimal),
     payment_method: input.payment_method,
   });
-
+ 
   validateCreatedLineItems(orderMinimal);
-
+ 
   const postIdRaw = extractWooOrderId(orderMinimal);
   const postIdNum =
     typeof postIdRaw === "number" ? postIdRaw : Number.parseInt(String(postIdRaw), 10);
   if (!Number.isFinite(postIdNum) || postIdNum <= 0) {
     throw new Error("WooCommerce did not return a valid order ID after create.");
   }
-
+ 
   const patch = buildCheckoutExtensionPatch(input);
   const keys = Object.keys(patch);
   if (keys.length === 0) {
     return orderMinimal;
   }
-
+ 
   const runExtension = () => applyOrderExtensionWithRetry(postIdNum, patch);
-
+ 
   if (timing.mode === "after_response") {
     timing.schedule(() =>
       (async () => {
@@ -377,11 +412,11 @@ export async function createValidatedCheckoutOrder(
     );
     return orderMinimal;
   }
-
+ 
   const updated = await runExtension();
   return updated ?? orderMinimal;
 }
-
+ 
 /** Append parcel protection fee line (after order exists). */
 export async function appendParcelProtectionFee(orderId: number): Promise<void> {
   const { data } = await wcAPI.get(`/orders/${orderId}`);

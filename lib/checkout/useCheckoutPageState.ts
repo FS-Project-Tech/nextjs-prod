@@ -19,11 +19,7 @@ import { buildCheckoutQuoteTotalsBody } from "@/lib/checkout/buildCreateOrderPay
 import type { CheckoutTotals } from "@/types/checkout";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
-import {
-  useMountFlag,
-  useCheckoutQueryToasts,
-  useRecalculateCouponWhenCartChanges,
-} from "./useCheckoutSideEffects";
+import { useMountFlag, useCheckoutQueryToasts } from "./useCheckoutSideEffects";
 import { applySavedBillingAddress, applySavedShippingAddress } from "./savedAddressPatch";
 import { cartLinesFingerprint } from "./cartFingerprint";
 
@@ -38,7 +34,7 @@ export function useCheckoutPageState() {
   cartLinesRef.current = cartLines;
   const quoteEpochRef = useRef(0);
   const { success, error: showError } = useToast();
-  const { appliedCoupon, discount: couponDiscountAmount, calculateDiscount } = useCoupon();
+  const { appliedCoupon, discount: couponDiscountAmount } = useCoupon();
   const { user, sessionStatus } = useUser();
   const { addresses } = useAddresses();
 
@@ -352,13 +348,6 @@ export function useCheckoutPageState() {
     }).catch(() => {});
     return () => ac.abort();
   }, [isMounted, cartLines.length, router]);
-  useRecalculateCouponWhenCartChanges(
-    appliedCoupon,
-    cartLines,
-    cartTotalString,
-    calculateDiscount
-  );
-
   const replaceInternalCheckoutPath = useCallback(
     (path: string) => {
       router.replace(path, { scroll: false });

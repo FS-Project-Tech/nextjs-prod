@@ -83,8 +83,8 @@ export default function ProductInfoAccordion({ product, variations }: ProductInf
           {product.sku && specRow("SKU", product.sku)}
           {product.weight && specRow("Weight", product.weight)}
           {dimensionsDisplay && specRow("Dimensions", dimensionsDisplay)}
-          {product.stock_status &&
-            specRow("Stock Status", <span className="capitalize">{product.stock_status}</span>)}
+          {/* {product.stock_status &&
+            specRow("Stock Status", <span className="capitalize">{product.stock_status}</span>)} */}
           {variations.length > 0 && (
             <div className="pt-4 mt-4 border-t border-gray-200">
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">

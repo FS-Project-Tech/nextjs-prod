@@ -3,7 +3,7 @@
 import { useCart } from "@/components/CartProvider";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { useEffect, useMemo, useState, useCallback, memo } from "react";
+import { useMemo, useState, useCallback, memo } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useCoupon } from "./CouponProvider";
@@ -179,7 +179,7 @@ const CartItem = memo(
                     </div>
                     {priceInfo.label && (
                       <div className="text-xs text-gray-500">
-                        {priceInfo.label}: {priceInfo.price} each
+                        each
                       </div>
                     )}
                     {totalInfo.exclPrice && (
@@ -218,7 +218,7 @@ export default function MiniCartDrawer() {
   const { isOpen, close, items, removeItem, updateItemQty, clear } = useCart();
   const { data: session } = useSession();
   const user = session?.user ?? null;
-  const { discount, appliedCoupon, calculateDiscount } = useCoupon();
+  const { discount, appliedCoupon } = useCoupon();
 
   const [selectedRateId, setSelectedRateId] = useState<string>("");
   const [selectedShippingRate, setSelectedShippingRate] = useState<{
@@ -261,13 +261,6 @@ export default function MiniCartDrawer() {
     onEscape: close,
     initialFocusSelector: 'button[aria-label="Close"]',
   });
-
-  // Combined discount effects
-  useEffect(() => {
-    if (appliedCoupon && items.length > 0 && isOpen) {
-      calculateDiscount(items, subtotal);
-    }
-  }, [items, appliedCoupon, calculateDiscount, isOpen, subtotal]);
 
   return (
     <>
@@ -409,6 +402,13 @@ export default function MiniCartDrawer() {
                         <div className="flex items-center justify-between text-sm text-emerald-600">
                           <span>Discount</span>
                           <span className="font-medium">−{formatPrice(couponDiscount)}</span>
+                        </div>
+                      )}
+                      {appliedCoupon && couponDiscount <= 0 && (
+                        <div className="text-xs text-gray-600">
+                          Coupon{" "}
+                          <span className="font-medium text-gray-800">{appliedCoupon.code}</span> —
+                          discount applied at checkout.
                         </div>
                       )}
                       {gst > 0 && (
