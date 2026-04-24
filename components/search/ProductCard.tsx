@@ -199,9 +199,9 @@ function SearchProductCardComponent({
               </span>
             ) : null}
 
-            <p className="pointer-events-none absolute bottom-2 right-2 hidden max-w-[70%] text-right text-[9px] leading-tight text-gray-500 md:block">
+            {/* <p className="pointer-events-none absolute bottom-2 right-2 hidden max-w-[70%] text-right text-[9px] leading-tight text-gray-500 md:block">
               Product image is for reference only
-            </p>
+            </p> */}
           </div>
         </Link>
 

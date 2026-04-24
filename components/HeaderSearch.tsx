@@ -510,7 +510,11 @@ export default function HeaderSearch() {
         if (suppressAutoOpenAfterNavigationRef.current) {
           suppressAutoOpenAfterNavigationRef.current = false;
         } else {
-          setShow(true);
+          // On /search route, keep the suggestion panel closed on URL load.
+          // Users can still open it intentionally by focusing the input.
+          if (!pathname.startsWith("/search")) {
+            setShow(true);
+          }
         }
         setActiveIndex(-1);
       } catch (err) {
@@ -528,7 +532,7 @@ export default function HeaderSearch() {
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [query]);
+  }, [query, pathname]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const n = flatRows.length;
