@@ -3,7 +3,10 @@ import "server-only";
 import { getCustomerById, getCustomerData } from "@/lib/customer";
 import { normalizeAddressFromWp } from "@/lib/addresses-normalize";
 import { getWpBaseUrl } from "@/lib/auth";
-import { parseWcAddressBookMetaToAddresses } from "@/lib/wc-address-book-meta";
+import {
+  parseSecondaryAddressesMetaToAddresses,
+  parseWcAddressBookMetaToAddresses,
+} from "@/lib/wc-address-book-meta";
 
 export const WC_PRIMARY_BILLING_ID = "default-billing";
 export const WC_PRIMARY_SHIPPING_ID = "default-shipping";
@@ -250,11 +253,15 @@ export async function mergeAddressListWithWooPrimaries(
 
   /** Include every `wc_address_book_address_*` from WC `meta_data` (not only WP REST user meta). */
   const fromAddressBookMeta = parseWcAddressBookMetaToAddresses(wpUser, customerRaw ?? undefined);
+  /** Include normalized secondary_addresses rows stored directly in user/customer meta. */
+  const fromSecondaryMeta = parseSecondaryAddressesMetaToAddresses(wpUser, customerRaw ?? undefined);
   const bookFp = new Set(bookAddresses.map(addressFingerprint));
   const abMetaExtra = fromAddressBookMeta.filter(
     (a) => !bookFp.has(addressFingerprint(a))
   );
-  let combined = [...abMetaExtra, ...bookAddresses];
+  const secFp = new Set([...bookFp, ...abMetaExtra.map(addressFingerprint)]);
+  const secondaryExtra = fromSecondaryMeta.filter((a) => !secFp.has(addressFingerprint(a)));
+  let combined = [...secondaryExtra, ...abMetaExtra, ...bookAddresses];
 
   if (!email) {
     return combined;
@@ -271,10 +278,6 @@ export async function mergeAddressListWithWooPrimaries(
     const rest = combined.filter((a) => {
       const id = String(a.id ?? "").toLowerCase();
       if (id === WC_PRIMARY_BILLING_ID || id === WC_PRIMARY_SHIPPING_ID) return false;
-      for (const p of primaries) {
-        if (String(p.type) !== String(a.type)) continue;
-        if (looseAddressFingerprint(a) === looseAddressFingerprint(p)) return false;
-      }
       return true;
     });
     return [...primaries, ...rest];

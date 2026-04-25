@@ -95,7 +95,7 @@ const tabs = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout } = useUser();
+  const { user, logout, sessionStatus } = useUser();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -106,14 +106,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!mounted) return;
 
     // Allow wishlist without login
-    if (!user && pathname !== "/dashboard/wishlist") {
+    if (sessionStatus === "unauthenticated" && pathname !== "/dashboard/wishlist") {
       router.replace("/login");
     }
-  }, [mounted, user, pathname, router]);
+  }, [mounted, sessionStatus, pathname, router]);
 
   if (!mounted) return null;
 
-  if (!user && pathname !== "/dashboard/wishlist") {
+  if (sessionStatus === "loading" && pathname !== "/dashboard/wishlist") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
+          <p className="mt-4 text-gray-600 text-sm">Loading your dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionStatus === "unauthenticated" && pathname !== "/dashboard/wishlist") {
     return null;
   }
 
