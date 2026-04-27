@@ -412,6 +412,15 @@ export default function HeaderSearch() {
     }
   }, [pathname, urlSearchQ]);
 
+  /** Always close suggestions after any navigation/redirect. */
+  useEffect(() => {
+    // Cancel stale responses from previous page and keep panel closed after redirects.
+    searchGenerationRef.current += 1;
+    closePanel();
+    setIsSearching(false);
+    suppressAutoOpenAfterNavigationRef.current = true;
+  }, [pathname, searchParams, closePanel]);
+
   const categoryLabel = useCallback(
     (slug: string) => {
       const key = String(slug || "")
