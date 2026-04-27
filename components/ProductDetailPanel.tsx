@@ -917,7 +917,7 @@ export default function ProductDetailPanel({
   const hasResolvedVariation = attributes.length === 0 || Boolean(matchedVariation || matched);
   const { addItem, open: openCart } = useCart();
   const { success, error: showError } = useToast();
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantityInput, setQuantityInput] = useState<string>("1");
   const [addingToCart, setAddingToCart] = useState(false);
   const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
   const [selectedUnitOption, setSelectedUnitOption] = useState<string>("");
@@ -1128,6 +1128,11 @@ export default function ProductDetailPanel({
   const unitMultiplier = useMemo(() => {
     return selectedUnitOption ? extractUnitMultiplier(selectedUnitOption) : 1;
   }, [selectedUnitOption]);
+
+  const quantity = useMemo(() => {
+    const n = Number.parseInt(quantityInput, 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }, [quantityInput]);
 
   const displayPrice = useMemo(() => {
     const base = Number(baseDisplayPrice || 0);
@@ -1448,8 +1453,21 @@ export default function ProductDetailPanel({
         <input
           type="number"
           min={1}
-          value={quantity}
-          onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={quantityInput}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const digits = raw.replace(/\D+/g, "");
+            // Allow temporary empty value while typing on mobile keyboards.
+            setQuantityInput(digits);
+          }}
+          onBlur={() => {
+            const normalized = Number.parseInt(quantityInput, 10);
+            setQuantityInput(
+              Number.isFinite(normalized) && normalized > 0 ? String(normalized) : "1"
+            );
+          }}
           className="w-24 rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
         />
       </div>
