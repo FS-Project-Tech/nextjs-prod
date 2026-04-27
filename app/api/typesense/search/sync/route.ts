@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Send to Typesense
     const typesenseRes = await fetch(
-      `${TYPESENSE_HOST}/collections/products_updated/documents`,
+      `${TYPESENSE_HOST}/collections/products/documents`,
       {
         method: "POST",
         headers: {

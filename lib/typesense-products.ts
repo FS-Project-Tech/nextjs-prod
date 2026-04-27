@@ -23,9 +23,10 @@ export const TS_FIELDS = {
   onSale: (process.env.TYPESENSE_FIELD_ON_SALE ?? "").trim(),
   /** Numeric sale price field; used with clearance to include discounted rows even if `on_sale` is false. */
   salePrice: (process.env.TYPESENSE_FIELD_SALE_PRICE ?? "sale_price").trim(),
-  /** Empty = popularity sort uses price fallback. */
-  popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "").trim(),
-  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "").trim(),
+  /** Defaults to `popularity`; override via env when schema uses a different field name. */
+  popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "popularity").trim(),
+  /** Defaults to `date_created`; override via env when schema uses a different field name. */
+  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "date_created").trim(),
   rating: (process.env.TYPESENSE_FIELD_RATING ?? "").trim(),
 } as const;
 
@@ -106,6 +107,7 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
   const dt = TS_FIELDS.dateCreated;
   const rt = TS_FIELDS.rating;
   const byPriceDesc = `${pf}:desc`;
+  const byPopularityThenNewest = pop && dt ? `${pop}:desc,${dt}:desc` : pop ? `${pop}:desc` : dt ? `${dt}:desc` : byPriceDesc;
   switch (sortBy) {
     case "relevance":
       // Typesense keyword relevance first; tie-break so UX stays stable among equal matches.
@@ -120,9 +122,9 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
     case "rating":
       return rt ? `${rt}:desc` : byPriceDesc;
     case "popularity":
-      return pop ? `${pop}:desc` : byPriceDesc;
+      return byPopularityThenNewest;
     default:
-      return pop ? `${pop}:desc` : byPriceDesc;
+      return byPopularityThenNewest;
   }
 }
 

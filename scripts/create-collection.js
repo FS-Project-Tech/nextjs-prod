@@ -47,14 +47,14 @@ const client = new Typesense.Client({
 async function createCollection() {
   try {
     const schema = {
-      name: "products_updated",
+      name: "products",
       enable_nested_fields: true,
       fields: [
         { name: "id", type: "string" },
 
         { name: "name", type: "string" },
         { name: "slug", type: "string" },
-
+        { name: "custom_badge", type: "string", facet: true, optional: true },
         /** Parent: multiple SKUs; variation: single SKU — always string[] (see woo-search-api.php). */
         { name: "sku", type: "string[]", optional: true },
 
@@ -87,6 +87,8 @@ async function createCollection() {
 
         { name: "average_rating", type: "float", optional: true },
         { name: "rating_count", type: "int32", optional: true },
+        { name: "popularity", type: "int32", optional: true },
+        { name: "date_created", type: "int64", optional: true },
 
         { name: "updated_at", type: "int64" },
       ],

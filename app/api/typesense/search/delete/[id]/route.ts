@@ -11,7 +11,7 @@ export async function DELETE(
     const id = params.id;
 
     const res = await fetch(
-      `${TYPESENSE_HOST}/collections/products_updated/documents/${id}`,
+      `${TYPESENSE_HOST}/collections/products/documents/${id}`,
       {
         method: "DELETE",
         headers: {

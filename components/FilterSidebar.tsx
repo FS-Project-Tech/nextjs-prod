@@ -913,19 +913,7 @@ export default function FilterSidebar({
 
     return (
       <div key={slug} className="space-y-1">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={filtersLocked}
-            onClick={() => hasChildren && toggleCategory(slug, defaultWhenUnset)}
-            className={`h-5 w-5 rounded text-xs ${hasChildren ? "text-gray-600 hover:bg-gray-100" : "text-transparent"} disabled:opacity-50`}
-            aria-label={
-              hasChildren ? (isExpanded ? "Collapse category" : "Expand category") : "No children"
-            }
-          >
-            {hasChildren ? (isExpanded ? "▾" : "▸") : "•"}
-          </button>
-
+        <div className="flex items-center">
           <button
             type="button"
             disabled={filtersLocked}
@@ -1119,16 +1107,7 @@ export default function FilterSidebar({
             if (useAccordion) {
               return (
                 <div key={row.cat.slug} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={filtersLocked}
-                      onClick={() => toggleCategory(row.cat.slug, accordionDefaultOpen)}
-                      className="h-5 w-5 shrink-0 rounded text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      aria-label={isExpanded ? "Collapse subcategories" : "Expand subcategories"}
-                    >
-                      {isExpanded ? "▾" : "▸"}
-                    </button>
+                  <div className="flex items-center">
                     <button
                       type="button"
                       disabled={filtersLocked}

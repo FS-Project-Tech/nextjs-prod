@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    await client.collections("products_updated").documents(id).delete();
+    await client.collections("products").documents(id).delete();
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("[typesense/delete]", e);

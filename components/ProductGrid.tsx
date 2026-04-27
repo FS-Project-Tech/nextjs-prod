@@ -14,13 +14,7 @@ import {
   shouldOmitSortParam,
 } from "@/lib/listing-sort-options";
 
-/**
- * When `woocommerce`, category/shop grids load rows from Woo REST (`/api/catalog/woo-listing`);
- * facets stay Typesense. Brand detail pages always use Typesense for rows so `brand_slug` matches
- * the same index as `FilterSidebar` / search facets (Woo attribute↔slug mapping often diverges).
- */
-const SHOP_PRODUCTS_FROM_WOO =
-  process.env.NEXT_PUBLIC_SHOP_PRODUCTS_SOURCE?.trim().toLowerCase() === "woocommerce";
+/** Product rows and facets use Typesense as the single source of truth. */
 
 interface ProductGridProps {
   categorySlug?: string;
@@ -128,8 +122,6 @@ function stripDeprecatedListingParams(params: URLSearchParams, pathname: string)
 }
 
 export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: ProductGridProps) {
-  const useWooDocumentListing = SHOP_PRODUCTS_FROM_WOO && !brandSlug;
-
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -237,9 +229,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         }
         if (onSaleOnly) usp.set("on_sale", "true");
 
-        const listingEndpoint = useWooDocumentListing
-          ? `/api/catalog/woo-listing?${usp.toString()}`
-          : `/api/typesense/search?${usp.toString()}`;
+        const listingEndpoint = `/api/typesense/search?${usp.toString()}`;
 
         const res = await fetch(listingEndpoint, {
           signal: controller.signal,
@@ -313,7 +303,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         }
       }
     },
-    [effectiveFilters, brandSlug, searchParamsKey, onSaleOnly, pathname, searchParams, useWooDocumentListing]
+    [effectiveFilters, brandSlug, searchParamsKey, onSaleOnly, pathname, searchParams]
   );
 
   useEffect(() => {
@@ -405,12 +395,6 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
           {state.error.includes("not configured") && (
             <p className="mt-2 text-xs text-amber-800">
               Set TYPESENSE_HOST and TYPESENSE_API_KEY (see lib/typesenseClient.ts).
-            </p>
-          )}
-          {useWooDocumentListing && (
-            <p className="mt-2 text-xs text-amber-800">
-              Listing uses WooCommerce REST — ensure WC_API_URL, WC_CONSUMER_KEY, and WC_CONSUMER_SECRET
-              are set. Filters still use Typesense when configured.
             </p>
           )}
         </div>

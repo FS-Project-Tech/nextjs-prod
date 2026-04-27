@@ -655,6 +655,7 @@ import {
   findBrand,
   extractProductBrands,
   extractEtaDateDisplayForProduct,
+  extractExpiryDateDisplayFromShortDescription,
   concretePackagingLabelFromVariation,
   overlayConcreteVariationAttributes,
   selectedAttributesForVariationId,
@@ -971,7 +972,7 @@ export default function ProductDetailPanel({
     (async () => {
       try {
         const endpoint = `${
-          process.env.NEXT_PUBLIC_WP_URL || "https://stage.joyamedicalsupplies.com.au"
+          process.env.NEXT_PUBLIC_WP_URL || "https://live.joyamedicalsupplies.com.au"
         }/wp-json/wc-quantity-units/v1/units?sku=${encodeURIComponent(sku)}`;
         const res = await fetch(endpoint, { signal: controller.signal });
         if (!res.ok) {
@@ -1117,6 +1118,11 @@ export default function ProductDetailPanel({
   const etaDateDisplay = useMemo(
     () => extractEtaDateDisplayForProduct(product, matchedVariation ?? matched),
     [product, matchedVariation, matched],
+  );
+
+  const expiryDateDisplay = useMemo(
+    () => extractExpiryDateDisplayFromShortDescription(product.short_description),
+    [product.short_description],
   );
 
   const shouldHideSingleValueVariationRows = useMemo(() => {
@@ -1315,6 +1321,11 @@ export default function ProductDetailPanel({
           <div className="text-sm text-gray-600 leading-tight">
             <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
             <div className="text-teal text-xl font-bold">Inc. GST : {priceInfo.price}</div>
+            {expiryDateDisplay ? (
+              <div className="mt-2 inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900 ring-1 ring-amber-300">
+                Expiry Date : <span className="ml-1 font-bold">{expiryDateDisplay}</span>
+              </div>
+            ) : null}
           </div>
         )}
 
