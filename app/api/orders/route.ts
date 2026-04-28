@@ -4,6 +4,7 @@ import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
 import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
+import { mergeHumanReadableAdditionalMetaForOrdersRoute } from "@/lib/checkout/additionalOrderMetaHuman";
 
 /**
  * Create order in WooCommerce
@@ -175,6 +176,8 @@ export async function POST(req: NextRequest) {
       // If authentication fails, continue as guest order
       console.warn("Could not get customer ID, creating guest order:", authError);
     }
+
+    mergeHumanReadableAdditionalMetaForOrdersRoute(metaData);
 
     // Create order in WooCommerce
     const orderData: any = {

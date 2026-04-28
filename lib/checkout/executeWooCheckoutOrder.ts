@@ -20,6 +20,7 @@ import {
   flatHcpOrderMetaRowsFromHcpInfoJson,
   flatNdisOrderMetaRowsFromNdisInfoJson,
 } from "@/lib/checkout/ndisHcpPayload";
+import { humanReadableAdditionalCheckoutMeta } from "@/lib/checkout/additionalOrderMetaHuman";
  
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
@@ -70,8 +71,12 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
   }
   const deliveryAuth = trimMetaString(payload.delivery_authority ?? "", META_MAX_SHORT);
   if (deliveryAuth) rows.push({ key: "delivery_authority", value: deliveryAuth });
-  if (payload.no_paperwork === true) rows.push({ key: "no_paperwork", value: "yes" });
-  if (payload.discreet_packaging === true) rows.push({ key: "discreet_packaging", value: "yes" });
+  rows.push(...humanReadableAdditionalCheckoutMeta(payload));
+  rows.push({ key: "no_paperwork", value: payload.no_paperwork === true ? "yes" : "no" });
+  rows.push({
+    key: "discreet_packaging",
+    value: payload.discreet_packaging === true ? "yes" : "no",
+  });
   if (payload.newsletter === true) rows.push({ key: "newsletter", value: "yes" });
   const notes = trimMetaString(payload.delivery_notes ?? "", META_MAX_NOTES);
   if (notes) rows.push({ key: "delivery_notes", value: notes });
