@@ -43,6 +43,8 @@ export default function Header({
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const { open: openCart, items } = useCart();
   const { items: wishlistItems } = useWishlist();
@@ -76,6 +78,24 @@ export default function Header({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    function handleOutsideClose(event: MouseEvent | TouchEvent) {
+      if (!open) return;
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (mobileMenuRef.current?.contains(target)) return;
+      if (mobileMenuButtonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    document.addEventListener("mousedown", handleOutsideClose);
+    document.addEventListener("touchstart", handleOutsideClose);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClose);
+      document.removeEventListener("touchstart", handleOutsideClose);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (initialCms) return;
@@ -149,6 +169,7 @@ export default function Header({
         {/* Mobile Menu Button */}
         <div className="flex lg:hidden justify-end">
           <button
+            ref={mobileMenuButtonRef}
             onClick={() => setOpen(!open)}
             className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition-colors duration-200 hover:bg-gray-100"
             aria-label={open ? "Close menu" : "Open menu"}
@@ -303,6 +324,7 @@ export default function Header({
 
       {/* Mobile Menu */}
       <div
+        ref={mobileMenuRef}
         className={`lg:hidden overflow-hidden border-t bg-white transition-all duration-300 ease-out ${
           open ? "max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
         }`}
