@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Apply rate limiting
-  const rateLimitCheck = await rateLimit({
+  const rateLimitCheck = await rateLimitMemory({
     windowMs: 60 * 1000, // 1 minute
     maxRequests: 20, // 20 price updates per minute per IP
     softFail: true,
