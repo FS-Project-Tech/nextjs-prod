@@ -11,15 +11,19 @@ import { FOCUS_RING, FOCUS_RING_BTN, FOCUS_RING_LINK } from "@/lib/checkout/uiCo
 import RequiredMark from "./RequiredMark";
 import AcceptedCardBrands from "./AcceptedCardBrands";
 import { getPaymentMethodOptionLabel } from "@/lib/checkout/paymentDisplay";
+import { isAfterpayCheckoutUiEnabled } from "@/lib/afterpay/clientFlag";
+import type { CheckoutPlacingPhase } from "@/types/checkout";
 
 export type PaymentSectionProps = {
   items: CartItem[];
   cartSubtotal: number;
   control: Control<CheckoutFormData>;
   errors: FieldErrors<CheckoutFormData>;
-  selectedPaymentMethod: "eway" | "cod";
-  onPaymentMethodChange: (method: "eway" | "cod") => void;
+  selectedPaymentMethod: "eway" | "cod" | "afterpay";
+  onPaymentMethodChange: (method: "eway" | "cod" | "afterpay") => void;
   placing: boolean;
+  /** Drives accurate CTA copy while `placing` (cart validation vs payment redirect). */
+  placingSubmitPhase: CheckoutPlacingPhase;
   ewayTokenFlowEnabled: boolean;
   canUseOnAccount: boolean;
 };
@@ -120,9 +124,26 @@ function PaymentSectionInner({
   selectedPaymentMethod,
   onPaymentMethodChange,
   placing,
+  placingSubmitPhase,
   ewayTokenFlowEnabled,
   canUseOnAccount,
 }: PaymentSectionProps) {
+  const afterpayEnabled = isAfterpayCheckoutUiEnabled();
+
+  const submitButtonLabel = (() => {
+    if (!placing) {
+      if (selectedPaymentMethod === "cod") return "Place order on account";
+      if (selectedPaymentMethod === "afterpay") return "Continue with Afterpay";
+      return ewayTokenFlowEnabled ? "Verify & pay" : "Pay securely with card";
+    }
+    if (placingSubmitPhase === "validating") return "Checking your cart…";
+    if (selectedPaymentMethod === "eway") {
+      return ewayTokenFlowEnabled ? "Starting secure checkout…" : "Redirecting to secure payment…";
+    }
+    if (selectedPaymentMethod === "afterpay") return "Redirecting to Afterpay…";
+    return "Placing your order…";
+  })();
+
   return (
     <>
       <ShippingMethodBlock
@@ -160,6 +181,28 @@ function PaymentSectionInner({
                 <AcceptedCardBrands className="mt-2.5 rounded-md px-2 py-1.5" />
               </div>
             </label>
+            {afterpayEnabled && (
+              <label
+                htmlFor="checkout-payment-afterpay"
+                className={`flex cursor-pointer items-start gap-3 rounded border border-gray-300 p-3 hover:bg-gray-50 ${FOCUS_RING_BTN}`}
+              >
+                <input
+                  id="checkout-payment-afterpay"
+                  type="radio"
+                  name="checkout_payment_method"
+                  value="afterpay"
+                  checked={selectedPaymentMethod === "afterpay"}
+                  onChange={() => onPaymentMethodChange("afterpay")}
+                  className={`mt-1 h-4 w-4 border-gray-300 text-gray-900 ${FOCUS_RING}`}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Afterpay</div>
+                  <p className="mt-1 text-xs text-gray-700">
+                    Four interest-free instalments. You will be redirected to Afterpay to complete payment.
+                  </p>
+                </div>
+              </label>
+            )}
             {canUseOnAccount && (
               <label
                 htmlFor="checkout-payment-cod"
@@ -208,14 +251,14 @@ function PaymentSectionInner({
           <span className="text-sm">
             I agree to the{" "}
             <Link
-              href="/terms"
+              href="/info/terms"
               className={`font-medium text-blue-800 underline decoration-blue-800 underline-offset-2 hover:text-blue-950 ${FOCUS_RING_LINK}`}
             >
               Terms and Conditions
             </Link>{" "}
             and{" "}
             <Link
-              href="/privacy"
+              href="/info/privacy"
               className={`font-medium text-blue-800 underline decoration-blue-800 underline-offset-2 hover:text-blue-950 ${FOCUS_RING_LINK}`}
             >
               Privacy Policy
@@ -234,17 +277,15 @@ function PaymentSectionInner({
         type="submit"
         disabled={placing}
         aria-busy={placing}
-        className={`mt-6 w-full rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING_BTN} focus:ring-offset-white cursor-pointer`}
+        className={`mt-6 flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-90 ${FOCUS_RING_BTN} focus:ring-offset-white cursor-pointer`}
       >
-        {placing
-          ? selectedPaymentMethod === "eway"
-            ? "Redirecting to secure payment…"
-            : "Placing your order…"
-          : selectedPaymentMethod === "cod"
-            ? "Place order on account"
-            : ewayTokenFlowEnabled
-              ? "Verify & pay"
-              : "Pay securely with card"}
+        {placing ? (
+          <span
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-solid border-white border-r-transparent"
+            aria-hidden
+          />
+        ) : null}
+        <span>{submitButtonLabel}</span>
       </button>
     </>
   );

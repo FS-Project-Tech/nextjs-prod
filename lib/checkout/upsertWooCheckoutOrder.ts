@@ -63,8 +63,9 @@ export async function upsertValidatedCheckoutOrder(params: {
   checkoutSessionId: string;
   actor: CheckoutActor;
   customerIp?: string;
+  perf?: { wooCreateMs?: number; wooPatchMs?: number; requestId?: string };
 }): Promise<unknown> {
-  const { payload, input, timing, checkoutSessionId, actor, customerIp } = params;
+  const { payload, input, timing, checkoutSessionId, actor, customerIp, perf } = params;
  
   if (!input.line_items?.length) {
     const err = new Error("Cart is empty");
@@ -121,8 +122,10 @@ export async function upsertValidatedCheckoutOrder(params: {
       phase1.customer_ip_address = customerIp;
     }
  
+    const tUp = Date.now();
     await updateWooOrder(existingId, phase1);
- 
+    if (perf) perf.wooCreateMs = Date.now() - tUp;
+
     const existingShippingLineId = Number(
       (ex.shipping_lines as Array<{ id?: unknown }> | undefined)?.[0]?.id || 0,
     );
@@ -133,9 +136,11 @@ export async function upsertValidatedCheckoutOrder(params: {
           ? existingShippingLineId
           : undefined,
     });
+    const tExt = Date.now();
     if (Object.keys(extPatch).length > 0) {
       await applyOrderExtensionWithRetry(existingId, extPatch);
     }
+    if (perf) perf.wooPatchMs = Date.now() - tExt;
  
     const refreshed = await getWooOrder(String(existingId));
     validateCreatedLineItems(refreshed);
@@ -145,6 +150,7 @@ export async function upsertValidatedCheckoutOrder(params: {
  
   const order = await createValidatedCheckoutOrder(input, timing, {
     checkoutSessionMeta: sessionRows,
+    perf,
   });
   validateCreatedLineItems(order);
   /** COD may defer shipping/meta via `after()`; total is validated after extension in executeWooCheckoutOrder. */

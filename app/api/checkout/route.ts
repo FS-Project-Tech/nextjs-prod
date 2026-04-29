@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { handleCheckoutPost } from "@/lib/checkout/handleCheckoutPost";
 import {
   API_RATE_LIMITS,
   corsResponse,
   validateTrustedBrowserOrigin,
-  rateLimit,
+  rateLimitMemory,
 } from "@/lib/api-security";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
@@ -39,12 +40,14 @@ export async function POST(req: NextRequest) {
   }
 
   // ✅ 2. Rate limiting (protects from spam / bot checkout)
-  const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
+  const limit = await rateLimitMemory(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
   if (limit) return withRequestId(limit, requestId);
 
   try {
+    const checkoutRequestId = randomUUID();
+    console.log("[checkout:start]", checkoutRequestId);
     // ✅ 3. Business logic (guests allowed; COD/on-account gated inside handleCheckoutPost)
-    const res = await handleCheckoutPost(req);
+    const res = await handleCheckoutPost(req, checkoutRequestId);
     // ✅ 4. Apply CORS headers
     return withRequestId(corsResponse(req, res), requestId);
   } catch (error) {

@@ -5,7 +5,7 @@ import {
   trackPurchaseServerSide,
 } from "@/lib/analytics/server-track-purchase";
 import wcAPI from "@/lib/woocommerce";
-import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import { readJsonBody } from "@/utils/api-parse";
 
 export const dynamic = "force-dynamic";
@@ -95,12 +95,13 @@ function mapLineItems(raw: unknown): { ok: true; items: object[] } | { ok: false
  * Creates a WooCommerce COD order (`payment_method: cod`, processing, unpaid). Customer-facing label: On Account.
  */
 export async function POST(req: NextRequest) {
+  console.warn("[DEPRECATED] POST /api/create-order is deprecated; use POST /api/checkout instead.");
   try {
     if (!validateTrustedBrowserOrigin(req)) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const limit = await rateLimit(API_RATE_LIMITS.ORDER_WRITE)(req);
+    const limit = await rateLimitMemory(API_RATE_LIMITS.ORDER_WRITE)(req);
     if (limit) return limit;
 
     const body = (await readJsonBody(req)) as Record<string, unknown>;

@@ -8,6 +8,42 @@ import { trackAddToCart } from "@/lib/analytics";
 
 const EMPTY_ITEMS: CartItem[] = [];
 
+/** Fires after zustand `persist` has rehydrated from localStorage (avoids empty-cart flash on refresh). */
+const cartPersistListeners = new Set<() => void>();
+let cartPersistHydrated = false;
+
+function notifyCartPersistHydrated(): void {
+  if (cartPersistHydrated) return;
+  cartPersistHydrated = true;
+  for (const fn of cartPersistListeners) {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  }
+  cartPersistListeners.clear();
+}
+
+/**
+ * `true` on the server (no storage to wait for). On the client, `true` only after persist rehydration.
+ */
+export function getCartPersistHydrated(): boolean {
+  if (typeof window === "undefined") return true;
+  return cartPersistHydrated;
+}
+
+export function subscribeCartPersistHydrated(fn: () => void): () => void {
+  if (getCartPersistHydrated()) {
+    queueMicrotask(fn);
+    return () => {};
+  }
+  cartPersistListeners.add(fn);
+  return () => {
+    cartPersistListeners.delete(fn);
+  };
+}
+
 function normalizeItems(raw: unknown[]): CartItem[] {
   return raw.map((item) => ({
     ...(item as CartItem),
@@ -76,7 +112,8 @@ function areItemsShallowEqual(a: CartItem[], b: CartItem[]): boolean {
       x.price !== y.price ||
       x.productId !== y.productId ||
       x.variationId !== y.variationId ||
-      x.wc_store_item_key !== y.wc_store_item_key
+      x.wc_store_item_key !== y.wc_store_item_key ||
+      x.empowerEligible !== y.empowerEligible
     ) {
       return false;
     }
@@ -285,6 +322,14 @@ export const useCartStore = create<CartStoreState>()(
     {
       name: "headless-cart-v1",
       partialize: (s) => ({ guestItems: s.guestItems, userCarts: s.userCarts }),
+      onRehydrateStorage: () => {
+        return (_state, error: unknown) => {
+          if (error && process.env.NODE_ENV === "development") {
+            console.warn("[cartStore] persist rehydration error", error);
+          }
+          notifyCartPersistHydrated();
+        };
+      },
     },
   ),
 );

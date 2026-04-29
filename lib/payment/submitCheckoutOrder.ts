@@ -12,15 +12,18 @@ import {
   type CheckoutOutcomeDeps,
 } from "./checkoutOutcomeHandlers";
 import { messageFromCreateOrderError } from "./createOrderHttp";
+import { submitAfterpayCheckout } from "./submitAfterpayCheckout";
+import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 
 export type SubmitCheckoutOrderArgs = {
   data: CheckoutFormData;
   cartLines: CartItem[];
   checkoutSessionId: string;
-  selectedPaymentMethod: "eway" | "cod";
+  selectedPaymentMethod: "eway" | "cod" | "afterpay";
   ewayTokenFlowEnabled: boolean;
   appliedCoupon: { code: string } | null;
   couponSearchParam: string | null;
+  empowerApplied?: boolean;
   showError: (message: string) => void;
   success: (message: string) => void;
   clearLocalCart: () => void;
@@ -49,6 +52,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     ewayTokenFlowEnabled,
     appliedCoupon,
     couponSearchParam,
+    empowerApplied,
     showError,
     success,
     clearLocalCart,
@@ -71,6 +75,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
 
   if (cartLines.length === 0) {
     submitGuardRef.current = false;
+    clearCheckoutSubmitLock();
     showError("Your cart is empty");
     return;
   }
@@ -82,6 +87,29 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     showError("Please select a shipping method.");
     submitGuardRef.current = false;
     setPlacing(false);
+    return;
+  }
+
+  if (selectedPaymentMethod === "afterpay") {
+    try {
+      await submitAfterpayCheckout({
+        data,
+        cartLines,
+        checkoutSessionId,
+        appliedCoupon,
+        couponSearchParam,
+        empowerApplied,
+        showError,
+        redirectPendingRef,
+        setPlacing,
+      });
+    } finally {
+      submitGuardRef.current = false;
+      if (!redirectPendingRef.current) {
+        clearCheckoutSubmitLock();
+        setPlacing(false);
+      }
+    }
     return;
   }
 
@@ -107,6 +135,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       appliedCouponCode: appliedCoupon?.code ?? null,
       couponFromUrl: couponSearchParam,
       checkoutSessionId,
+      empowerApplied,
     });
 
     if (process.env.NODE_ENV === "development") {
@@ -204,6 +233,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
   } finally {
     submitGuardRef.current = false;
     if (!redirectPendingRef.current) {
+      clearCheckoutSubmitLock();
       setPlacing(false);
     }
   }

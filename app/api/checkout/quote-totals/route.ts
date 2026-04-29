@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseCheckoutQuoteTotalsInput } from "@/lib/checkout/initiatePayload";
 import { quoteCheckoutTotals } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { API_RATE_LIMITS, rateLimit } from "@/lib/api-security";
+import { rateLimitMemory } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
-  const limit = await rateLimit({
+  const limit = await rateLimitMemory({
     windowMs: 60 * 1000,
     maxRequests: 60,
     softFail: true,

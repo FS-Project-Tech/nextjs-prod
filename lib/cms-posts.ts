@@ -60,40 +60,17 @@ export async function fetchPosts(params?: {
 
 export async function fetchPostBySlug(slug: string): Promise<WpPost | null> {
   if (!WP_URL) return null;
-  const safeSlug = String(slug || "").trim();
-  if (!safeSlug) return null;
-
-  const controller = new AbortController();
-  const timeoutMs = 10_000;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const res = await fetch(
-      `${WP_URL}/wp-json/wp/v2/posts?slug=${encodeURIComponent(safeSlug)}&_embed=1`,
-      { next: { revalidate: 60 }, signal: controller.signal }
+      `${WP_URL}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_embed=1`,
+      { next: { revalidate: 60 } }
     );
-    if (!res.ok) {
-      console.error("[fetchPostBySlug] non-OK response", {
-        slug: safeSlug,
-        status: res.status,
-        statusText: res.statusText,
-      });
-      return null;
-    }
+    if (!res.ok) return null;
     const data: unknown = await res.json();
-    if (!Array.isArray(data)) {
-      console.error("[fetchPostBySlug] invalid response shape", { slug: safeSlug });
-      return null;
-    }
+    if (!Array.isArray(data)) return null;
     return (data[0] as WpPost | undefined) ?? null;
-  } catch (error) {
-    console.error("[fetchPostBySlug] fetch failed", {
-      slug: safeSlug,
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -111,6 +88,75 @@ export async function fetchCategories(): Promise<{ id: number; name: string; slu
       name: c.name,
       slug: c.slug,
     }));
+  } catch {
+    return [];
+  }
+}
+
+const BLOG_SITEMAP_PER_PAGE = 100;
+
+function blogSitemapMaxPages(requested?: number): number {
+  const fromEnv = Number.parseInt(process.env.SITEMAP_MAX_BLOG_PAGES || "", 10);
+  const defaultCap = 50;
+  const base =
+    typeof requested === "number" && requested > 0
+      ? requested
+      : Number.isFinite(fromEnv) && fromEnv > 0
+        ? fromEnv
+        : defaultCap;
+  return Math.min(Math.max(base, 1), 200);
+}
+
+/**
+ * All published blog posts for `/sitemap.xml` (URLs match `/blog/[slug]`).
+ * Respects {@link BLOG_EXCLUDE_SLUGS} like the blog index.
+ */
+export async function fetchAllPostsForSitemap(options?: {
+  maxPages?: number;
+}): Promise<WpPost[]> {
+  const base = WP_URL.replace(/\/$/, "");
+  if (!base) return [];
+
+  const exclude = new Set(BLOG_EXCLUDE_SLUGS);
+  const maxPages = blogSitemapMaxPages(options?.maxPages);
+
+  const buildUrl = (page: number) => {
+    const u = new URL(`${base}/wp-json/wp/v2/posts`);
+    u.searchParams.set("per_page", String(BLOG_SITEMAP_PER_PAGE));
+    u.searchParams.set("page", String(page));
+    u.searchParams.set("status", "publish");
+    return u.toString();
+  };
+
+  try {
+    const firstRes = await fetch(buildUrl(1), { next: { revalidate: 3600 } });
+    if (!firstRes.ok) return [];
+    const firstJson: unknown = await firstRes.json();
+    if (!Array.isArray(firstJson)) return [];
+
+    const all: WpPost[] = [];
+    const pushFiltered = (rows: unknown[]) => {
+      for (const row of rows) {
+        const p = row as WpPost;
+        if (p && typeof p.slug === "string" && p.slug && !exclude.has(p.slug)) {
+          all.push(p);
+        }
+      }
+    };
+    pushFiltered(firstJson);
+
+    const totalPagesRaw = parseInt(firstRes.headers.get("x-wp-totalpages") || "1", 10);
+    const totalPages = Math.min(Math.max(1, Number.isFinite(totalPagesRaw) ? totalPagesRaw : 1), maxPages);
+
+    for (let page = 2; page <= totalPages; page++) {
+      const res = await fetch(buildUrl(page), { next: { revalidate: 3600 } }).catch(() => null);
+      if (!res?.ok) break;
+      const json: unknown = await res.json();
+      if (!Array.isArray(json) || json.length === 0) break;
+      pushFiltered(json);
+    }
+
+    return all;
   } catch {
     return [];
   }

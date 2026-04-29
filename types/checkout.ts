@@ -1,7 +1,10 @@
 import type { CartItem } from "@/lib/types/cart";
 
 /** Woo REST `payment_method` for headless checkout. */
-export type PaymentMethod = "eway" | "cod";
+export type PaymentMethod = "eway" | "cod" | "afterpay";
+
+/** Submit CTA + overlay: cart validation vs payment API / redirect. */
+export type CheckoutPlacingPhase = "idle" | "validating" | "payment";
 
 export type CheckoutCartItem = {
   /** Resolved from SKU server-side when possible; optional if `sku` is sent. */
@@ -68,6 +71,12 @@ export type CheckoutInitiatePayload = {
   discreet_packaging?: boolean;
   newsletter?: boolean;
   delivery_notes?: string;
+  /** Campaign tracking: true when at least one Empower line discount was applied. */
+  empower_program_applied?: boolean;
+  /** Campaign tracking: total Empower discount (major units). */
+  empower_discount_total?: number;
+  /** Campaign tracking: summed quantity of Empower-discounted lines. */
+  empower_discount_items?: number;
 };
 
 export type CheckoutActor = {

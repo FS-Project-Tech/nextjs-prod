@@ -211,6 +211,8 @@ import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
 import { splitWooZoneShippingMethodId } from "@/lib/woo/shippingMethodIds";
 import type { WooLineItem } from "@/services/woocommerce";
+import { catalogLineKey } from "@/lib/woo/batchCheckoutCatalog";
+import { fetchCheckoutCatalogCached } from "@/lib/woo/checkoutCatalogCache";
 import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
 import { wcGet } from "@/lib/woocommerce/wc-fetch";
 
@@ -290,7 +292,16 @@ export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Prom
   return validateAndRecalculateCheckout(checkoutPayloadForQuote(input));
 }
 
-export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePayload): Promise<{
+export type ValidateCheckoutPricingOptions = {
+  requestId?: string;
+  currency?: string;
+  customerType?: string;
+};
+
+export async function validateAndRecalculateCheckout(
+  payload: CheckoutInitiatePayload,
+  options?: ValidateCheckoutPricingOptions,
+): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
   shippingLine: {
@@ -303,6 +314,8 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   /** True when subtotal was below the selected method's minimum and a different rate was applied. */
   shippingAdjusted: boolean;
 }> {
+  let batchHits = 0;
+  let batchMiss = 0;
   const toItemKey = (productId: number, variationId?: number) => `${productId}:${variationId ?? 0}`;
 
   logWooBaseUrl();
@@ -345,14 +358,42 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     quantity: it.quantity,
   }));
 
+  let catalog = new Map<string, Record<string, unknown>>();
+  try {
+    catalog = await fetchCheckoutCatalogCached(validatedLineItems, {
+      currency: options?.currency,
+      customerType: options?.customerType,
+      requestId: options?.requestId,
+    });
+  } catch (e) {
+    console.warn("[checkout-pricing] batch catalog fetch failed, using per-line fallback only", {
+      requestId: options?.requestId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   const unitPrices = await Promise.all(
     validatedLineItems.map(async (li, idx) => {
       const clientUnit = payload.line_items[idx]?.unit_price;
-      const path = li.variation_id
-        ? `/products/${li.product_id}/variations/${li.variation_id}`
-        : `/products/${li.product_id}`;
-      const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
-      const p = data || {};
+      const mapKey = catalogLineKey(li.product_id, li.variation_id);
+      let p: Record<string, unknown>;
+      if (catalog.has(mapKey)) {
+        batchHits += 1;
+        p = (catalog.get(mapKey) as Record<string, unknown>) ?? {};
+      } else {
+        batchMiss += 1;
+        const path = li.variation_id
+          ? `/products/${li.product_id}/variations/${li.variation_id}`
+          : `/products/${li.product_id}`;
+        console.warn("[checkout-pricing] catalog batch miss, fallback wcGet", {
+          path,
+          mapKey,
+          requestId: options?.requestId,
+        });
+        const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
+        p = data || {};
+      }
+
       const wooUnit = Number.parseFloat(String(p.price ?? "0")) || 0;
       const unit =
         typeof clientUnit === "number" && Number.isFinite(clientUnit) && clientUnit > 0
@@ -482,6 +523,11 @@ if (selMin !== undefined && selMin > 0 && subtotal < selMin) {
   });
 
   const { method_id, instance_id } = splitWooZoneShippingMethodId(String(finalRate.id));
+
+  if (options?.requestId) {
+    console.log("[checkout][batch_stats]", options.requestId, { hits: batchHits, miss: batchMiss });
+  }
+
   return {
     validatedLineItems,
     wooLineItems,

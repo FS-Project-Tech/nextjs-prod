@@ -91,6 +91,9 @@ export const checkoutInitiateSchema = z
   discreet_packaging: z.boolean().optional(),
   newsletter: z.boolean().optional(),
   delivery_notes: z.string().trim().max(2000).optional(),
+  empower_program_applied: z.boolean().optional(),
+  empower_discount_total: z.number().min(0).optional(),
+  empower_discount_items: z.number().int().min(0).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.payment_method === "eway") {

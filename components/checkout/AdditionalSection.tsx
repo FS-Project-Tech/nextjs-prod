@@ -108,26 +108,38 @@ export default function AdditionalSection({ control }: AdditionalSectionProps) {
           <span className="text-sm">Subscribe to our newsletter</span>
         </label>
 
-        <div>
-          <label
-            htmlFor="checkout-delivery-instructions"
-            className="mb-1 block text-sm font-medium text-gray-900"
-          >
-            Delivery instructions <span className="font-normal text-gray-600">(optional)</span>
-          </label>
-          <Controller
-            name="deliveryInstructions"
-            control={control}
-            render={({ field }) => (
-              <textarea
-                {...field}
-                id="checkout-delivery-instructions"
-                rows={3}
-                placeholder="Special delivery instructions…"
-                className={`w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
-              />
-            )}
-          />
+        <div className="woocommerce-additional-fields">
+          <div className="woocommerce-additional-fields__field-wrapper">
+            <p
+              id="order_comments_field"
+              className="form-row notes woocommerce-additional-fields__field woocommerce-validated m-0"
+              data-priority=""
+            >
+              <label
+                htmlFor="order_comments"
+                className="woocommerce-form__label woocommerce-form__label-for-textarea mb-1 block"
+              >
+                <span className="text-sm font-semibold text-gray-900">Order notes</span>{" "}
+                <span className="text-sm font-normal text-gray-600">(optional)</span>
+              </label>
+              <span className="woocommerce-input-wrapper block">
+                <Controller
+                  name="deliveryInstructions"
+                  control={control}
+                  render={({ field }) => (
+                    <textarea
+                      {...field}
+                      id="order_comments"
+                      rows={2}
+                      cols={5}
+                      placeholder="Notes about your order, e.g. special notes for delivery."
+                      className={`input-text w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
+                    />
+                  )}
+                />
+              </span>
+            </p>
+          </div>
         </div>
       </div>
     </section>

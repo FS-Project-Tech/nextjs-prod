@@ -1587,6 +1587,7 @@ export default function ProductDetailPanel({
                   deliveryPlan: plan,
                   tax_class: variationTaxClass,
                   tax_status: variationTaxStatus,
+                  empowerEligible: hasEmpowerTag(product),
                 });
                 openCart();
                 success("Product added to cart");

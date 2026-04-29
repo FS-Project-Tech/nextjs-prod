@@ -5,8 +5,6 @@ import { checkRateLimitSafe, fingerprintRequest, getClientIp } from "@/lib/rate-
 import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { logBlockedBot, logRateLimit } from "@/lib/api-logging";
 import type { RateLimitBackendResult } from "@/lib/api-rate-limit";
-import { getRedis } from "@/lib/redis";
-
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Obvious SEO / crawl bots only — do not match normal browsers. */

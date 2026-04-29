@@ -10,7 +10,7 @@ import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { getCheckoutSessionStore } from "@/lib/checkout-session-store";
 import { getWooStorefrontUrl } from "@/lib/checkout-woo-url";
 import { logCheckoutSession } from "@/lib/checkout-session-log";
-import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import type { CheckoutSessionRecord } from "@/types/checkout-session";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const limit = await rateLimit(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
+    const limit = await rateLimitMemory(API_RATE_LIMITS.CHECKOUT_WRITE)(req);
     if (limit) return withRequestId(limit, requestId);
 
     if (!process.env.CHECKOUT_SESSION_SERVER_SECRET?.trim()) {

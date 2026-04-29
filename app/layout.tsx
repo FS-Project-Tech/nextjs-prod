@@ -36,15 +36,15 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "WooCommerce Headless Store",
+    default: "Joya Medical Supplies",
     template: "%s",
   },
   description:
-    "A modern headless e-commerce solution with Next.js and WooCommerce. Shop the latest products with fast, secure checkout.",
-  keywords: ["e-commerce", "woocommerce", "online store", "shopping", "headless commerce"],
-  authors: [{ name: "WooCommerce Store" }],
-  creator: "WooCommerce Store",
-  publisher: "WooCommerce Store",
+    "Your trusted partner for quality medical supplies and healthcare products. Supporting NDIS participants with premium care solutions.",
+  keywords: ["e-commerce", "online store", "shopping", "medical supplies", "healthcare products", "NDIS participants", "premium care solutions"],
+  authors: [{ name: "Joya Medical Supplies" }],
+  creator: "Joya Medical Supplies",
+  publisher: "Joya Medical Supplies",
   formatDetection: {
     email: false,
     address: false,
@@ -60,22 +60,22 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: siteUrl,
-    siteName: "WooCommerce Store",
-    title: "WooCommerce Headless Store",
-    description: "A modern headless e-commerce solution with Next.js and WooCommerce",
+    siteName: "Joya Medical Supplies",
+    title: "Joya Medical Supplies",
+    description: "Your trusted partner for quality medical supplies and healthcare products. Supporting NDIS participants with premium care solutions.",
     images: [
       {
         url: `${siteUrl}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: "WooCommerce Store",
+        alt: "Joya Medical Supplies",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "WooCommerce Headless Store",
-    description: "A modern headless e-commerce solution with Next.js and WooCommerce",
+    title: "Joya Medical Supplies",
+    description: "Your trusted partner for quality medical supplies and healthcare products. Supporting NDIS participants with premium care solutions.",
     images: [`${siteUrl}/og-image.jpg`],
   },
   robots: {

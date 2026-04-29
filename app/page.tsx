@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "JOYA Medical Supplies - Shop Latest Products",
     description:
-      "Shop the latest products at our JOYA Medical Supplies store. Fast, secure checkout with free shipping.",
+      "Shop the latest products at our JOYA Medical Supplies store. Fast, secure checkout with free shipping available.",
     type: "website",
   },
   alternates: {

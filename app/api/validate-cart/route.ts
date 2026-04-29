@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { CartItem } from "@/lib/types/cart";
 import { runFullCartValidation } from "@/lib/cart/validate-cart-full";
-import { rateLimit } from "@/lib/api-security";
+import { rateLimitMemory } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
 import { applyCorsHeaders } from "@/lib/cors";
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     return applyCorsHeaders(req, new NextResponse(null, { status: 204 }));
   }
 
-  const rateLimitCheck = await rateLimit({
+  const rateLimitCheck = await rateLimitMemory({
     windowMs: 60 * 1000,
     maxRequests: 30,
   })(req);

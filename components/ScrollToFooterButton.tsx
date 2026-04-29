@@ -36,7 +36,7 @@ export default function ScrollToFooterButton() {
       onClick={scrollToFooter}
       aria-label="Scroll to footer"
       title="Scroll to footer"
-      className="fixed bottom-24 right-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#1f605f] text-white shadow-lg transition hover:bg-[#164948] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f605f] md:bottom-6 md:right-6"
+      className="fixed bottom-24 right-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#1f605f] text-white shadow-lg transition hover:bg-[#164948] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f605f] md:bottom-7 md:right-6"
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 5v14" strokeLinecap="round" />

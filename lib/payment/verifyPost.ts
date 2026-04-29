@@ -90,6 +90,7 @@ export async function handleVerifyPaymentPost(req: NextRequest): Promise<NextRes
       transactionId: verificationResult.transactionId ?? null,
       orderId: verificationResult.orderPostId ?? orderRef,
       responseCode: verificationResult.responseCode ?? null,
+      responseMessage: verificationResult.responseMessage ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to verify payment.";

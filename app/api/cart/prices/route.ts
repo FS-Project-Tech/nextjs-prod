@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUnitPricesForCartLines } from "@/lib/woo-rest-server";
 import type { CartItem } from "@/lib/types/cart";
-import { rateLimit } from "@/lib/api-security";
+import { rateLimitMemory } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
 import { applyCorsHeaders } from "@/lib/cors";
 

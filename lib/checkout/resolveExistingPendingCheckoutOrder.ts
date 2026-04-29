@@ -8,17 +8,29 @@ const PENDING_LIST_FIELDS =
   "id,meta_data,payment_method,status,order_key,billing,customer_id,date_created";
 
 /**
- * When true, logged-in users without a session-matched pending order may reuse their **newest**
- * pending order. That caused carts to merge into unrelated stale orders before line-item replace
- * was fixed — default off; set `CHECKOUT_REUSE_LATEST_PENDING_ORDER=true` to opt in.
+ * When enabled (default), logged-in users without a browser session id match may reuse their
+ * **newest headless** pending order (same payment method, has `_headless_checkout_session_id` meta).
+ * Prevents a second Woo order when the customer abandoned eWAY / refreshed and got a new checkout
+ * session UUID. Line items are fully replaced on upsert.
+ *
+ * Set `CHECKOUT_REUSE_LATEST_PENDING_ORDER=false` to disable this fallback (legacy behavior).
  */
 function reuseLatestPendingEnabled(): boolean {
-  return process.env.CHECKOUT_REUSE_LATEST_PENDING_ORDER === "true";
+  return process.env.CHECKOUT_REUSE_LATEST_PENDING_ORDER !== "false";
+}
+
+/** Pending orders from headless checkout always carry this meta; avoids merging into unrelated pendings. */
+function orderHasHeadlessSessionMeta(meta: unknown): boolean {
+  const v = readWooMetaValue(
+    meta as Array<{ key?: string; value?: unknown }>,
+    HEADLESS_CHECKOUT_SESSION_META_KEY,
+  );
+  return Boolean(v && String(v).trim());
 }
 
 /**
  * Find an existing pending Woo order to update instead of creating a duplicate.
- * Priority: explicit resume (guest) → session meta match → latest pending (logged-in customers).
+ * Priority: explicit resume (guest) → session meta match → latest **headless** pending with same payment method (logged-in).
  */
 export async function resolveExistingPendingCheckoutOrderId(opts: {
   customerId: number | undefined;
@@ -96,10 +108,15 @@ export async function resolveExistingPendingCheckoutOrderId(opts: {
 
     if (!reuseLatestPendingEnabled() || orders.length === 0) return null;
 
-    const latest = orders[0] as { id?: number; payment_method?: string };
-    if (typeof latest.id !== "number" || latest.id <= 0) return null;
-    const latestPm = String(latest.payment_method || "").toLowerCase();
-    if (latestPm && latestPm !== pm) return null;
+    const candidates = orders.filter((row: { id?: number; payment_method?: string; meta_data?: unknown }) => {
+      if (typeof row.id !== "number" || row.id <= 0) return false;
+      const rowPm = String(row.payment_method || "").toLowerCase();
+      if (rowPm && rowPm !== pm) return false;
+      return orderHasHeadlessSessionMeta(row.meta_data);
+    });
+
+    const latest = candidates[0] as { id?: number } | undefined;
+    if (!latest || typeof latest.id !== "number" || latest.id <= 0) return null;
     return latest.id;
   } catch (e) {
     console.warn("[checkout] resolveExistingPendingCheckoutOrderId failed", {

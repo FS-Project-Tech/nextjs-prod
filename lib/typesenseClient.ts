@@ -15,7 +15,7 @@ function normalizeHost(raw: string): string {
  * Env:
  * - NEXT_PUBLIC_TYPESENSE_HOST (or TYPESENSE_HOST) — host only, e.g. xxx.typesense.net
  * - NEXT_PUBLIC_TYPESENSE_API_KEY or TYPESENSE_API_KEY (search-only key recommended)
- * - NEXT_PUBLIC_TYPESENSE_COLLECTION — default "products"
+ * - NEXT_PUBLIC_TYPESENSE_COLLECTION — default "products_updated"
  * - NEXT_PUBLIC_TYPESENSE_PROTOCOL — default "https"
  * - NEXT_PUBLIC_TYPESENSE_PORT — default "443"
  */
@@ -67,7 +67,7 @@ export function getTypesenseCollectionName(): string {
     process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
     process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME ||
     process.env.TYPESENSE_COLLECTION ||
-    "products"
+    "products_updated"
   );
 }
 

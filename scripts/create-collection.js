@@ -1,5 +1,5 @@
 /**
- * Creates the Typesense `products` collection (admin API key required).
+ * Creates the Typesense `products_updated` collection (admin API key required).
  *
  * Loads repo-root `.env` automatically (same vars as Next.js).
  *
@@ -27,6 +27,12 @@ const apiKey = (
   process.env.NEXT_PUBLIC_TYPESENSE_API_KEY ||
   ""
 ).trim();
+const collection = (
+  process.env.TYPESENSE_COLLECTION ||
+  process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
+  process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME ||
+  "products_updated"
+).trim();
 
 if (!host || !apiKey) {
   console.error(
@@ -47,7 +53,7 @@ const client = new Typesense.Client({
 async function createCollection() {
   try {
     const schema = {
-      name: "products",
+      name: collection,
       enable_nested_fields: true,
       fields: [
         { name: "id", type: "string" },
@@ -97,7 +103,7 @@ async function createCollection() {
 
     await client.collections().create(schema);
 
-    console.log("✅ Collection `products` created.");
+    console.log(`✅ Collection \`${collection}\` created.`);
   } catch (err) {
     console.error("❌ Error:", err.message);
     if (err.importResults) console.error(err.importResults);

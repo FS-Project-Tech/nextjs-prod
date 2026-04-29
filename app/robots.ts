@@ -1,10 +1,7 @@
-//D:\stage-joya\nextjs-stage\app\robots.ts
-
-
 import { MetadataRoute } from "next";
+import { getSitemapBaseUrl } from "@/lib/cms-seo";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://joyamedicalsupplies.com.au";
+const siteUrl = getSitemapBaseUrl();
 
 export default function robots(): MetadataRoute.Robots {
   return {

@@ -4,7 +4,7 @@ import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { extractWooOrderKey, getWooOrder, resolveOrderPostId } from "@/lib/services/wooService";
 import { createEwayHostedPayment, isEwayConfigured } from "@/lib/services/ewayService";
 import { updateWooOrder } from "@/services/woocommerce";
-import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import {
   mergeEwayPaymentSessionMeta,
   readCanonicalCheckoutPaymentTotalString,
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
-  const limit = await rateLimit(API_RATE_LIMITS.EWAY_PAYMENT_INIT)(req);
+  const limit = await rateLimitMemory(API_RATE_LIMITS.EWAY_PAYMENT_INIT)(req);
   if (limit) return limit;
 
   if (!isEwayConfigured()) {

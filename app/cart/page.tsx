@@ -1,80 +1,92 @@
 "use client";
-
+ 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCart } from "@/components/CartProvider";
 import Image from "next/image";
-import { validateAccessToken, getStoredToken, getCartUrl } from "@/lib/access-token";
+import { validateAccessToken, getStoredToken } from "@/lib/access-token";
+import { useCartStore } from "@/store/cartStore";
+import { useUser } from "@/hooks/useUser";
 import Link from "next/link";
 import ShippingOptions from "@/components/ShippingOptions";
 import { useShippingAddress } from "@/hooks/useShippingAddress";
 import { calculateSubtotal, calculateGST, calculateTaxableSubtotal, calculateTotal } from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
-import { formatShippingMethodCostDisplay } from "@/lib/shipping-rate-display";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
-
+ 
 function CartPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { items, updateItemQty, removeItem } = useCart();
+  const { user } = useUser();
+  const { items, updateItemQty, removeItem, isHydrated, isCartMerging, hasLoadedServerCart } =
+    useCart();
   const [coupon, setCoupon] = useState<string>("");
   const [discount, setDiscount] = useState<number>(0);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [persistHydrated, setPersistHydrated] = useState(false);
   const [shippingCost, setShippingCost] = useState<number>(0);
-  const [shippingMethodBase, setShippingMethodBase] = useState<string>("");
   const { country: shippingCountry, zone: shippingZone } = useShippingAddress();
-
+ 
+  // Zustand persist rehydrates localStorage after first paint; until then `items` can be [].
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (useCartStore.persist.hasHydrated()) {
+      setPersistHydrated(true);
+    }
+    return useCartStore.persist.onFinishHydration(() => {
+      setPersistHydrated(true);
+    });
+  }, []);
+ 
   // Ensure component is mounted before accessing browser APIs
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  // Validate access token on mount (only after client mount)
+ 
+  // Logged-in users: wait for optional dashboard cart load before treating empty `items` as final.
+  const serverCartKnown = !user?.id || hasLoadedServerCart;
+  const cartStateKnown =
+    isHydrated && !isCartMerging && persistHydrated && serverCartKnown;
+ 
+  // Validate access token and empty cart only after cart state is restored (avoids false /shop redirect)
   useEffect(() => {
-    if (!isMounted || typeof window === "undefined") return;
-
+    if (!isMounted || typeof window === "undefined" || !cartStateKnown) return;
+ 
     const token = searchParams.get("token") || getStoredToken();
-
-    // Check if token is valid
+ 
     if (!validateAccessToken(token, "cart")) {
-      // Redirect to home page if no valid token
       router.push("/");
       return;
     }
-
-    // Check if cart has items
+ 
     if (items.length === 0) {
-      // Redirect to shop if cart is empty
       router.push("/shop");
       return;
     }
-
-    // Authorized - allow access
+ 
     setIsAuthorized(true);
-
-    // Remove token from URL after validation (clean URL)
-
+ 
     if (searchParams.has("token")) {
       const params = new URLSearchParams(searchParams.toString());
       params.delete("token");
       const cleanUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
       router.replace(cleanUrl);
     }
-  }, [isMounted, searchParams, router, items.length, pathname]);
-
+  }, [isMounted, cartStateKnown, searchParams, router, items.length, pathname]);
+ 
   const subtotal = useMemo(() => calculateSubtotal(items), [items]);
   const taxableSubtotal = useMemo(() => calculateTaxableSubtotal(items), [items]);
-
+ 
   const gst = useMemo(() => {
     return calculateGST(subtotal, shippingCost, discount, 0, taxableSubtotal);
   }, [subtotal, taxableSubtotal, discount, shippingCost]);
-
+ 
   const total = useMemo(() => {
     return calculateTotal(subtotal, shippingCost, discount, gst);
   }, [subtotal, discount, shippingCost, gst]);
-
+ 
   const applyCoupon = () => {
     const code = coupon.trim().toUpperCase();
     if (!code) return;
@@ -84,21 +96,22 @@ function CartPageContent() {
       setDiscount(0);
     }
   };
-
-  // Show loading if not mounted or not authorized
-  if (!isMounted || !isAuthorized) {
+ 
+  if (!isMounted || !cartStateKnown || !isAuthorized) {
     return (
       <div className="text-center">
-        <div className="text-gray-600 mb-2">Redirecting...</div>
-        <div className="text-sm text-gray-500">Please add items to cart first</div>
+        <div className="text-gray-600 mb-2">Loading cart…</div>
+        <div className="text-sm text-gray-500">
+          {!cartStateKnown ? "Restoring your cart" : "Redirecting…"}
+        </div>
       </div>
     );
   }
-
+ 
   return (
-    <div className="container px-4 sm:px-6 lg:px-8">
+    <div className="px-4 sm:px-6 lg:px-8">
       <h1 className="mb-6 text-2xl font-semibold pt-4">Shopping Cart</h1>
-
+ 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Cart Items Section */}
         <div className="lg:col-span-2 space-y-4">
@@ -128,7 +141,7 @@ function CartPageContent() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-gray-900">{i.name}</h3>
-
+ 
                         {i.attributes && Object.keys(i.attributes).length > 0 && (
                           <div className="mt-1 text-sm text-gray-600">
                             <span className="font-medium">Variations: </span>
@@ -140,14 +153,14 @@ function CartPageContent() {
                             ))}
                           </div>
                         )}
-
+ 
                         {i.sku && (
                           <div className="mt-1 text-sm text-gray-600">
                             <span className="font-medium">SKU: </span>
                             <span className="text-gray-900">{i.sku}</span>
                           </div>
                         )}
-
+ 
                         {i.deliveryPlan && i.deliveryPlan !== "none" && (
                           <div className="mt-1 text-sm text-gray-600">
                             <span className="font-medium">Delivery: </span>
@@ -156,7 +169,12 @@ function CartPageContent() {
                             </span>
                           </div>
                         )}
-
+                        {i.empowerEligible && (
+                          <div className="mt-1 text-xs font-medium text-emerald-700">
+                            Empower discount available at checkout
+                          </div>
+                        )}
+ 
                         <div className="mt-2 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <label className="text-sm text-gray-600">Qty:</label>
@@ -191,9 +209,9 @@ function CartPageContent() {
                                       : totalInfo.price}
                                   </div>
                                   <div className="text-xs text-gray-500">
-                                    {/* {priceInfo.label
+                                    {priceInfo.label
                                       ? `${priceInfo.label}: ${priceInfo.price}`
-                                      : priceInfo.price}{" "} */}
+                                      : priceInfo.price}{" "}
                                     each
                                   </div>
                                   {totalInfo.exclPrice && (
@@ -219,7 +237,7 @@ function CartPageContent() {
               </ul>
             )}
           </div>
-
+ 
           <div className="rounded-xl bg-white p-6">
             <h2 className="mb-2 text-sm font-medium text-gray-700">Have any discount code?</h2>
             <div className="flex gap-2">
@@ -241,27 +259,29 @@ function CartPageContent() {
                 Coupon applied: ${discount.toFixed(2)} off
               </div>
             )}
+            {items.some((i) => i.empowerEligible) && (
+              <div className="mt-2 text-xs font-medium text-emerald-700">
+                Empower discount available at checkout
+              </div>
+            )}
           </div>
         </div>
-
+ 
         <div className="lg:col-span-1">
           <div className="rounded-xl bg-white p-6 sticky top-4">
             <h2 className="mb-4 text-lg font-semibold">Order Summary</h2>
-
+ 
             <div className="mb-4 border-b pb-4">
               <ShippingOptions
                 country={shippingCountry}
                 zone={shippingZone}
                 subtotal={subtotal}
                 items={items}
-                onRateChange={(_rateId, rate) => {
-                  setShippingCost(rate.cost);
-                  setShippingMethodBase(rate.method_id);
-                }}
+                onRateChange={(rateId, rate) => setShippingCost(rate.cost)}
                 showLabel={true}
               />
             </div>
-
+ 
             {/* Totals Section */}
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
@@ -270,9 +290,7 @@ function CartPageContent() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">Shipping</span>
-                <span className="font-medium">
-                  {formatShippingMethodCostDisplay(shippingMethodBase || undefined, shippingCost)}
-                </span>
+                <span className="font-medium">{formatPrice(shippingCost)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">GST (10%)</span>
@@ -291,7 +309,7 @@ function CartPageContent() {
                 </div>
               </div>
             </div>
-
+ 
             {isMounted && items.length > 0 && (
               <>
                 <Link
@@ -312,7 +330,7 @@ function CartPageContent() {
     </div>
   );
 }
-
+ 
 export default function CartPage() {
   return (
     <Suspense

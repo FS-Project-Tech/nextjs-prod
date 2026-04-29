@@ -10,7 +10,10 @@ import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { executeWooCheckoutOrder } from "@/lib/checkout/executeWooCheckoutOrder";
+import {
+  executeWooCheckoutOrder,
+  type CheckoutRoutePerf,
+} from "@/lib/checkout/executeWooCheckoutOrder";
 import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
 import {
   countNdisDigitsInCheckoutPayload,
@@ -18,6 +21,7 @@ import {
 } from "@/lib/checkout/ndisHcpPayload";
 import { isTimeoutError } from "@/lib/utils/errors";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
+import type { CheckoutActor } from "@/types/checkout";
 
 function clientIpFromRequest(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -195,8 +199,56 @@ function withPromiseTimeout<T>(ms: number, promise: Promise<T>): Promise<T> {
   });
 }
 
-export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse> {
+function wooStoreCurrency(): string {
+  return (
+    process.env.WOO_STORE_CURRENCY?.trim() ||
+    process.env.NEXT_PUBLIC_WOO_CURRENCY?.trim() ||
+    "AUD"
+  );
+}
+
+function deriveCustomerPricingKey(actor: CheckoutActor): string {
+  if (!actor.authenticated || actor.userId == null || actor.userId <= 0) {
+    return "guest";
+  }
+  const roles = [...actor.roles]
+    .map((r) => String(r || "").trim().toLowerCase())
+    .filter(Boolean)
+    .sort();
+  if (roles.length > 0) return roles.join("|");
+  return `user:${actor.userId}`;
+}
+
+function logCheckoutPerfSummary(opts: {
+  validateMs: number;
+  perf: CheckoutRoutePerf;
+  checkoutStarted: number;
+}) {
+  const total_time = Date.now() - opts.checkoutStarted;
+  opts.perf.total_time = total_time;
+  const rid = opts.perf.requestId;
+  console.log("[checkout] perf_summary", {
+    requestId: rid,
+    validate_time: opts.validateMs,
+    woo_create_time: opts.perf.wooCreateMs ?? 0,
+    woo_patch_time: opts.perf.wooPatchMs ?? 0,
+    payment_time: opts.perf.paymentMs ?? 0,
+    total_time,
+  });
+  if (total_time > 1500) {
+    console.warn("[checkout][slow]", rid, opts.perf);
+  }
+}
+
+export async function handleCheckoutPost(
+  req: NextRequest,
+  checkoutRequestId?: string,
+): Promise<NextResponse> {
   const started = Date.now();
+  let validateMs = 0;
+  const perf: CheckoutRoutePerf = {};
+  const correlationId = checkoutRequestId ?? randomUUID();
+  perf.requestId = correlationId;
   let rawPayload: unknown;
   try {
     rawPayload = await readJsonBody(req);
@@ -220,6 +272,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
   }
 
   console.log("[checkout] start", {
+    requestId: correlationId,
     payment_method: payload.payment_method,
     lines: payload.line_items?.length,
     shipping_method_id: payload.shipping_method_id,
@@ -241,6 +294,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
       actorRoles.includes("administrator") ||
       actorRoles.includes("b2b_user") ||
       actorRoles.includes("b2b30days") ||
+      actorRoles.includes("support_co_ordinator") ||
       actorRoles.includes("ndis-approved") ||
       Boolean(actor.ndisApproved);
     const guestNdisQualifies =
@@ -259,18 +313,33 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     }
 
     payload = stripEmptyNdisHcpFromInitiatePayload(payload);
+    if (payload.empower_program_applied) {
+      console.log("[checkout][empower_discount_applied]", {
+        requestId: correlationId,
+        discountTotal: Number(payload.empower_discount_total || 0),
+        discountItems: Number(payload.empower_discount_items || 0),
+      });
+    }
 
     after(async () => {
       try {
         await syncCheckoutUserMeta(actor, payload);
       } catch (e) {
         console.warn("[checkout] user meta sync failed", {
+          requestId: correlationId,
           userId: actor.userId,
           message: e instanceof Error ? e.message : String(e),
         });
       }
     });
-    const pricing = await validateAndRecalculateCheckout(payload);
+    const tValidate0 = Date.now();
+    const pricing = await validateAndRecalculateCheckout(payload, {
+      requestId: correlationId,
+      currency: wooStoreCurrency(),
+      customerType: deriveCustomerPricingKey(actor),
+    });
+    validateMs = Date.now() - tValidate0;
+    console.log("[checkout] validate time:", { requestId: correlationId, ms: validateMs });
 
     if (payload.payment_method === "eway") {
       const cartCheck = await validateCartForEwayCheckout({
@@ -278,6 +347,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
         totals: pricing.totals,
       });
       if (cartCheck.ok === false) {
+        logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
         return NextResponse.json(
           {
             success: false,
@@ -318,11 +388,14 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
         orderExtensionTiming,
         checkoutSessionId,
         totals: payload.payment_method === "eway" ? totals : undefined,
+        perf,
       }),
     );
 
     if (result.kind === "eway_error") {
+      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
       console.warn("[checkout] eWAY payment error (structured response)", {
+        requestId: correlationId,
         action: result.action,
         ms: Date.now() - started,
       });
@@ -340,9 +413,12 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     }
 
     console.log("[checkout] ok", {
+      requestId: correlationId,
       kind: result.kind,
       totalMs: Date.now() - started,
     });
+
+    logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
 
     if (result.kind === "cod") {
       return jsonCodOrderPlaced(
@@ -352,17 +428,26 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
         result.wooOrderTotal,
       );
     }
-    return jsonEwayRedirect(
-      result.redirectUrl,
-      result.orderIdRaw,
-      result.orderKey,
-      checkoutSessionId,
-      {
-        paymentReused: result.paymentReused === true,
-        wooOrderTotal: result.wooOrderTotal,
-      },
+    if (result.kind === "eway") {
+      return jsonEwayRedirect(
+        result.redirectUrl,
+        result.orderIdRaw,
+        result.orderKey,
+        checkoutSessionId,
+        {
+          paymentReused: result.paymentReused === true,
+          wooOrderTotal: result.wooOrderTotal,
+        },
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, error: "Unsupported checkout payment result." },
+      { status: 500 },
     );
   } catch (error: unknown) {
+    logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+
     const timeoutBody = {
       success: false as const,
       code: "TIMEOUT" as const,
@@ -371,6 +456,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
 
     if (error instanceof CheckoutTimeoutError) {
       console.error("[checkout] timeout (envelope)", {
+        requestId: correlationId,
         ms: Date.now() - started,
         error,
       });
@@ -379,6 +465,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
 
     if (isTimeoutError(error) || isAbortLikeCheckout(error)) {
       console.error("[checkout] timeout (Woo/network)", {
+        requestId: correlationId,
         ms: Date.now() - started,
         error,
       });
@@ -401,7 +488,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
       );
     }
     if (cartErrData?.type === "insufficient_stock") {
-      console.error("[checkout] insufficient_stock", cartErrData);
+      console.error("[checkout] insufficient_stock", { requestId: correlationId, cartErrData });
       return NextResponse.json(
         {
           success: false,
@@ -429,7 +516,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     if (errCode === "INVALID_TOTAL") {
       return NextResponse.json({ success: false, error: "Invalid total" }, { status: 400 });
     }
-    console.error("[checkout] error", error);
+    console.error("[checkout] error", { requestId: correlationId, error });
     const msg = error instanceof Error ? error.message : "Order creation failed";
     const status = hasAxiosStatus(error) ? Number((error as { response?: { status?: number } }).response?.status) : 0;
     const httpStatus =

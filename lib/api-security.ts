@@ -14,6 +14,7 @@ export {
   validateTrustedBrowserOrigin,
   corsResponse,
   rateLimit,
+  rateLimitMemory,
 } from "./api-public-guards";
 
 export async function requireAuth(

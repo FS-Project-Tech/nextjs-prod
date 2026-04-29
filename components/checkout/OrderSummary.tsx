@@ -21,6 +21,10 @@ export type OrderSummaryProps = {
   items: CartItem[];
   subtotal: number;
   couponDiscount: number;
+  empowerDiscount?: number;
+  empowerDiscountEligible?: boolean;
+  empowerDiscountApplied?: boolean;
+  onApplyEmpowerDiscount?: () => void;
   appliedCoupon: { code: string } | null;
   shippingCost: number;
   gst: number;
@@ -33,6 +37,10 @@ function OrderSummary({
   items,
   subtotal,
   couponDiscount,
+  empowerDiscount = 0,
+  empowerDiscountEligible = false,
+  empowerDiscountApplied = false,
+  onApplyEmpowerDiscount,
   appliedCoupon,
   shippingCost,
   gst,
@@ -111,6 +119,28 @@ function OrderSummary({
           <div className="flex items-center justify-between text-emerald-800">
             <span>Discount {appliedCoupon && `(${appliedCoupon.code})`}</span>
             <span className="font-medium">-{formatPrice(couponDiscount)}</span>
+          </div>
+        )}
+        {empowerDiscountEligible && !empowerDiscountApplied && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-amber-900">
+                Empower discount available
+              </span>
+              <button
+                type="button"
+                onClick={onApplyEmpowerDiscount}
+                className="rounded bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-700"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+        {empowerDiscount > 0 && (
+          <div className="flex items-center justify-between text-emerald-800">
+            <span>Empower program discount apply</span>
+            <span className="font-medium">-{formatPrice(empowerDiscount)}</span>
           </div>
         )}
         {appliedCoupon && couponDiscount <= 0 && (

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import wcAPI from "@/lib/woocommerce";
 import { getWpBaseUrl } from "@/lib/auth";
 import { getAuthToken } from "@/lib/auth-server";
-import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 import { mergeHumanReadableAdditionalMetaForOrdersRoute } from "@/lib/checkout/additionalOrderMetaHuman";
 
@@ -11,13 +11,14 @@ import { mergeHumanReadableAdditionalMetaForOrdersRoute } from "@/lib/checkout/a
  * Follows WooCommerce's default order creation flow with secure payment handling
  */
 export async function POST(req: NextRequest) {
+  console.warn("[DEPRECATED] POST /api/orders is deprecated; use POST /api/checkout instead.");
   const requestId = getRequestId(req);
   try {
     if (!validateTrustedBrowserOrigin(req)) {
       return withRequestId(NextResponse.json({ error: "Forbidden" }, { status: 403 }), requestId);
     }
 
-    const limit = await rateLimit(API_RATE_LIMITS.ORDER_WRITE)(req);
+    const limit = await rateLimitMemory(API_RATE_LIMITS.ORDER_WRITE)(req);
     if (limit) return withRequestId(limit, requestId);
 
     const body = await req.json();

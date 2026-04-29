@@ -1,4 +1,5 @@
 import type { MutableRefObject } from "react";
+import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
 import {
   readResponseBodyText,
@@ -30,6 +31,7 @@ function assignExternalUrl(
   href: string,
   redirectPendingRef: MutableRefObject<boolean>
 ): void {
+  clearCheckoutSubmitLock();
   redirectPendingRef.current = true;
   queueMicrotask(() => {
     window.location.assign(href);
@@ -49,6 +51,7 @@ export function goToOrderReview(
   deps: CheckoutOutcomeDeps,
   orderKey?: string | null
 ): void {
+  clearCheckoutSubmitLock();
   const hint =
     paymentHint && paymentHint.trim() !== ""
       ? `&pm=${encodeURIComponent(paymentHint.trim())}`
