@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       couponCode: "EMPOWER",
     });
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
+    if (process.env.NODE_ENV === "production") {
       console.error("[Empower] Join error:", error);
     }
     return NextResponse.json(
