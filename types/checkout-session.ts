@@ -42,6 +42,8 @@ export type CheckoutSessionPublic = {
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
   line_items: CheckoutCartItem[];
+  /** Optional locked Woo line rows (subtotal/total/meta) for exact amount parity at token redeem. */
+  woo_line_items?: WooLineItem[];
   shipping_method_id: string;
   shipping_line: CheckoutSessionRecord["shippingLine"];
   payment_method: PaymentMethod;

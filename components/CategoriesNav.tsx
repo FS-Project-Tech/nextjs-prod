@@ -221,6 +221,14 @@ async function CategoriesNavContent() {
               Telehealth
             </PrefetchLink>
           </li>
+          <li className="shrink-0 max-md:pe-2 sm:max-md:pe-3">
+            <PrefetchLink
+              href="/empower-program/"
+              className="block whitespace-nowrap px-2 py-2 text-white hover:bg-nav-hover sm:px-3"
+            >
+              Empower
+            </PrefetchLink>
+          </li>
            {/* Offers — first on mobile (replaces All Categories slot); last on md+ */}
          <li className="order-first shrink-0 md:order-last">
             <PrefetchLink

@@ -31,6 +31,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (defined('JOYA_HEADLESS_CHECKOUT_TOKEN_LOADED')) {
+    return;
+}
+define('JOYA_HEADLESS_CHECKOUT_TOKEN_LOADED', true);
+
 if (!defined('JOYA_NEXT_API_BASE') || !defined('JOYA_CHECKOUT_SESSION_SECRET')) {
     return;
 }
@@ -54,6 +59,7 @@ if (!defined('JOYA_PARCEL_PROTECTION_FEE_AUD')) {
 add_action(
     'init',
     function () {
+        try {
         if (is_admin() || (defined('DOING_CRON') && DOING_CRON)) {
             return;
         }
@@ -64,7 +70,11 @@ add_action(
 
         $token = sanitize_text_field(wp_unslash($_GET['checkout_token']));
         if (strlen($token) < 16) {
-            wp_die(esc_html__('Invalid checkout link.', 'joya'), 400);
+            wp_die(
+                esc_html__('Invalid checkout link.', 'joya'),
+                esc_html__('Checkout', 'joya'),
+                ['response' => 400]
+            );
         }
 
         $url = rtrim(JOYA_NEXT_API_BASE, '/') . '/api/checkout/get-session';
@@ -88,7 +98,11 @@ add_action(
 
         if (is_wp_error($response)) {
             error_log('[joya-headless-checkout] get-session transport error: ' . $response->get_error_message());
-            wp_die(esc_html__('Unable to verify checkout. Please try again or contact us.', 'joya'), 502);
+            wp_die(
+                esc_html__('Unable to verify checkout. Please try again or contact us.', 'joya'),
+                esc_html__('Checkout', 'joya'),
+                ['response' => 502]
+            );
         }
 
         $code = wp_remote_retrieve_response_code($response);
@@ -107,12 +121,24 @@ add_action(
             $order = joya_headless_build_order_from_session($session);
         } catch (Throwable $e) {
             error_log('[joya-headless-checkout] build order: ' . $e->getMessage());
-            wp_die(esc_html__('Could not create your order. Please return to the store and try again.', 'joya'), 500);
+            wp_die(
+                esc_html__('Could not create your order. Please return to the store and try again.', 'joya'),
+                esc_html__('Checkout', 'joya'),
+                ['response' => 500]
+            );
         }
 
         $pay_url = $order->get_checkout_payment_url(true);
         wp_safe_redirect($pay_url);
         exit;
+        } catch (Throwable $e) {
+            error_log('[joya-headless-checkout] fatal in token flow: ' . $e->getMessage());
+            wp_die(
+                esc_html__('Checkout is temporarily unavailable. Please try again shortly.', 'joya'),
+                esc_html__('Checkout', 'joya'),
+                ['response' => 500]
+            );
+        }
     },
     1
 );
@@ -128,22 +154,68 @@ function joya_headless_build_order_from_session(array $session): WC_Order
         $order->set_customer_id(absint($session['user_id']));
     }
 
-    $line_items = isset($session['line_items']) && is_array($session['line_items']) ? $session['line_items'] : [];
-    foreach ($line_items as $row) {
-        $pid = isset($row['product_id']) ? absint($row['product_id']) : 0;
-        $qty = isset($row['quantity']) ? absint($row['quantity']) : 0;
-        if ($pid < 1 || $qty < 1) {
-            continue;
+    $locked_rows = isset($session['woo_line_items']) && is_array($session['woo_line_items'])
+        ? $session['woo_line_items']
+        : [];
+    if (!empty($locked_rows)) {
+        foreach ($locked_rows as $row) {
+            $pid = isset($row['product_id']) ? absint($row['product_id']) : 0;
+            $qty = isset($row['quantity']) ? absint($row['quantity']) : 0;
+            $vid = isset($row['variation_id']) ? absint($row['variation_id']) : 0;
+            if ($pid < 1 || $qty < 1) {
+                continue;
+            }
+            $product_id_for_line = $vid > 0 ? $vid : $pid;
+            $product = wc_get_product($product_id_for_line);
+            if (!$product) {
+                throw new RuntimeException('Product not found: ' . $product_id_for_line);
+            }
+
+            $item = new WC_Order_Item_Product();
+            $item->set_product($product);
+            $item->set_quantity($qty);
+
+            $subtotal_raw = isset($row['subtotal']) ? (string) $row['subtotal'] : '';
+            $total_raw = isset($row['total']) ? (string) $row['total'] : '';
+            if ($subtotal_raw !== '') {
+                $item->set_subtotal(wc_format_decimal($subtotal_raw));
+            }
+            if ($total_raw !== '') {
+                $item->set_total(wc_format_decimal($total_raw));
+            } elseif ($subtotal_raw !== '') {
+                $item->set_total(wc_format_decimal($subtotal_raw));
+            }
+
+            if (!empty($row['meta_data']) && is_array($row['meta_data'])) {
+                foreach ($row['meta_data'] as $meta) {
+                    if (!is_array($meta) || empty($meta['key'])) {
+                        continue;
+                    }
+                    $mkey = sanitize_key((string) $meta['key']);
+                    $mval = isset($meta['value']) ? $meta['value'] : '';
+                    $item->add_meta_data($mkey, $mval, true);
+                }
+            }
+            $order->add_item($item);
         }
-        $product = wc_get_product($pid);
-        if (!$product) {
-            throw new RuntimeException('Product not found: ' . $pid);
+    } else {
+        $line_items = isset($session['line_items']) && is_array($session['line_items']) ? $session['line_items'] : [];
+        foreach ($line_items as $row) {
+            $pid = isset($row['product_id']) ? absint($row['product_id']) : 0;
+            $qty = isset($row['quantity']) ? absint($row['quantity']) : 0;
+            if ($pid < 1 || $qty < 1) {
+                continue;
+            }
+            $product = wc_get_product($pid);
+            if (!$product) {
+                throw new RuntimeException('Product not found: ' . $pid);
+            }
+            $args = [];
+            if (!empty($row['variation_id'])) {
+                $args['variation_id'] = absint($row['variation_id']);
+            }
+            $order->add_product($product, $qty, $args);
         }
-        $args = [];
-        if (!empty($row['variation_id'])) {
-            $args['variation_id'] = absint($row['variation_id']);
-        }
-        $order->add_product($product, $qty, $args);
     }
 
     $billing_addr = !empty($session['billing']) && is_array($session['billing'])
@@ -220,24 +292,33 @@ function joya_headless_build_order_from_session(array $session): WC_Order
         $order->add_item($fee);
     }
 
-    $gateway_id = JOYA_EWAY_GATEWAY_ID;
-    $available = WC()->payment_gateways()->get_available_payment_gateways();
-    if (!isset($available[$gateway_id])) {
-        foreach (['eway_payments', 'eway'] as $fallback) {
-            if (isset($available[$fallback])) {
-                $gateway_id = $fallback;
-                break;
+    /**
+     * Do not rely on `get_available_payment_gateways()` during token handoff (`init`):
+     * some gateway plugins expect checkout session context and can fatal here.
+     * Set a stable gateway id, then optionally enrich title when gateway objects are ready.
+     */
+    $gateway_id = sanitize_key((string) JOYA_EWAY_GATEWAY_ID);
+    if ($gateway_id === '') {
+        $gateway_id = 'eway_payments';
+    }
+    $order->set_payment_method($gateway_id);
+
+    $title_set = false;
+    if (function_exists('WC')) {
+        $wc = WC();
+        if ($wc && method_exists($wc, 'payment_gateways')) {
+            $pg = $wc->payment_gateways();
+            if ($pg && method_exists($pg, 'payment_gateways')) {
+                $all_gateways = $pg->payment_gateways();
+                if (is_array($all_gateways) && isset($all_gateways[$gateway_id]) && is_object($all_gateways[$gateway_id]) && method_exists($all_gateways[$gateway_id], 'get_title')) {
+                    $order->set_payment_method_title((string) $all_gateways[$gateway_id]->get_title());
+                    $title_set = true;
+                }
             }
         }
     }
-    if (!isset($available[$gateway_id])) {
-        $keys = array_keys($available);
-        $gateway_id = $keys[0] ?? 'bacs';
-    }
-
-    $order->set_payment_method($gateway_id);
-    if (isset($available[$gateway_id])) {
-        $order->set_payment_method_title($available[$gateway_id]->get_title());
+    if (!$title_set) {
+        $order->set_payment_method_title('Credit Card');
     }
 
     if (!empty($session['meta_data']) && is_array($session['meta_data'])) {

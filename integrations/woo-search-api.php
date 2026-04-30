@@ -690,18 +690,54 @@ function joya_ts_schedule_sync($product_id) {
         ]);
         return;
     }
+    $cooldown_key = 'joya_ts_sync_cooldown_' . $normalized_id;
+    $cooldown_secs = 30;
+    if (get_transient($cooldown_key)) {
+        joya_ts_log_with_activity('debug', 'schedule skipped: cooldown active', [
+            'product_id' => $normalized_id,
+            'cooldown_secs' => $cooldown_secs,
+        ]);
+        return;
+    }
     $hook = 'joya_ts_deferred_sync_single';
     if (!wp_next_scheduled($hook, [$normalized_id])) {
         wp_schedule_single_event(time() + 2, $hook, [$normalized_id]);
+        set_transient($cooldown_key, 1, $cooldown_secs);
         joya_ts_log_with_activity('debug', 'scheduled deferred sync', ['product_id' => $normalized_id]);
     } else {
         joya_ts_log_with_activity('debug', 'schedule skipped: already queued', ['product_id' => $normalized_id]);
     }
 }
 
+/**
+ * Delete product + child variation documents when a parent product leaves publish.
+ * For variation posts, delete only the variation document id.
+ */
+function joya_ts_delete_index_docs_for_post($post_id, $post_type) {
+    $post_id = absint($post_id);
+    if ($post_id <= 0) return;
+
+    if ((string) $post_type === 'product') {
+        joya_ts_call_delete_endpoint($post_id);
+        $product = wc_get_product($post_id);
+        if ($product instanceof \WC_Product_Variable) {
+            foreach ($product->get_children() as $variation_id) {
+                joya_ts_call_delete_endpoint((int) $variation_id);
+            }
+        }
+        return;
+    }
+
+    if ((string) $post_type === 'product_variation') {
+        joya_ts_call_delete_endpoint($post_id);
+    }
+}
+
 add_action('joya_ts_deferred_sync_single', function ($product_id) {
-    joya_ts_log_with_activity('debug', 'running deferred sync', ['product_id' => (int) $product_id]);
-    joya_ts_call_sync_endpoint((int) $product_id);
+    $pid = (int) $product_id;
+    joya_ts_log_with_activity('debug', 'running deferred sync', ['product_id' => $pid]);
+    joya_ts_call_sync_endpoint($pid);
+    delete_transient('joya_ts_sync_cooldown_' . $pid);
 }, 10, 1);
 
 add_action('save_post', function ($post_id, $post, $update) {
@@ -734,6 +770,42 @@ add_action('woocommerce_product_set_stock_status', function ($product_id) {
 add_action('woocommerce_variation_set_stock_status', function ($variation_id) {
     joya_ts_schedule_sync((int) $variation_id);
 }, 20, 1);
+
+/**
+ * Explicit status transitions (publish <-> non-publish) for products + variations.
+ * This closes edge cases where status changes do not flow through normal save hooks.
+ */
+add_action('transition_post_status', function ($new_status, $old_status, $post) {
+    if (!$post || !joya_ts_is_supported_post_type($post->post_type)) {
+        return;
+    }
+    if ($new_status === $old_status) {
+        return;
+    }
+
+    $post_id = (int) $post->ID;
+    joya_ts_log_with_activity('debug', 'transition_post_status trigger', [
+        'post_id' => $post_id,
+        'post_type' => (string) $post->post_type,
+        'old_status' => (string) $old_status,
+        'new_status' => (string) $new_status,
+    ]);
+
+    if ($new_status === 'publish') {
+        joya_ts_schedule_sync($post_id);
+        return;
+    }
+
+    if ($old_status === 'publish' && $new_status !== 'publish') {
+        joya_ts_delete_index_docs_for_post($post_id, (string) $post->post_type);
+        if ((string) $post->post_type === 'product_variation') {
+            $parent_id = (int) wp_get_post_parent_id($post_id);
+            if ($parent_id > 0) {
+                joya_ts_schedule_sync($parent_id);
+            }
+        }
+    }
+}, 20, 3);
 
 add_action('before_delete_post', function ($post_id) {
     $post = get_post($post_id);

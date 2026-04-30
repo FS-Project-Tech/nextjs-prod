@@ -18,6 +18,7 @@ export function toPublicSession(record: CheckoutSessionRecord): CheckoutSessionP
     billing: p.billing,
     shipping: p.shipping,
     line_items,
+    woo_line_items: record.wooLineItems,
     shipping_method_id: p.shipping_method_id,
     shipping_line: record.shippingLine,
     payment_method: p.payment_method,
