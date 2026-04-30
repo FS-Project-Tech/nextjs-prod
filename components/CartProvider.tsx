@@ -19,6 +19,7 @@ import {
   useCartStore,
   useCartStoreItems,
 } from "@/store/cartStore";
+import { readAppliedCouponFromSession } from "@/lib/coupon/clientAppliedCouponSession";
  
 export type { CartItem };
  
@@ -223,8 +224,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
         return;
       }
+      const trimmedExplicit = couponCode?.trim();
+      const fromSession = readAppliedCouponFromSession().code ?? undefined;
+      const resolvedCoupon = trimmedExplicit || fromSession;
       wooSyncMutexRef.current = wooSyncMutexRef.current
-        .then(() => performWooPush(lines, couponCode))
+        .then(() => performWooPush(lines, resolvedCoupon))
         .catch((e) => {
           const msg = e instanceof Error ? e.message : "Cart sync failed";
           setSyncError(msg);

@@ -8,13 +8,13 @@ import { randomUUID } from "node:crypto";
 import { after, NextRequest, NextResponse } from "next/server";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
-import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import {
   executeWooCheckoutOrder,
   type CheckoutRoutePerf,
 } from "@/lib/checkout/executeWooCheckoutOrder";
-import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
+import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate";
+import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
 import {
   countNdisDigitsInCheckoutPayload,
   stripEmptyNdisHcpFromInitiatePayload,
@@ -199,26 +199,6 @@ function withPromiseTimeout<T>(ms: number, promise: Promise<T>): Promise<T> {
   });
 }
 
-function wooStoreCurrency(): string {
-  return (
-    process.env.WOO_STORE_CURRENCY?.trim() ||
-    process.env.NEXT_PUBLIC_WOO_CURRENCY?.trim() ||
-    "AUD"
-  );
-}
-
-function deriveCustomerPricingKey(actor: CheckoutActor): string {
-  if (!actor.authenticated || actor.userId == null || actor.userId <= 0) {
-    return "guest";
-  }
-  const roles = [...actor.roles]
-    .map((r) => String(r || "").trim().toLowerCase())
-    .filter(Boolean)
-    .sort();
-  if (roles.length > 0) return roles.join("|");
-  return `user:${actor.userId}`;
-}
-
 function logCheckoutPerfSummary(opts: {
   validateMs: number;
   perf: CheckoutRoutePerf;
@@ -333,7 +313,7 @@ export async function handleCheckoutPost(
       }
     });
     const tValidate0 = Date.now();
-    const pricing = await validateAndRecalculateCheckout(payload, {
+    const gate = await pricingWithEwayCartGate(payload, {
       requestId: correlationId,
       currency: wooStoreCurrency(),
       customerType: deriveCustomerPricingKey(actor),
@@ -341,27 +321,22 @@ export async function handleCheckoutPost(
     validateMs = Date.now() - tValidate0;
     console.log("[checkout] validate time:", { requestId: correlationId, ms: validateMs });
 
-    if (payload.payment_method === "eway") {
-      const cartCheck = await validateCartForEwayCheckout({
-        cart_items: payload.cart_items!,
-        totals: pricing.totals,
-      });
-      if (cartCheck.ok === false) {
-        logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
-        return NextResponse.json(
-          {
-            success: false,
-            error: cartCheck.errors[0]?.message ?? "Cart validation failed",
-            valid: cartCheck.valid,
-            errors: cartCheck.errors,
-            code: cartCheck.code,
-          },
-          { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
-        );
-      }
+    if (gate.ok === false) {
+      const cartCheck = gate.cartCheck;
+      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+      return NextResponse.json(
+        {
+          success: false,
+          error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+          valid: cartCheck.valid,
+          errors: cartCheck.errors,
+          code: cartCheck.code,
+        },
+        { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+      );
     }
 
-    const { wooLineItems, shippingLine, totals } = pricing;
+    const { wooLineItems, shippingLine, totals } = gate.pricing;
     const checkoutSessionId =
       typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
         ? payload.checkout_session_id.trim()

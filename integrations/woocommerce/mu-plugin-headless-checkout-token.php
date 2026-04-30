@@ -11,6 +11,13 @@
  * 3. Builds WC_Order from session payload (no WC cart session)
  * 4. Redirects to $order->get_checkout_payment_url() → order-pay → optional auto-submit (JS below)
  *
+ * PRICING INTEGRITY
+ * -----------------
+ * Next.js may create sessions using a signed quote (see CHECKOUT_QUOTE_SIGNING_SECRET / quote-totals).
+ * Session totals are stored in `session.totals` and applied as `headless_validated_checkout_total`.
+ * For defence in depth, you may add Woo-side validation here (e.g. recalculate line totals from
+ * catalog and compare to session totals) before redirecting to payment.
+ *
  * CONFIGURATION (wp-config.php recommended)
  * -----------------------------------------
  * define('JOYA_NEXT_API_BASE', 'https://your-next-app.example.com'); // no trailing slash
@@ -139,18 +146,60 @@ function joya_headless_build_order_from_session(array $session): WC_Order
         $order->add_product($product, $qty, $args);
     }
 
-    if (!empty($session['billing']) && is_array($session['billing'])) {
-        $order->set_address(array_map('joya_headless_clean_addr', $session['billing']), 'billing');
-    }
-    if (!empty($session['shipping']) && is_array($session['shipping'])) {
-        $order->set_address(array_map('joya_headless_clean_addr', $session['shipping']), 'shipping');
+    $billing_addr = !empty($session['billing']) && is_array($session['billing'])
+        ? array_map('joya_headless_clean_addr', $session['billing'])
+        : [];
+    if (!empty($billing_addr)) {
+        $order->set_address($billing_addr, 'billing');
     }
 
-    if (!empty($session['shipping_line']) && is_array($session['shipping_line'])) {
-        $ship = $session['shipping_line'];
+    $shipping_addr = !empty($session['shipping']) && is_array($session['shipping'])
+        ? array_map('joya_headless_clean_addr', $session['shipping'])
+        : [];
+    // Defensive fallback: order-pay can fail shipping resolution when shipping address is partial.
+    foreach (['first_name', 'last_name', 'address_1', 'city', 'postcode', 'country', 'state'] as $k) {
+        if ((empty($shipping_addr[$k]) || !is_string($shipping_addr[$k])) && !empty($billing_addr[$k])) {
+            $shipping_addr[$k] = $billing_addr[$k];
+        }
+    }
+    if (empty($shipping_addr['country'])) {
+        $shipping_addr['country'] = 'AU';
+    }
+    if (!empty($shipping_addr)) {
+        $order->set_address($shipping_addr, 'shipping');
+    }
+
+    // Always persist one shipping line so order-pay does not attempt package rate lookup.
+    $ship = !empty($session['shipping_line']) && is_array($session['shipping_line'])
+        ? $session['shipping_line']
+        : [];
+    if (!empty($session['shipping_method_id']) && empty($ship['method_id'])) {
+        $ship['method_id'] = (string) $session['shipping_method_id'];
+    }
+    if (empty($ship['total']) && !empty($session['totals']) && is_array($session['totals']) && isset($session['totals']['shipping'])) {
+        $ship['total'] = (string) $session['totals']['shipping'];
+    }
+    if (!empty($ship['method_id']) || array_key_exists('total', $ship)) {
         $item = new WC_Order_Item_Shipping();
-        $method_id = isset($ship['method_id']) ? (string) $ship['method_id'] : 'headless';
-        $item->set_method_id($method_id);
+        $method_id_raw = isset($ship['method_id']) ? (string) $ship['method_id'] : 'headless';
+        $method_id = $method_id_raw;
+        $instance_id = isset($ship['instance_id']) ? absint($ship['instance_id']) : 0;
+        // Accept both "flat_rate" and "flat_rate:3" forms from headless payloads.
+        if (strpos($method_id_raw, ':') !== false) {
+            $parts = explode(':', $method_id_raw, 2);
+            $method_id = sanitize_key((string) ($parts[0] ?? 'headless'));
+            if ($instance_id < 1 && isset($parts[1])) {
+                $instance_id = absint($parts[1]);
+            }
+        } else {
+            $method_id = sanitize_key($method_id_raw);
+        }
+        $item->set_method_id($method_id ?: 'headless');
+        if ($instance_id > 0 && method_exists($item, 'set_instance_id')) {
+            $item->set_instance_id($instance_id);
+        } elseif ($instance_id > 0) {
+            $item->add_meta_data('instance_id', $instance_id, true);
+        }
         $item->set_method_title(isset($ship['method_title']) ? (string) $ship['method_title'] : __('Shipping', 'joya'));
         $total = isset($ship['total']) ? wc_format_decimal((string) $ship['total']) : '0';
         $item->set_total($total);
@@ -201,6 +250,21 @@ function joya_headless_build_order_from_session(array $session): WC_Order
     }
 
     $order->calculate_totals();
+
+    /**
+     * Align grand total with the Next.js checkout quote (coupon, GST, shipping).
+     * Woo calculate_totals() alone can diverge from headless pricing; eWAY uses WC_Order::get_total().
+     * Meta key matches Next headless_validated_checkout_total used on REST /api/checkout orders.
+     */
+    if (!empty($session['totals']) && is_array($session['totals']) && isset($session['totals']['total'])) {
+        $headless_grand = (float) $session['totals']['total'];
+        if ($headless_grand > 0) {
+            $as_string = wc_format_decimal($headless_grand);
+            $order->update_meta_data('headless_validated_checkout_total', $as_string);
+            $order->set_total($as_string);
+        }
+    }
+
     $order->save();
 
     return $order;

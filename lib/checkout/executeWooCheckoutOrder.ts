@@ -350,7 +350,24 @@ export async function executeWooCheckoutOrder(input: {
       console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
     }
   }
- 
+
+  if (checkoutTotals) {
+    const wooStr = readWooOrderTotal(orderForPayment);
+    const wooNum = Number.parseFloat(String(wooStr ?? "0"));
+    if (
+      Number.isFinite(wooNum) &&
+      Number.isFinite(checkoutTotals.total) &&
+      Math.abs(wooNum - checkoutTotals.total) > 0.05
+    ) {
+      console.warn("[executeWooCheckout] woo_total_vs_validated_quote", {
+        requestId,
+        wooOrderTotal: wooStr,
+        validatedTotal: checkoutTotals.total,
+        coupon: payload.coupon_code ?? null,
+      });
+    }
+  }
+
   const tPay = Date.now();
   const paymentResult = await handlePayment({
     method: "eway",

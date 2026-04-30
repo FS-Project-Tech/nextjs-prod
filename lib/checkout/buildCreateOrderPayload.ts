@@ -8,6 +8,7 @@ import {
   buildNdisInfoJsonFromForm,
   normalizeNdisFundingType,
 } from "@/lib/checkout/ndisHcpPayload";
+import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import type { CheckoutFormData, ShippingMethodType } from "./schema";
 
 function billingBlock(data: CheckoutFormData) {
@@ -95,6 +96,8 @@ export function buildCreateOrderPayload(params: {
   /** Stable UUID per browser tab/session for idempotent Woo checkout. */
   checkoutSessionId?: string | null;
   empowerApplied?: boolean;
+  /** From last POST /api/checkout/quote-totals — required for fast create-session (eWAY). */
+  quoteSigning?: CheckoutQuoteSigningPayload | null;
 }): Record<string, unknown> {
   const {
     data,
@@ -104,6 +107,7 @@ export function buildCreateOrderPayload(params: {
     couponFromUrl,
     checkoutSessionId,
     empowerApplied,
+    quoteSigning,
   } =
     params;
   const billing = billingBlock(data);
@@ -152,6 +156,10 @@ export function buildCreateOrderPayload(params: {
   const sid = typeof checkoutSessionId === "string" ? checkoutSessionId.trim() : "";
   if (sid) {
     body.checkout_session_id = sid;
+  }
+
+  if (quoteSigning) {
+    body.quote_signing = quoteSigning;
   }
 
   return body;

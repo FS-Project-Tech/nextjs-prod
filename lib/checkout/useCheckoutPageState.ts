@@ -29,7 +29,12 @@ import {
   writeCheckoutSubmitLock,
 } from "@/lib/checkout/checkoutSubmitSession";
 import { buildCheckoutQuoteTotalsBody } from "@/lib/checkout/buildCreateOrderPayload";
-import type { CheckoutPlacingPhase, CheckoutTotals } from "@/types/checkout";
+import type {
+  CheckoutPlacingPhase,
+  CheckoutQuoteSnapshotV1,
+  CheckoutQuoteSigningPayload,
+  CheckoutTotals,
+} from "@/types/checkout";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
 import { useMountFlag, useCheckoutQueryToasts } from "./useCheckoutSideEffects";
@@ -53,6 +58,10 @@ export function useCheckoutPageState() {
   const cartLinesRef = useRef(cartLines);
   cartLinesRef.current = cartLines;
   const quoteEpochRef = useRef(0);
+  /** Latest quote-totals fetch; aborted on submit so submit traffic is not contending with quote. */
+  const quoteFetchAbortRef = useRef<AbortController | null>(null);
+  /** HMAC bundle from the last successful quote-totals (fast create-session). Cleared when quote is invalidated. */
+  const lastSignedQuoteRef = useRef<CheckoutQuoteSigningPayload | null>(null);
   const { success, error: showError } = useToast();
   const { appliedCoupon, discount: couponDiscountAmount } = useCoupon();
   const { user, sessionStatus, loading: authLoading } = useUser();
@@ -97,9 +106,10 @@ export function useCheckoutPageState() {
     "eway",
   );
 
+  /** Copy only: submit always tries `/api/checkout/create-session` first for card; set env to `"false"` for legacy hosted wording. */
   const ewayTokenFlowEnabled =
-    typeof process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "string" &&
-    process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "true";
+    typeof process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW !== "string" ||
+    process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW !== "false";
 
   const billingAddresses = useMemo(
     () => addresses.filter((row) => row.type === "billing"),
@@ -454,9 +464,11 @@ export function useCheckoutPageState() {
     // Drop previous quote immediately so Order summary uses client totals (selected rate, coupon, GST)
     // instead of stale server shipping/total until the new quote returns.
     setServerTotals(null);
+    lastSignedQuoteRef.current = null;
     quoteEpochRef.current += 1;
     const epoch = quoteEpochRef.current;
     const ac = new AbortController();
+    quoteFetchAbortRef.current = ac;
     const timer = window.setTimeout(() => {
       if (quoteEpochRef.current !== epoch) return;
 
@@ -491,19 +503,29 @@ export function useCheckoutPageState() {
           success?: boolean;
           totals?: CheckoutTotals;
           error?: string;
-          shippingAdjusted?: boolean; // 👈 ADD
+          shippingAdjusted?: boolean;
           shippingLine?: {
             method_id: string;
             method_title: string;
           };
+          quote_signature?: string;
+          quote_snapshot?: CheckoutQuoteSnapshotV1;
         };
-      
+
         if (!res.ok || !json.success || !json.totals) {
           if (quoteEpochRef.current === epoch) setServerTotals(null);
           return;
         }
-      
-        // ✅ ADD HERE
+
+        if (json.quote_signature && json.quote_snapshot) {
+          lastSignedQuoteRef.current = {
+            signature: json.quote_signature,
+            snapshot: json.quote_snapshot,
+          };
+        } else {
+          lastSignedQuoteRef.current = null;
+        }
+
         if (json.shippingAdjusted && json.shippingLine?.method_id) {
           success("Shipping method updated automatically"); // your toast
       
@@ -525,6 +547,7 @@ export function useCheckoutPageState() {
     return () => {
       window.clearTimeout(timer);
       ac.abort();
+      if (quoteFetchAbortRef.current === ac) quoteFetchAbortRef.current = null;
     };
   }, [
     isMounted,
@@ -544,11 +567,27 @@ export function useCheckoutPageState() {
     getValues,
   ]);
 
+  /**
+   * `serverTotals.discount` is often `0` (valid) when the quote path omits the coupon; `??` does not
+   * fall through for `0`, so the order summary was clobbering the client-validated discount and total.
+   */
+  const serverQuoteOmittingCoupon = useMemo(() => {
+    if (appliedCoupon == null || couponDiscount <= 0) return false;
+    if (serverTotals == null) return false;
+    return serverTotals.discount === 0;
+  }, [appliedCoupon, couponDiscount, serverTotals]);
+
   const summarySubtotal = serverTotals?.subtotal ?? subtotal;
   const summaryShipping = serverTotals?.shipping ?? shippingCost;
-  const summaryDiscount = serverTotals?.discount ?? couponDiscount;
-  const summaryGst = serverTotals?.gst ?? gst;
-  const summaryOrderTotal = serverTotals?.total ?? orderTotal;
+  const summaryDiscount = serverQuoteOmittingCoupon
+    ? couponDiscount
+    : serverTotals != null && typeof serverTotals.discount === "number"
+      ? serverTotals.discount
+      : couponDiscount;
+  const summaryGst = serverQuoteOmittingCoupon ? gst : (serverTotals?.gst ?? gst);
+  const summaryOrderTotal = serverQuoteOmittingCoupon
+    ? orderTotal
+    : (serverTotals?.total ?? orderTotal);
   const summaryCartSubtotal = serverTotals?.subtotal ?? cartSubtotal;
 
   useCheckoutQueryToasts(isMounted, searchParams, showError);
@@ -576,15 +615,11 @@ export function useCheckoutPageState() {
   const onSubmit = useCallback(
     async (data: CheckoutFormData) => {
       if (placing) return;
+      quoteEpochRef.current += 1;
+      quoteFetchAbortRef.current?.abort();
+      quoteFetchAbortRef.current = null;
       setPlacing(true);
-      setPlacingSubmitPhase("validating");
-      const validated = await validateCart();
-      if (!validated.valid) {
-        const first = validated.errors[0]?.message?.trim();
-        showError(first || "Your cart could not be validated. Please review your items.");
-        setPlacing(false);
-        return;
-      }
+      setPlacingSubmitPhase("payment");
       if (shouldBlockSubmitDueToRecentLock()) {
         const blockedId = readActiveSubmitId();
         console.log("[checkout][submit_blocked]", { requestId: blockedId ?? undefined });
@@ -601,9 +636,8 @@ export function useCheckoutPageState() {
 
       const linesForOrder = getActiveCartSnapshot();
       if (process.env.NODE_ENV === "development") {
-        console.log("[checkout] placing order with Zustand lines (post-validation):", linesForOrder);
+        console.log("[checkout] placing order with Zustand lines:", linesForOrder);
       }
-      setPlacingSubmitPhase("payment");
       await submitCheckoutOrder({
         data,
         cartLines: linesForOrder,
@@ -622,18 +656,17 @@ export function useCheckoutPageState() {
         redirectPendingRef,
         replaceInternalPath: replaceInternalCheckoutPath,
         setPlacing,
+        signedQuote: lastSignedQuoteRef.current,
       });
     },
     [
       placing,
-      validateCart,
       showError,
       selectedPaymentMethod,
       ewayTokenFlowEnabled,
       appliedCoupon,
       empowerDiscountApplied,
       searchParams,
-      showError,
       success,
       clearLocalCart,
       user?.id,

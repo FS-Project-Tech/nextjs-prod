@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/nextAuthOptions";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { stripEmptyNdisHcpFromInitiatePayload } from "@/lib/checkout/ndisHcpPayload";
-import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
-import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
+import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate";
+import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
+import {
+  assertPayloadMatchesQuoteSnapshot,
+  isQuoteSnapshotFresh,
+  quoteSigningConstants,
+  verifyQuoteSignature,
+} from "@/lib/checkout/quoteSigning";
+import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
 import { getCheckoutSessionStore } from "@/lib/checkout-session-store";
 import { getWooStorefrontUrl } from "@/lib/checkout-woo-url";
 import { logCheckoutSession } from "@/lib/checkout-session-log";
 import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import type { CheckoutSessionRecord } from "@/types/checkout-session";
+import type { WooLineItem } from "@/services/woocommerce";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
 export const dynamic = "force-dynamic";
@@ -22,21 +28,12 @@ function generateToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-function parseNumericUserId(user: Record<string, unknown> | undefined): number | null {
-  if (!user) return null;
-  const candidates = [user.id, user.userId, user.wpUserId];
-  for (const c of candidates) {
-    const n = Number(c);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return null;
-}
-
 /**
  * Creates a short-lived checkout session and returns a WooCommerce redirect URL
  * carrying only an opaque token (no PII in query beyond the random token).
  *
- * eWay path: Next validates cart/pricing here; Woo redeems the token and creates the order.
+ * eWay path: prefers a {@link payload.quote_signing} bundle from POST /api/checkout/quote-totals (fast, no Woo here).
+ * If signing is absent, falls back to full pricing + cart gate unless CHECKOUT_CREATE_SESSION_REQUIRE_SIGNED_QUOTE=true.
  */
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
@@ -82,32 +79,106 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { validatedLineItems, wooLineItems, shippingLine, totals } =
-      await validateAndRecalculateCheckout(payload);
+    const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    const userId =
+      actor.userId != null && actor.userId > 0 ? actor.userId : null;
 
-    const cartCheck = await validateCartForEwayCheckout({
-      cart_items: payload.cart_items!,
-      totals,
-    });
-    if (cartCheck.ok === false) {
+    /** Force Woo-backed pricing in create-session (same as missing signed quote before fast path existed). */
+    const legacyPricing =
+      String(process.env.CHECKOUT_CREATE_SESSION_LEGACY_PRICING || "").trim() === "true";
+    /** When true, missing quote_signing returns 400 instead of running full Woo pricing here. */
+    const requireSignedQuote =
+      String(process.env.CHECKOUT_CREATE_SESSION_REQUIRE_SIGNED_QUOTE || "").trim() === "true";
+
+    let validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
+    let wooLineItems: WooLineItem[];
+    let shippingLine: CheckoutSessionRecord["shippingLine"];
+    let totals: CheckoutSessionRecord["totals"];
+
+    const runFullWooPricingGate = async (): Promise<NextResponse | null> => {
+      const gate = await pricingWithEwayCartGate(payload, {
+        requestId,
+        currency: wooStoreCurrency(),
+        customerType: deriveCustomerPricingKey(actor),
+      });
+      if (gate.ok === false) {
+        const cartCheck = gate.cartCheck;
+        return withRequestId(
+          NextResponse.json(
+            {
+              success: false,
+              error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+              valid: cartCheck.valid,
+              errors: cartCheck.errors,
+              code: cartCheck.code,
+            },
+            { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+          ),
+          requestId,
+        );
+      }
+      ({ validatedLineItems, wooLineItems, shippingLine, totals } = gate.pricing);
+      return null;
+    };
+
+    if (legacyPricing) {
+      const errRes = await runFullWooPricingGate();
+      if (errRes) return errRes;
+    } else if (payload.quote_signing) {
+      const { signature, snapshot } = payload.quote_signing;
+      if (!verifyQuoteSignature(snapshot, signature)) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: "Invalid or expired quote signature. Refresh order totals and try again." },
+            { status: 401 },
+          ),
+          requestId,
+        );
+      }
+      if (!isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: "Quote expired. Refresh totals and try again.", code: "QUOTE_EXPIRED" },
+            { status: 410 },
+          ),
+          requestId,
+        );
+      }
+      const match = assertPayloadMatchesQuoteSnapshot(payload, snapshot);
+      if (match.ok === false) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: match.message, code: "QUOTE_PAYLOAD_MISMATCH" },
+            { status: 409 },
+          ),
+          requestId,
+        );
+      }
+      validatedLineItems = snapshot.validated_line_items.map((li) => ({
+        product_id: li.product_id,
+        quantity: li.quantity,
+        ...(li.variation_id != null && li.variation_id > 0 ? { variation_id: li.variation_id } : {}),
+      }));
+      wooLineItems = snapshot.woo_line_items;
+      shippingLine = snapshot.shipping_line;
+      totals = snapshot.totals;
+    } else if (requireSignedQuote) {
       return withRequestId(
         NextResponse.json(
-        {
-          success: false,
-          error: cartCheck.errors[0]?.message ?? "Cart validation failed",
-          valid: cartCheck.valid,
-          errors: cartCheck.errors,
-          code: cartCheck.code,
-        },
-        { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
-      ),
-      requestId
+          {
+            success: false,
+            error:
+              "Signed quote required (CHECKOUT_CREATE_SESSION_REQUIRE_SIGNED_QUOTE). Wait for totals to load after quote-totals returns quote_signature, or disable strict mode.",
+            code: "QUOTE_SIGNING_REQUIRED",
+          },
+          { status: 400 },
+        ),
+        requestId,
       );
+    } else {
+      const errRes = await runFullWooPricingGate();
+      if (errRes) return errRes;
     }
-
-    const session = await getServerSession(authOptions);
-    const user = session?.user as Record<string, unknown> | undefined;
-    const userId = parseNumericUserId(user);
 
     const store = getCheckoutSessionStore();
     const idempotencyKey = req.headers.get("idempotency-key")?.trim();

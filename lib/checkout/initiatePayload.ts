@@ -57,6 +57,54 @@ export const checkoutCartLineSchema = z
     { message: "Each line item must include a SKU or a positive product_id." }
   );
 
+const checkoutTotalsFieldSchema = z.object({
+  subtotal: z.number(),
+  shipping: z.number(),
+  discount: z.number(),
+  gst: z.number(),
+  total: z.number(),
+  totalCents: z.number(),
+});
+
+const checkoutQuoteSigningSchema = z.object({
+  signature: z.string().min(64).max(256),
+  snapshot: z.object({
+    v: z.literal(1),
+    currency: z.string().min(1),
+    issued_at_ms: z.number().int().positive(),
+    line_items_digest: z.string().min(32),
+    totals: checkoutTotalsFieldSchema,
+    shipping_method_id: z.string().min(1),
+    shipping_line: z.object({
+      method_id: z.string(),
+      method_title: z.string(),
+      total: z.string(),
+      instance_id: z.string().optional(),
+    }),
+    validated_line_items: z.array(
+      z.object({
+        product_id: z.number().int().positive(),
+        variation_id: z.number().int().positive().optional(),
+        quantity: z.number().int().positive(),
+      }),
+    ),
+    woo_line_items: z.array(
+      z
+        .object({
+          product_id: z.number(),
+          quantity: z.number(),
+          variation_id: z.number().optional(),
+          subtotal: z.string().optional(),
+          total: z.string().optional(),
+          meta_data: z.array(z.object({ key: z.string(), value: z.unknown() })).optional(),
+        })
+        .passthrough(),
+    ),
+    coupon_code: z.string().nullable(),
+    insurance_option: z.enum(["yes", "no"]),
+  }),
+});
+
 const paymentMethodSchema = z.preprocess((v) => {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
   // UI may say "on account"; Woo only accepts gateway id `cod`. Never forward `on_account` to Woo.
@@ -94,6 +142,7 @@ export const checkoutInitiateSchema = z
   empower_program_applied: z.boolean().optional(),
   empower_discount_total: z.number().min(0).optional(),
   empower_discount_items: z.number().int().min(0).optional(),
+  quote_signing: checkoutQuoteSigningSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.payment_method === "eway") {

@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       {
         method: "POST",
         headers: {
-          "X-TYPESENSE-API-KEY": apiKey,
+          "X-TYPESENSE-API-KEY": apiKey,  
           "Content-Type": "text/plain",
         },
         body: wanted.map((d) => JSON.stringify(d)).join("\n"),

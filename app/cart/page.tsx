@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCart } from "@/components/CartProvider";
+import { useCoupon } from "@/components/CouponProvider";
 import Image from "next/image";
 import { validateAccessToken, getStoredToken } from "@/lib/access-token";
 import { useCartStore } from "@/store/cartStore";
@@ -21,8 +22,15 @@ function CartPageContent() {
   const { user } = useUser();
   const { items, updateItemQty, removeItem, isHydrated, isCartMerging, hasLoadedServerCart } =
     useCart();
-  const [coupon, setCoupon] = useState<string>("");
-  const [discount, setDiscount] = useState<number>(0);
+  const {
+    appliedCoupon,
+    discount,
+    applyCoupon: applyWooCoupon,
+    removeCoupon: removeWooCoupon,
+    isLoading: couponLoading,
+    error: couponError,
+  } = useCoupon();
+  const [couponInput, setCouponInput] = useState<string>("");
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [persistHydrated, setPersistHydrated] = useState(false);
@@ -87,14 +95,11 @@ function CartPageContent() {
     return calculateTotal(subtotal, shippingCost, discount, gst);
   }, [subtotal, discount, shippingCost, gst]);
  
-  const applyCoupon = () => {
-    const code = coupon.trim().toUpperCase();
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
     if (!code) return;
-    if (code === "SAVE10") {
-      setDiscount(Number((subtotal * 0.1).toFixed(2)));
-    } else {
-      setDiscount(0);
-    }
+    const ok = await applyWooCoupon(code, items, subtotal);
+    if (ok) setCouponInput("");
   };
  
   if (!isMounted || !cartStateKnown || !isAuthorized) {
@@ -240,23 +245,43 @@ function CartPageContent() {
  
           <div className="rounded-xl bg-white p-6">
             <h2 className="mb-2 text-sm font-medium text-gray-700">Have any discount code?</h2>
-            <div className="flex gap-2">
-              <input
-                value={coupon}
-                onChange={(e) => setCoupon(e.target.value)}
-                placeholder="Enter coupon code"
-                className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
-              />
-              <button
-                onClick={applyCoupon}
-                className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
-              >
-                Apply
-              </button>
-            </div>
+            {!appliedCoupon ? (
+              <div className="flex gap-2">
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  placeholder="Enter coupon code"
+                  disabled={couponLoading}
+                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => void applyCoupon()}
+                  disabled={couponLoading || !couponInput.trim()}
+                  className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:bg-gray-400"
+                >
+                  {couponLoading ? "…" : "Apply"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                <span className="font-medium text-emerald-900">{appliedCoupon.code}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeWooCoupon();
+                    setCouponInput("");
+                  }}
+                  className="text-emerald-800 underline hover:text-emerald-950"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+            {couponError && <div className="mt-2 text-xs text-red-600">{couponError}</div>}
             {discount > 0 && (
               <div className="mt-2 text-xs text-green-600">
-                Coupon applied: ${discount.toFixed(2)} off
+                Estimated ${discount.toFixed(2)} off (confirmed at checkout).
               </div>
             )}
             {items.some((i) => i.empowerEligible) && (
