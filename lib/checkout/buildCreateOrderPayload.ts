@@ -63,6 +63,18 @@ export function lineItemsFromCart(cartLines: CartItem[], options?: { empowerAppl
   });
 }
 
+function cartItemsForValidation(cartLines: CartItem[], options?: { empowerApplied?: boolean }): CartItem[] {
+  const empowerApplied = options?.empowerApplied === true;
+  if (!empowerApplied) return cartLines;
+  return cartLines.map((line) => {
+    const discountedUnit = getEmpowerDiscountedUnitPrice(line);
+    return {
+      ...line,
+      price: discountedUnit > 0 ? discountedUnit.toFixed(2) : String(line.price ?? "0"),
+    };
+  });
+}
+
 export function buildCheckoutQuoteTotalsBody(params: {
   data: CheckoutFormData;
   cartLines: CartItem[];
@@ -133,7 +145,7 @@ export function buildCreateOrderPayload(params: {
     },
     line_items: lineItemsFromCart(cartLines, { empowerApplied }),
     /** Needed for delivery plan → Woo line meta (COD + eWAY). eWAY still validates these server-side. */
-    cart_items: cartLines,
+    cart_items: cartItemsForValidation(cartLines, { empowerApplied }),
     shipping_method_id: shippingMethod?.id,
     payment_method: paymentMethod,
     /** Store API COD expects `payment_data: []`; kept on payload for parity and future direct Store calls. */

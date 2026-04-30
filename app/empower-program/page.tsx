@@ -275,7 +275,7 @@ export default async function EmpowerProgramPage() {
                   Products under Empower Program
                 </h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  Explore in-stock products tagged for Empower benefits.
+                  Explore products tagged for Empower benefits.
                 </p>
               </div>
               <Pill className="hidden h-7 w-7 text-[#008542] sm:block" aria-hidden />
