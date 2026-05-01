@@ -335,16 +335,24 @@ function ProductCardComponent({
     showError,
   ]);
 
+  /** Ignore index/API sale % when it disagrees with prices + flags (e.g. legacy sale_price "0" → 100%). */
+  const bogusBackendSalePct =
+    salePercentageFromBackend != null &&
+    salePercentageFromBackend > 0 &&
+    !priceData.isOnSale &&
+    !on_sale;
+  const trustedSalePercentage = bogusBackendSalePct ? null : salePercentageFromBackend;
+
   const saleDiscountForBadge =
-    salePercentageFromBackend != null && salePercentageFromBackend > 0
-      ? salePercentageFromBackend
+    trustedSalePercentage != null && trustedSalePercentage > 0
+      ? trustedSalePercentage
       : priceData.discount;
   const saleBadgeSaleOnly =
     on_sale &&
     !priceData.isOnSale &&
-    (salePercentageFromBackend == null || salePercentageFromBackend <= 0);
+    (trustedSalePercentage == null || trustedSalePercentage <= 0);
   const showSaleBadge =
-    (salePercentageFromBackend != null && salePercentageFromBackend > 0) ||
+    (trustedSalePercentage != null && trustedSalePercentage > 0) ||
     priceData.isOnSale ||
     on_sale;
 

@@ -10,10 +10,10 @@ export function wooProductToListingCard(p: WooCommerceProduct): ProductCardProdu
   const firstAlt = (img?.alt || p.name || "").trim() || p.name;
 
   let sale_percentage: number | null = null;
-  const reg = p.regular_price;
-  const sale = p.sale_price;
-  if (reg && sale && Number(reg) > 0 && p.on_sale) {
-    sale_percentage = Math.round(((Number(reg) - Number(sale)) / Number(reg)) * 100);
+  const regNum = Number(p.regular_price || 0);
+  const saleNum = Number(p.sale_price || 0);
+  if (p.on_sale && regNum > 0 && saleNum > 0 && saleNum < regNum) {
+    sale_percentage = Math.round(((regNum - saleNum) / regNum) * 100);
   }
 
   return {

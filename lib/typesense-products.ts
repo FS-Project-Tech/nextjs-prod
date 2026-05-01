@@ -236,9 +236,17 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   const img = (doc.image as string) || (doc.image_url as string) || (doc.thumbnail as string) || "";
   const imgAlt = String(doc.image_alt ?? doc.name ?? name);
 
+  // Ignore sale_price 0 / "0" — truthy string "0" previously produced 100% OFF while on_sale was false.
+  const regularNum = Number(regular);
+  const saleNum = Number(sale);
   let sale_percentage: number | null = null;
-  if (regular && sale && Number(regular) > 0) {
-    sale_percentage = Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100);
+  if (
+    onSale &&
+    regularNum > 0 &&
+    saleNum > 0 &&
+    saleNum < regularNum
+  ) {
+    sale_percentage = Math.round(((regularNum - saleNum) / regularNum) * 100);
   }
 
   const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);
