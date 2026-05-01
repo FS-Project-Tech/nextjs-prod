@@ -18,6 +18,35 @@ import {
 } from "@/lib/checkout/ndisHcpPayload";
 import { isTimeoutError } from "@/lib/utils/errors";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
+import type { CheckoutInitiatePayload } from "@/types/checkout";
+import { checkIdempotency, storeIdempotencyResult } from "@/lib/checkout-security";
+
+/** Serialized checkout JSON + status for idempotent replay (headers from primary response are not replayed). */
+type SerializedCheckout = { status: number; json: unknown; cacheSuccess: boolean };
+
+const checkoutPostInflight = new Map<string, Promise<SerializedCheckout>>();
+
+function checkoutResponseShouldCache(json: unknown, status: number): boolean {
+  if (status < 200 || status >= 400) return false;
+  if (!json || typeof json !== "object") return false;
+  const o = json as Record<string, unknown>;
+  return o.success === true || o.success === "true";
+}
+
+async function serializeCheckoutNextResponse(res: NextResponse): Promise<SerializedCheckout> {
+  const status = res.status;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    json = { success: false, error: "Invalid checkout response" };
+  }
+  return {
+    status,
+    json,
+    cacheSuccess: checkoutResponseShouldCache(json, status),
+  };
+}
 
 function clientIpFromRequest(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -204,7 +233,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  let payload;
+  let payload: CheckoutInitiatePayload;
   try {
     payload = parseCheckoutPayload(rawPayload);
   } catch (error: unknown) {
@@ -219,6 +248,44 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     );
   }
 
+  const idempotencyKey =
+    req.headers.get("idempotency-key")?.trim() ||
+    (typeof payload.checkout_session_id === "string" ? payload.checkout_session_id.trim() : "");
+
+  const runSerialized = async () =>
+    serializeCheckoutNextResponse(await executeCheckoutPostCore(req, payload, started));
+
+  if (idempotencyKey) {
+    const dup = checkIdempotency(idempotencyKey);
+    if (dup.isDuplicate && dup.result) {
+      const cached = dup.result as SerializedCheckout;
+      return NextResponse.json(cached.json, { status: cached.status });
+    }
+
+    let inflight = checkoutPostInflight.get(idempotencyKey);
+    if (!inflight) {
+      inflight = runSerialized().finally(() => {
+        checkoutPostInflight.delete(idempotencyKey);
+      });
+      checkoutPostInflight.set(idempotencyKey, inflight);
+    }
+
+    const ser = await inflight;
+    if (ser.cacheSuccess) {
+      storeIdempotencyResult(idempotencyKey, ser);
+    }
+    return NextResponse.json(ser.json, { status: ser.status });
+  }
+
+  const ser = await runSerialized();
+  return NextResponse.json(ser.json, { status: ser.status });
+}
+
+async function executeCheckoutPostCore(
+  req: NextRequest,
+  payload: CheckoutInitiatePayload,
+  started: number,
+): Promise<NextResponse> {
   console.log("[checkout] start", {
     payment_method: payload.payment_method,
     lines: payload.line_items?.length,

@@ -202,8 +202,9 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     const message = err instanceof Error ? err.message : "An error occurred while placing your order";
     showError(message);
   } finally {
-    submitGuardRef.current = false;
+    /** Keep guard locked while redirect/navigation is pending so a second POST cannot double-place orders. */
     if (!redirectPendingRef.current) {
+      submitGuardRef.current = false;
       setPlacing(false);
     }
   }
