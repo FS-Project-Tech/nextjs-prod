@@ -239,8 +239,12 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   const imgAlt = String(doc.image_alt ?? doc.name ?? name);
 
   let sale_percentage: number | null = null;
-  if (regular && sale && Number(regular) > 0) {
-    sale_percentage = Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100);
+  const regNum = Number(regular);
+  const saleNum = Number(sale);
+  // Require a real markdown: Woo/Typesense often leave sale_price as "0.00" (truthy string) when not on sale —
+  // without saleNum > 0 that would incorrectly compute 100% off.
+  if (onSale && regular && sale && regNum > 0 && saleNum > 0 && saleNum < regNum) {
+    sale_percentage = Math.round(((regNum - saleNum) / regNum) * 100);
   }
 
   const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);

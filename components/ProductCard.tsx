@@ -341,8 +341,13 @@ function ProductCardComponent({
     showError,
   ]);
 
+  // Ignore impossible "100% off" from index when prices show full retail (e.g. sale_price "0.00" → bogus 100%).
+  const ignoreBackendPct =
+    salePercentageFromBackend === 100 && !priceData.isOnSale && !on_sale;
   const saleDiscountForBadge =
-    salePercentageFromBackend != null && salePercentageFromBackend > 0
+    salePercentageFromBackend != null &&
+    salePercentageFromBackend > 0 &&
+    !ignoreBackendPct
       ? salePercentageFromBackend
       : priceData.discount;
   const saleBadgeSaleOnly =
@@ -350,9 +355,9 @@ function ProductCardComponent({
     !priceData.isOnSale &&
     (salePercentageFromBackend == null || salePercentageFromBackend <= 0);
   const showSaleBadge =
-    (salePercentageFromBackend != null && salePercentageFromBackend > 0) ||
-    priceData.isOnSale ||
-    on_sale;
+    ((salePercentageFromBackend != null && salePercentageFromBackend > 0 && !ignoreBackendPct) ||
+      priceData.isOnSale ||
+      on_sale);
   const productTag = useMemo(() => {
     const firstTag = (tags || []).find((t) => String(t?.name || "").trim().length > 0);
     if (firstTag) return String(firstTag.name).trim();
