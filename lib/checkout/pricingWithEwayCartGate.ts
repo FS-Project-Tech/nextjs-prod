@@ -23,6 +23,9 @@ export type PricingWithEwayCartGateResult =
 /**
  * Runs checkout pricing (Woo-backed) and, for eWAY, full cart validation + subtotal gate in parallel
  * where possible — shared by `/api/checkout` and `/api/checkout/create-session`.
+ *
+ * For eWAY, {@link runFullCartValidation} runs **once** (in parallel with pricing); its result is passed
+ * into {@link validateCartForEwayCheckout} so stock/price REST work is not duplicated.
  */
 export async function pricingWithEwayCartGate(
   payload: CheckoutInitiatePayload,

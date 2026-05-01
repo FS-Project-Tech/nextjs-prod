@@ -69,7 +69,6 @@ function CheckoutPageInner() {
     recoveryBannerVisible,
     recoveryChecking,
     placingSlow,
-    onCheckoutRetry,
     placingSubmitPhase,
   } = checkout;
 
@@ -142,15 +141,9 @@ function CheckoutPageInner() {
                 {placingSlow ? (
                   <div className="mt-4 border-t border-gray-200 pt-4">
                     <p className="text-sm text-gray-800">
-                      Still working… please wait or refresh if nothing changes.
+                      Still working… checkout can take a minute. Please keep this page open — do not
+                      refresh or submit again.
                     </p>
-                    <button
-                      type="button"
-                      className={`mt-3 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black ${FOCUS_RING_BTN}`}
-                      onClick={onCheckoutRetry}
-                    >
-                      Retry
-                    </button>
                   </div>
                 ) : null}
               </div>

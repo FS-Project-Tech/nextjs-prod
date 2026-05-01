@@ -19,6 +19,24 @@ function orderReviewReadParams(): { _fields: string } {
   return { _fields: ORDER_REVIEW_WOO_FIELDS };
 }
 
+function coerceOrderKey(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v.trim();
+  return String(v).trim();
+}
+
+async function fetchOrderById(
+  orderRef: string | number,
+  params: { _fields?: string },
+  readTimeout: number,
+): Promise<Record<string, unknown>> {
+  const { data } = await wcAPI.get(`/orders/${encodeURIComponent(String(orderRef))}`, {
+    timeout: readTimeout,
+    ...(Object.keys(params).length ? { params } : {}),
+  });
+  return data as Record<string, unknown>;
+}
+
 /** Fast read for order-review (avoid waiting on 90s budget when Woo is healthy). */
 function orderReviewReadTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_ORDER_REVIEW_TIMEOUT_MS);
@@ -55,11 +73,7 @@ export async function GET(req: NextRequest) {
 
     let order: Record<string, unknown> | null = null;
     try {
-      const { data } = await wcAPI.get(`/orders/${encodeURIComponent(orderIdParam)}`, {
-        timeout: readTimeout,
-        params: lean,
-      });
-      order = data as Record<string, unknown>;
+      order = await fetchOrderById(orderIdParam, lean, readTimeout);
     } catch (firstErr: unknown) {
       const status = (firstErr as { response?: { status?: number } }).response?.status;
       if (status !== 404) throw firstErr;
@@ -70,14 +84,27 @@ export async function GET(req: NextRequest) {
       if (!postId) {
         return withRequestId(NextResponse.json({ error: "Order not found" }, { status: 404 }), requestId);
       }
-      const { data } = await wcAPI.get(`/orders/${postId}`, {
-        timeout: readTimeout,
-        params: lean,
-      });
-      order = data as Record<string, unknown>;
+      order = await fetchOrderById(postId, lean, readTimeout);
     }
 
-    const wooKey = typeof order.order_key === "string" ? order.order_key : "";
+    let wooKey = coerceOrderKey(order.order_key);
+    if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
+      const oid = Number(order.id ?? 0);
+      if (Number.isFinite(oid) && oid > 0) {
+        try {
+          const full = await fetchOrderById(oid, {}, readTimeout);
+          const altKey = coerceOrderKey(full.order_key);
+          if (altKey && keysMatchWooOrder(altKey, keyParam)) {
+            order = full;
+            wooKey = altKey;
+          }
+        } catch {
+          /* keep lean order + fail below */
+        }
+      }
+    }
+
+    wooKey = coerceOrderKey(order.order_key);
     if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
       return withRequestId(NextResponse.json({ error: "Invalid order key" }, { status: 403 }), requestId);
     }

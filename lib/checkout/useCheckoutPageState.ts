@@ -410,15 +410,6 @@ export function useCheckoutPageState() {
     return () => window.clearTimeout(t);
   }, [placing]);
 
-  const onCheckoutRetry = useCallback(() => {
-    clearCheckoutSubmitLock();
-    setPlacing(false);
-    setPlacingSubmitPhase("idle");
-    setPlacingSlow(false);
-    submitGuardRef.current = false;
-    redirectPendingRef.current = false;
-  }, []);
-
   /**
    * eWAY path does not clear the cart before redirect. An empty cart plus `secure_payment`
    * usually means stale UI (hydration gap or abandoned redirect); avoid infinite spinner on `/checkout`.
@@ -726,6 +717,5 @@ export function useCheckoutPageState() {
     recoveryBannerVisible,
     recoveryChecking,
     placingSlow,
-    onCheckoutRetry,
   };
 }

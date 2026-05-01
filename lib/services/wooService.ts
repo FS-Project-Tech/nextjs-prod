@@ -15,6 +15,11 @@ import {
 import { logWooOrderLineItems, logValidatedItems } from "@/lib/woo/debugLogger";
 import { PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
 import { getAxiosErrorDetails, hasAxiosResponse, isTimeoutError } from "@/lib/utils/errors";
+import {
+  CHECKOUT_SESSION_ID_ORDER_META_KEY,
+  HEADLESS_CHECKOUT_SESSION_META_KEY,
+} from "@/lib/checkout/checkoutSessionConstants";
+import { findPendingOrderIdByHeadlessSession } from "@/lib/checkout/resolveExistingPendingCheckoutOrder";
  
 export type { WooCreateOrderInput };
 export { addWooOrderNote, createWooOrder, updateWooOrder, updateWooOrderAsync };
@@ -171,6 +176,44 @@ function orderCreateRetriable(e: unknown): boolean {
   if (!hasAxiosResponse(e)) return true;
   const s = getAxiosErrorDetails(e).status || 0;
   return s === 408 || s === 429 || (s >= 500 && s < 600);
+}
+
+function extractCheckoutSessionIdFromSessionMeta(
+  sessionMeta: Array<{ key: string; value: unknown }>,
+): string {
+  for (const row of sessionMeta) {
+    const k = String(row?.key || "");
+    if (k !== HEADLESS_CHECKOUT_SESSION_META_KEY && k !== CHECKOUT_SESSION_ID_ORDER_META_KEY) {
+      continue;
+    }
+    const v = row?.value;
+    const s = typeof v === "string" ? v.trim() : String(v ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+/**
+ * When POST /orders times out, Woo may still have created the order — find it by session meta + email
+ * instead of posting a duplicate.
+ */
+async function tryRecoverPendingOrderAfterCreateFailure(
+  sessionMeta: Array<{ key: string; value: unknown }>,
+  minimalInput: {
+    billing?: { email?: string };
+    payment_method?: string;
+  },
+): Promise<unknown | null> {
+  const sid = extractCheckoutSessionIdFromSessionMeta(sessionMeta);
+  const email = String(minimalInput.billing?.email || "").trim();
+  if (!sid || !email) return null;
+  const id = await findPendingOrderIdByHeadlessSession({
+    checkoutSessionId: sid,
+    billingEmail: email,
+    paymentMethod: String(minimalInput.payment_method || ""),
+  });
+  if (id == null) return null;
+  return getWooOrder(String(id));
 }
  
 /** Shipping, fees, coupons, meta — phase-2 PUT only. COD → `processing` after extras are applied. */
@@ -404,6 +447,10 @@ export async function createValidatedCheckoutOrder(
   const t2 = minimalCreateRetryTimeoutMs();
 
   const patchProbe = buildCheckoutExtensionPatch(input);
+  let skipMinimalCreate = false;
+  let orderMinimal: unknown;
+  let singleShotOrRecoverMs = 0;
+
   if (Object.keys(patchProbe).length > 0) {
     const tShot = Date.now();
     const shot = await trySingleShotOrderCreate(input, sessionMeta, t1, rid);
@@ -419,6 +466,23 @@ export async function createValidatedCheckoutOrder(
       });
       validateCreatedLineItems(shot);
       return shot;
+    }
+    const recoveredAfterSingleShot = await tryRecoverPendingOrderAfterCreateFailure(sessionMeta, {
+      billing: input.billing,
+      payment_method: input.payment_method,
+    });
+    if (recoveredAfterSingleShot != null) {
+      orderMinimal = recoveredAfterSingleShot;
+      skipMinimalCreate = true;
+      singleShotOrRecoverMs = Date.now() - tShot;
+      console.warn(
+        "[checkout] recovered order after single-shot failure (avoiding duplicate minimal POST)",
+        {
+          requestId: rid,
+          orderId: extractWooOrderId(orderMinimal),
+          payment_method: input.payment_method,
+        },
+      );
     }
   }
 
@@ -443,22 +507,58 @@ export async function createValidatedCheckoutOrder(
     firstTimeoutMs: t1,
   });
 
-  let orderMinimal: unknown;
   const tMinStart = Date.now();
-  try {
-    orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t1 });
-  } catch (firstErr) {
-    if (!orderCreateRetriable(firstErr)) throw firstErr;
-    console.warn("[checkout] retry attempt", {
-      requestId: rid,
-      phase: "woo_minimal_create",
-      timeoutMs: t2,
-      message: firstErr instanceof Error ? firstErr.message : String(firstErr),
-    });
-    orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t2 });
+
+  if (!skipMinimalCreate) {
+    try {
+      orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t1 });
+    } catch (firstErr) {
+      if (!orderCreateRetriable(firstErr)) throw firstErr;
+      const recoveredAfterFail = await tryRecoverPendingOrderAfterCreateFailure(
+        sessionMeta,
+        minimalInput,
+      );
+      if (recoveredAfterFail != null) {
+        orderMinimal = recoveredAfterFail;
+        console.warn("[checkout] recovered order after create error (likely timeout; skipping retry POST)", {
+          requestId: rid,
+          orderId: extractWooOrderId(orderMinimal),
+          message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+        });
+      } else {
+        console.warn("[checkout] retry attempt", {
+          requestId: rid,
+          phase: "woo_minimal_create",
+          timeoutMs: t2,
+          message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+        });
+        try {
+          orderMinimal = await createWooOrderMinimal(minimalInput, { timeoutMs: t2 });
+        } catch (secondErr) {
+          if (!orderCreateRetriable(secondErr)) throw secondErr;
+          const recoveredSecond = await tryRecoverPendingOrderAfterCreateFailure(
+            sessionMeta,
+            minimalInput,
+          );
+          if (recoveredSecond != null) {
+            orderMinimal = recoveredSecond;
+            console.warn("[checkout] recovered order after second create error (skipping throw)", {
+              requestId: rid,
+              orderId: extractWooOrderId(orderMinimal),
+              message: secondErr instanceof Error ? secondErr.message : String(secondErr),
+            });
+          } else {
+            throw secondErr;
+          }
+        }
+      }
+    }
   }
+
   if (options?.perf) {
-    options.perf.wooCreateMs = Date.now() - tMinStart;
+    options.perf.wooCreateMs = skipMinimalCreate
+      ? singleShotOrRecoverMs
+      : Date.now() - tMinStart;
   }
 
   console.log("[checkout] woo create success", {
@@ -476,7 +576,39 @@ export async function createValidatedCheckoutOrder(
     throw new Error("WooCommerce did not return a valid order ID after create.");
   }
 
-  const patch = buildCheckoutExtensionPatch(input);
+  /**
+   * If Woo already has a shipping line (plugin default, recovered single-shot order, etc.),
+   * PATCH must send that line's `id` or Woo appends a duplicate shipping row.
+   */
+  let existingShippingLineIdFromOrder: number | undefined;
+  if (input.shipping_line) {
+    try {
+      const current = (await getWooOrder(String(postIdNum))) as {
+        shipping_lines?: Array<{ id?: unknown; method_id?: unknown }>;
+      };
+      const lines = current.shipping_lines;
+      if (Array.isArray(lines) && lines.length > 0) {
+        const want = String(input.shipping_line.method_id || "");
+        const byMethod = want
+          ? lines.find((l) => String(l.method_id || "") === want)
+          : undefined;
+        const idRaw = (byMethod ?? lines[0])?.id;
+        const n = Number(idRaw);
+        if (Number.isFinite(n) && n > 0) {
+          existingShippingLineIdFromOrder = n;
+        }
+      }
+    } catch (e) {
+      console.warn("[checkout] pre-extension shipping_lines read failed", {
+        orderId: postIdNum,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  const patch = buildCheckoutExtensionPatch(input, {
+    existingShippingLineId: existingShippingLineIdFromOrder,
+  });
   const keys = Object.keys(patch);
   if (keys.length === 0) {
     return orderMinimal;

@@ -22,6 +22,7 @@ import {
 import { isTimeoutError } from "@/lib/utils/errors";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
 import type { CheckoutActor } from "@/types/checkout";
+import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionDuplicateError";
 
 function clientIpFromRequest(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -175,8 +176,8 @@ class CheckoutTimeoutError extends Error {
 
 function restCheckoutTimeoutMs(): number {
   const n = Number(process.env.CHECKOUT_REST_CHECKOUT_TIMEOUT_MS);
-  /** Validate + minimal create + (eWAY only) extension PUT + eWAY; raise if your Woo host is slow. */
-  return Number.isFinite(n) && n > 0 ? n : 25_000;
+  /** Must exceed stacked Woo calls (each often `WOOCOMMERCE_API_TIMEOUT` ~45s). Default 60s avoids envelope 504 before inner axios completes. */
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
 }
 
 function isAbortLikeCheckout(e: unknown): boolean {
@@ -422,6 +423,45 @@ export async function handleCheckoutPost(
     );
   } catch (error: unknown) {
     logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+
+    if (error instanceof CheckoutSessionOrderExistsError) {
+      const e = error;
+      const checkoutSessionId =
+        typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
+          ? payload.checkout_session_id.trim()
+          : randomUUID();
+      console.warn("[checkout] duplicate_submit_same_session", {
+        requestId: correlationId,
+        orderId: e.orderIdRaw,
+        payment_method: e.paymentMethod,
+      });
+      if (e.paymentMethod === "cod") {
+        return jsonCodOrderPlaced(e.orderIdRaw, e.orderKey, checkoutSessionId, e.wooOrderTotal);
+      }
+      const oid = serializeOrderId(e.orderIdRaw);
+      return checkoutJsonResponse(
+        {
+          success: true,
+          data: {
+            type: "order_already_exists" as const,
+            orderId: oid,
+            order_ref: String(e.orderIdRaw),
+            order_key: e.orderKey,
+            checkout_session_id: checkoutSessionId,
+            duplicate_submission: true as const,
+            ...(e.wooOrderTotal != null ? { order_total: e.wooOrderTotal } : {}),
+          },
+          order_id: oid,
+          order_key: e.orderKey,
+          checkout_session_id: checkoutSessionId,
+          duplicate_submission: true,
+          ...(e.wooOrderTotal != null ? { order_total: e.wooOrderTotal } : {}),
+        },
+        e.orderIdRaw,
+        e.orderKey,
+        undefined,
+      );
+    }
 
     const timeoutBody = {
       success: false as const,

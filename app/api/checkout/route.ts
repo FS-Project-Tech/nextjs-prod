@@ -8,6 +8,7 @@ import {
   rateLimitMemory,
 } from "@/lib/api-security";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
+import { runCheckoutWithIdempotency } from "@/lib/checkout/checkoutPostIdempotency";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -24,7 +25,7 @@ export async function OPTIONS(req: NextRequest) {
     headers: {
       "Access-Control-Allow-Origin": req.headers.get("origin") || req.nextUrl.origin,
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key, X-Idempotency-Key",
       Vary: "Origin",
     },
     }),
@@ -46,8 +47,14 @@ export async function POST(req: NextRequest) {
   try {
     const checkoutRequestId = randomUUID();
     console.log("[checkout:start]", checkoutRequestId);
-    // ✅ 3. Business logic (guests allowed; COD/on-account gated inside handleCheckoutPost)
-    const res = await handleCheckoutPost(req, checkoutRequestId);
+    const idempotencyKey =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      req.headers.get("X-Idempotency-Key")?.trim() ||
+      undefined;
+    // ✅ 3. Business logic — same Idempotency-Key replays success without a second Woo order
+    const res = await runCheckoutWithIdempotency(idempotencyKey, () =>
+      handleCheckoutPost(req, checkoutRequestId),
+    );
     // ✅ 4. Apply CORS headers
     return withRequestId(corsResponse(req, res), requestId);
   } catch (error) {

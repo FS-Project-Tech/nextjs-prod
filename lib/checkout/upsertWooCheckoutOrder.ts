@@ -11,7 +11,11 @@ import {
   CHECKOUT_SESSION_ID_ORDER_META_KEY,
   HEADLESS_CHECKOUT_SESSION_META_KEY,
 } from "@/lib/checkout/checkoutSessionConstants";
-import { resolveExistingPendingCheckoutOrderId } from "@/lib/checkout/resolveExistingPendingCheckoutOrder";
+import {
+  findHeadlessSessionOrderDedup,
+  resolveExistingPendingCheckoutOrderId,
+} from "@/lib/checkout/resolveExistingPendingCheckoutOrder";
+import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionDuplicateError";
 import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
 import { buildWooLineItemsFullReplacePayload } from "@/lib/woo/orderLineItemsReplace";
 import type { CheckoutActor, CheckoutInitiatePayload } from "@/types/checkout";
@@ -73,13 +77,31 @@ export async function upsertValidatedCheckoutOrder(params: {
     throw err;
   }
  
-  const existingId = await resolveExistingPendingCheckoutOrderId({
-    customerId: actor.userId,
+  const dedup = await findHeadlessSessionOrderDedup({
     checkoutSessionId,
-    paymentMethod: payload.payment_method,
     billingEmail: payload.billing.email || "",
-    resume: payload.checkout_resume ?? undefined,
+    paymentMethod: payload.payment_method,
   });
+  if (dedup.state === "processing") {
+    throw new CheckoutSessionOrderExistsError(
+      dedup.orderId,
+      dedup.orderKey,
+      dedup.total,
+      payload.payment_method,
+    );
+  }
+
+  let existingId: number | null =
+    dedup.state === "pending" ? dedup.orderId : null;
+  if (existingId == null) {
+    existingId = await resolveExistingPendingCheckoutOrderId({
+      customerId: actor.userId,
+      checkoutSessionId,
+      paymentMethod: payload.payment_method,
+      billingEmail: payload.billing.email || "",
+      resume: payload.checkout_resume ?? undefined,
+    });
+  }
  
   const sessionRows = [
     { key: HEADLESS_CHECKOUT_SESSION_META_KEY, value: checkoutSessionId },
