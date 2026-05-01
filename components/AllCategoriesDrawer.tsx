@@ -167,6 +167,15 @@ export default function AllCategoriesDrawer({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
+
   const handleCategoryClick = useCallback(
     (category: WCCategory) => {
       const existingSubcategories = childrenMap[category.id];
@@ -233,17 +242,24 @@ export default function AllCategoriesDrawer({
             }}
           />
 
-          {/* Mobile bottom sheet */}
-          <div className="md:hidden absolute left-0 right-0 bottom-0 h-[80vh] max-h-[90vh] rounded-t-2xl bg-white shadow-2xl">
-            <div className="mx-auto h-1.5 w-12 rounded-full bg-gray-300 my-3" />
-            <div className="flex items-center justify-between border-b px-4 py-3">
+          {/* Mobile: full-screen panel so the list gets a proper flex scroll region (all categories). */}
+          <div
+            className="md:hidden absolute inset-0 flex min-h-0 flex-col bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label={subcategoryDrawerOpen ? "Subcategories" : "Browse categories"}
+          >
+            <div
+              className="flex shrink-0 items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+            >
               {subcategoryDrawerOpen ? (
                 <>
                   <button
+                    type="button"
                     onClick={handleBackToCategories}
-                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 cursor-pointer"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-gray-600 hover:text-gray-900 cursor-pointer"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -251,7 +267,7 @@ export default function AllCategoriesDrawer({
                         d="M15 19l-7-7 7-7"
                       />
                     </svg>
-                    <h3 className="text-base font-semibold text-gray-900">
+                    <h3 className="truncate text-base font-semibold text-gray-900">
                       {selectedCategory?.name}
                     </h3>
                   </button>
@@ -260,12 +276,14 @@ export default function AllCategoriesDrawer({
                 <h3 className="text-base font-semibold text-gray-900">Browse Categories</h3>
               )}
               <button
+                type="button"
                 onClick={() => {
                   setDrawerOpen(false);
                   setSubcategoryDrawerOpen(false);
                   setSelectedCategory(null);
                 }}
                 className="rounded p-2 text-gray-600 hover:bg-gray-100 cursor-pointer"
+                aria-label="Close"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -278,7 +296,7 @@ export default function AllCategoriesDrawer({
                 </svg>
               </button>
             </div>
-            <div className="h-[calc(100%-64px)] overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]">
               {subcategoryDrawerOpen ? (
                 loadingSubcategories ? (
                   <div className="p-4 text-sm text-gray-600">Loading...</div>
