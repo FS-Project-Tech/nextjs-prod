@@ -69,7 +69,7 @@ function buildXML(products) {
       .join("")}`;
 }
 
-async function generate() {
+export default async function generate() {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
   let page = 1;
@@ -124,4 +124,4 @@ async function generate() {
   // console.log("Feed generated");
 }
 
-generate();
+// generate();
