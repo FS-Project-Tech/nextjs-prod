@@ -40,7 +40,7 @@ export default function AboutVideoSection() {
                 </p>
                 <p className="font-medium text-gray-900">
                   We aim to fulfil your medical needs by providing the right consumables to you at
-                  the right time. With more than 7,000 products in stock right now, we aim to be
+                  the right time. With more than 12,000 skus now, we aim to be
                   your one-stop-shop solution for your medical requirements.
                 </p>
               </div>

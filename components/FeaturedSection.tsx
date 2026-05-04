@@ -6,7 +6,7 @@ const features = [
   {
     icon: <Star className="w-6 h-6 text-teal-600" />,
     title: "Reliable",
-    description: "Over 11k+ products",
+    description: "Over 12,000 skus",
   },
   {
     icon: <Truck className="w-6 h-6 text-teal-600" />,
