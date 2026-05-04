@@ -5,6 +5,10 @@ import {
   isBrevoUnauthorizedIpError,
   sendPlainEmailWithAttachmentsViaBrevo,
 } from "@/lib/email/sendViaBrevo";
+import {
+  isSmtpConfigured,
+  sendPlainEmailWithAttachmentsViaSmtp,
+} from "@/lib/email/sendViaSmtp";
 import { getSiteContact } from "@/lib/site-contact";
 import { syncCreditApplicationToWordPress } from "@/lib/credit-application/sync-wordpress";
 
@@ -172,6 +176,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    /** `brevo` (default) = Brevo API; `smtp` = nodemailer + SMTP_HOST/SMTP_USER/SMTP_PASS. */
+    const mailProvider = (
+      process.env.CREDIT_APPLICATION_EMAIL_PROVIDER || "brevo"
+    )
+      .trim()
+      .toLowerCase();
+    if (mailProvider !== "brevo" && mailProvider !== "smtp") {
+      return secureResponse(
+        {
+          error: 'Invalid CREDIT_APPLICATION_EMAIL_PROVIDER. Use "brevo" or "smtp".',
+        },
+        { status: 503 }
+      );
+    }
+    if (mailProvider === "smtp" && !isSmtpConfigured()) {
+      return secureResponse(
+        {
+          error:
+            "Credit application email is set to SMTP but SMTP_HOST, SMTP_USER, and SMTP_PASS are not all configured.",
+        },
+        { status: 503 }
+      );
+    }
+
     const { attachments: emailAttachments, wpFileFields } = await readCreditApplicationFiles(fd);
 
     const totalAttach = emailAttachments.reduce(
@@ -311,49 +339,70 @@ export async function POST(req: NextRequest) {
 
     const plain = lines.join("\n");
 
-    const r = await sendPlainEmailWithAttachmentsViaBrevo({
+    const mailOpts = {
       to: adminTo,
       subject: `Credit application — ${company_name}`,
       text: plain,
       replyTo: contact_email,
       senderName: site,
       attachments: emailAttachments.length ? emailAttachments : undefined,
-    });
+    };
 
-    if (r.ok === false) {
-      console.error("[credit-application] Brevo failed", r.detail);
-      const generic =
-        "Could not send your application. Please try again later or email us directly.";
-      const exposeDetail =
-        process.env.NODE_ENV !== "production" ||
-        process.env.CREDIT_APPLICATION_DEBUG === "1";
-      const fallbackContact = getSiteContact().email;
-      const ipBlocked = isBrevoUnauthorizedIpError(r.status, r.detail);
+    if (mailProvider === "smtp") {
+      const smtpRes = await sendPlainEmailWithAttachmentsViaSmtp(mailOpts);
+      if (smtpRes.ok === false) {
+        console.error("[credit-application] SMTP failed", smtpRes.detail);
+        const generic =
+          "Could not send your application. Please try again later or email us directly.";
+        const exposeDetail =
+          process.env.NODE_ENV !== "production" ||
+          process.env.CREDIT_APPLICATION_DEBUG === "1";
+        return secureResponse(
+          {
+            error: exposeDetail ? `${generic} — ${smtpRes.detail}` : generic,
+            ...(exposeDetail ? { _debug: smtpRes.detail } : {}),
+          },
+          { status: 502 }
+        );
+      }
+    } else {
+      const r = await sendPlainEmailWithAttachmentsViaBrevo(mailOpts);
 
-      /** Visitor-safe message; IP restriction must be fixed in Brevo (not fixable in app code). */
-      const publicMsg = ipBlocked
-        ? `We're unable to submit your application online at the moment. Please email ${fallbackContact} or call us — our team can help with your credit application.`
-        : generic;
+      if (r.ok === false) {
+        console.error("[credit-application] Brevo failed", r.detail);
+        const generic =
+          "Could not send your application. Please try again later or email us directly.";
+        const exposeDetail =
+          process.env.NODE_ENV !== "production" ||
+          process.env.CREDIT_APPLICATION_DEBUG === "1";
+        const fallbackContact = getSiteContact().email;
+        const ipBlocked = isBrevoUnauthorizedIpError(r.status, r.detail);
 
-      const error = (() => {
-        if (ipBlocked && exposeDetail) {
-          return (
-            `${publicMsg} [Admin: Brevo API key uses IP allowlisting. Add this server's public IP in Brevo → Security → Authorised IPs, or disable IP restriction for this key. ` +
-            `Local dev: add your current IPv4/IPv6. Serverless hosts often need IP restriction OFF or a dedicated egress IP. Raw: ${r.detail}]`
-          );
-        }
-        if (exposeDetail) return `${generic} — ${r.detail}`;
-        return ipBlocked ? publicMsg : generic;
-      })();
+        /** Visitor-safe message; IP restriction must be fixed in Brevo (not fixable in app code). */
+        const publicMsg = ipBlocked
+          ? `We're unable to submit your application online at the moment. Please email ${fallbackContact} or call us — our team can help with your credit application.`
+          : generic;
 
-      return secureResponse(
-        {
-          error,
-          ...(exposeDetail ? { _debug: r.detail } : {}),
-          ...(ipBlocked ? { brevoError: "ip_not_authorised" as const } : {}),
-        },
-        { status: 502 }
-      );
+        const error = (() => {
+          if (ipBlocked && exposeDetail) {
+            return (
+              `${publicMsg} [Admin: Brevo API key uses IP allowlisting. Add this server's public IP in Brevo → Security → Authorised IPs, or disable IP restriction for this key. ` +
+              `Local dev: add your current IPv4/IPv6. Serverless hosts often need IP restriction OFF or a dedicated egress IP. Raw: ${r.detail}]`
+            );
+          }
+          if (exposeDetail) return `${generic} — ${r.detail}`;
+          return ipBlocked ? publicMsg : generic;
+        })();
+
+        return secureResponse(
+          {
+            error,
+            ...(exposeDetail ? { _debug: r.detail } : {}),
+            ...(ipBlocked ? { brevoError: "ip_not_authorised" as const } : {}),
+          },
+          { status: 502 }
+        );
+      }
     }
 
     return secureResponse({ success: true });

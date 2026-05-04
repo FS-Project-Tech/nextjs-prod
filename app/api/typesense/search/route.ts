@@ -15,8 +15,13 @@ import {
   typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
 import { parseListingSortQueryValue } from "@/lib/listing-sort-options";
+import {
+  isLikelySkuToken,
+  MAX_SKU_SEARCH_QUERY_LEN,
+  parseSkuTokens,
+  toTypesenseExactArray,
+} from "@/lib/sku-search-tokens";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
-
 
 // const inStockOnly = sp.get("in_stock_only") !== "0";
 
@@ -49,33 +54,6 @@ function sanitizeGroupByField(raw: string | null): string {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : "";
 }
 
-function parseSkuTokens(rawQuery: string): string[] {
-  const tokens = String(rawQuery || "")
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const t of tokens) {
-    if (!/^[A-Za-z0-9._-]+$/.test(t)) continue;
-    const k = t.toUpperCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-  }
-  return out;
-}
-
-function isLikelySkuToken(token: string): boolean {
-  if (!/^[A-Za-z0-9._-]+$/.test(token)) return false;
-  return /\d/.test(token) || token.includes("-") || token.includes("_");
-}
-
-function toTypesenseExactArray(values: string[]): string {
-  const escaped = values.map((v) => `\`${String(v).replace(/`/g, "\\`")}\``);
-  return `[${escaped.join(",")}]`;
-}
-
 type TypesenseHitLike = { document?: Record<string, unknown> };
 
 type SearchUiProductLike = {
@@ -83,6 +61,16 @@ type SearchUiProductLike = {
   sku?: unknown;
   docType?: unknown;
 };
+
+/** After TS mapping: keep only rows whose `sku` was explicitly requested (avoids grouped parent rows). */
+function filterByRequestedSkuTokens<T extends { sku?: string }>(items: T[], tokens: string[]): T[] {
+  const want = new Set(tokens.map((t) => t.trim().toUpperCase()).filter(Boolean));
+  if (want.size === 0) return items;
+  return items.filter((p) => {
+    const s = String(p.sku ?? "").trim().toUpperCase();
+    return Boolean(s) && want.has(s);
+  });
+}
 
 function dedupeSearchProductsBySku<T extends SearchUiProductLike>(items: T[]): T[] {
   const out: T[] = [];
@@ -204,12 +192,19 @@ export async function GET(request: NextRequest) {
     const onSaleOnly = sp.get("on_sale") === "true" || forOnSaleCategoryFacets;
 
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
-    const qSanitized = sanitizeSlug(qRaw, 200);
-    const skuTokens = parseSkuTokens(qSanitized);
+    const qSanitized = sanitizeSlug(qRaw, MAX_SKU_SEARCH_QUERY_LEN);
+    /** Parse from raw-length string so long comma lists are not truncated at 200 chars. */
+    const skuTokens = parseSkuTokens(String(qRaw || "").trim().slice(0, MAX_SKU_SEARCH_QUERY_LEN));
     const useSkuFilterSearch =
       skuTokens.length > 1 &&
       (/[,&;\n\r\t]/.test(qRaw) || skuTokens.every((t) => isLikelySkuToken(t)));
     const q = useSkuFilterSearch ? "*" : qSanitized || "*";
+
+    /** Fetch enough TS rows per page so parent + variation docs for each SKU usually fit (multi-SKU paste). */
+    const typesensePerPage =
+      facetsOnly || !useSkuFilterSearch
+        ? perPage
+        : Math.min(250, Math.max(perPage, skuTokens.length * 25, 48));
     const explicitSort =
       parseListingSortQueryValue(sp.get("sortBy")) ||
       parseListingSortQueryValue(sp.get("sort"));
@@ -243,14 +238,15 @@ export async function GET(request: NextRequest) {
       query_by: useSkuFilterSearch
         ? "name,sku"
         : (process.env.TYPESENSE_QUERY_BY || "").trim() || TYPESENSE_DEFAULT_QUERY_BY,
-      per_page: facetsOnly ? 1 : perPage,
+      per_page: facetsOnly ? 1 : typesensePerPage,
       page: facetsOnly ? 1 : page,
       sort_by,
     };
 
     if (filter_by) searchParams.filter_by = filter_by;
 
-    if (groupByParam && !facetsOnly) {
+    /** Grouped search bundles extra docs per group (e.g. parent + variations) — breaks exact multi-SKU paste. */
+    if (groupByParam && !facetsOnly && !useSkuFilterSearch) {
       searchParams.group_by = groupByParam;
       searchParams.group_limit = groupLimit;
     }
@@ -273,7 +269,6 @@ export async function GET(request: NextRequest) {
       .search(searchParams as Record<string, unknown>);
 
     const found = result.found ?? 0;
-    const totalPages = facetsOnly ? 1 : Math.max(1, Math.ceil(found / perPage));
 
     const hits = flattenTypesenseHits(result as Parameters<typeof flattenTypesenseHits>[0]).filter(
       (h) => isPublishedStatus((h.document || {}).status)
@@ -285,22 +280,38 @@ export async function GET(request: NextRequest) {
             typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>)
           );
           if (!useSkuFilterSearch) return mapped;
-          const onlyVariations = mapped.filter((p) => String(p.docType) === "variation");
-          const base = onlyVariations.length > 0 ? onlyVariations : mapped;
-          return dedupeSearchProductsBySku(base);
+          const deduped = dedupeSearchProductsBySku(mapped);
+          return filterByRequestedSkuTokens(deduped, skuTokens);
         })()
-      : dedupeProductsById(
-          hits.map((h) =>
-            typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
-          )
-        );
+      : (() => {
+          const listed = dedupeProductsById(
+            hits.map((h) =>
+              typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
+            )
+          );
+          if (!useSkuFilterSearch) return listed;
+          return filterByRequestedSkuTokens(listed, skuTokens);
+        })();
+
+    /**
+     * Raw `found` counts Typesense documents (parents + variations). After dedupe the UI list is shorter,
+     * which caused "Showing 2 of 6". When this response includes all TS hits for the query, expose counts
+     * that match `products.length`.
+     */
+    const allSkuHitsInOnePage =
+      !facetsOnly && useSkuFilterSearch && useSearchShape && page === 1 && found <= typesensePerPage;
+    const responseTotal =
+      allSkuHitsInOnePage && !facetsOnly ? products.length : found;
+    const responseTotalPages = facetsOnly
+      ? 1
+      : Math.max(1, Math.ceil(responseTotal / perPage));
 
     return withRequestId(
       NextResponse.json(
         {
           products,
-          total: found,
-          totalPages,
+          total: responseTotal,
+          totalPages: responseTotalPages,
           page: facetsOnly ? 1 : page,
           per_page: facetsOnly ? 1 : perPage,
           facet_counts: result.facet_counts || [],

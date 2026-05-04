@@ -9,6 +9,11 @@ import {
   cleanSearchResultTitle,
   cleanVariationOptionLine,
 } from "@/lib/search-display-name";
+import {
+  isLikelySkuToken,
+  parseSkuTokens,
+  toTypesenseExactArray,
+} from "@/lib/sku-search-tokens";
 
 const client = new Typesense.Client({
   nodes: [
@@ -70,6 +75,27 @@ async function loadCategorySlugToName(): Promise<Record<string, string>> {
     });
 
   return categoryNameBySlugPromise;
+}
+
+/**
+ * Routes where a debounced Typesense response should not auto-open the suggestion
+ * panel (e.g. after landing on PDP with the query still in the header field).
+ * The user can still open suggestions by focusing the input.
+ */
+function allowAutoOpenPanelForPath(pathname: string): boolean {
+  if (pathname.startsWith("/product/")) return false;
+  if (pathname.startsWith("/dashboard")) return false;
+  if (pathname.startsWith("/checkout")) return false;
+  if (pathname.startsWith("/cart")) return false;
+  if (pathname.startsWith("/order")) return false;
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password")
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function SearchSpinner() {
@@ -291,35 +317,6 @@ function parseVariationDropdown(doc: Record<string, unknown>): VariationDropdown
   }
 }
 
-function parseSkuTokens(rawQuery: string): string[] {
-  const tokens = rawQuery
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const t of tokens) {
-    // Keep this permissive for common SKU formats: ABC123, ID-PANTS-MAX, A.B_01
-    if (!/^[A-Za-z0-9._-]+$/.test(t)) continue;
-    const k = t.toUpperCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-  }
-  return out;
-}
-
-function isLikelySkuToken(token: string): boolean {
-  if (!/^[A-Za-z0-9._-]+$/.test(token)) return false;
-  // Prefer tokens that are identifier-like, not regular words.
-  return /\d/.test(token) || token.includes("-") || token.includes("_");
-}
-
-function toTypesenseExactArray(values: string[]): string {
-  const escaped = values.map((v) => `\`${String(v).replace(/`/g, "\\`")}\``);
-  return `[${escaped.join(",")}]`;
-}
-
 function MagnifierIcon() {
   return (
     <svg
@@ -517,13 +514,15 @@ export default function HeaderSearch() {
         setBrands(brandFacet?.counts || []);
 
         if (suppressAutoOpenAfterNavigationRef.current) {
-          suppressAutoOpenAfterNavigationRef.current = false;
-        } else {
+          // Keep suppress until the user focuses the input or edits the query.
+          // Clearing here allowed a second fetch completion to reopen on PDP.
+        } else if (
+          !pathname.startsWith("/search") &&
+          allowAutoOpenPanelForPath(pathname)
+        ) {
           // On /search route, keep the suggestion panel closed on URL load.
           // Users can still open it intentionally by focusing the input.
-          if (!pathname.startsWith("/search")) {
-            setShow(true);
-          }
+          setShow(true);
         }
         setActiveIndex(-1);
       } catch (err) {
@@ -601,7 +600,10 @@ export default function HeaderSearch() {
           aria-haspopup="listbox"
           value={query}
           onKeyDown={handleKeyDown}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            suppressAutoOpenAfterNavigationRef.current = false;
+            setQuery(e.target.value);
+          }}
           onFocus={() => {
             suppressAutoOpenAfterNavigationRef.current = false;
             if (query) setShow(true);

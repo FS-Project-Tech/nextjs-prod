@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import type { TypesenseSearchProduct } from "@/lib/typesense-products";
+import { MAX_SKU_SEARCH_QUERY_LEN } from "@/lib/sku-search-tokens";
 
 const DEBOUNCE_MS = 300;
 const MIN_SEARCH_LEN = 2;
@@ -105,7 +106,7 @@ export function SearchProvider({ children, urlQuery = "" }: { children: ReactNod
     const d = debouncedQuery.trim();
     if (d.length === 0) return "*";
     if (d.length < MIN_SEARCH_LEN) return "";
-    return d.slice(0, 100);
+    return d.slice(0, MAX_SKU_SEARCH_QUERY_LEN);
   }, [debouncedQuery]);
 
   const highlightQuery = useMemo(() => {
