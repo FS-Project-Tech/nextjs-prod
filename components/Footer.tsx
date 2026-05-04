@@ -390,6 +390,9 @@ export default async function Footer() {
               <PrefetchLink href="/info/terms" className="hover:text-white">
                 Terms & Conditions
               </PrefetchLink>
+              <PrefetchLink href="/credit-reporting-policy" className="hover:text-white">
+                Credit Reporting Policy
+              </PrefetchLink>
             </div>
           </div>
         </div>
