@@ -1269,6 +1269,10 @@ export default function ProductDetailPanel({
     ? Math.round(((regularNum - raw) / regularNum) * 100)
     : 0;
 
+    /** Variation-level sale: hide % until a full variation match ( avoid parent/fallback prices ). */
+    const showDiscountPercent =
+      hasResolvedVariation && discountPercent > 0;
+
     if (isNaN(raw) || raw <= 0) {
       return (
         <span className="text-2xl font-semibold text-[#1f605f]">
@@ -1296,10 +1300,10 @@ export default function ProductDetailPanel({
             {priceInfo.exclPrice || priceInfo.price}
           </span>
 
-           {/* 🔥 SALE TAG */}
+           {/* 🔥 SALE TAG — no numeric % until variation selected when product is variable */}
             {isOnSale && (
               <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded">
-                {discountPercent}% Discount
+                {showDiscountPercent ? `${discountPercent}% Discount` : "Discount"}
               </span>
             )}
 
