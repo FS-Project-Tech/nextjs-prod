@@ -1002,6 +1002,16 @@ main{background-color: #fff;}
   border-radius: 16px;
 }
 
+/* AccessiBe launcher visibility fix */
+iframe[id*="acsb"],
+iframe[src*="acsbapp.com"],
+div[id*="acsb"] {
+  left: 12px !important;
+  right: auto !important;
+  bottom: 96px !important; /* keep above chat/nav */
+  z-index: 2147483645 !important;
+}
+
 
 /* ===== Tawk Chat Fix (Mobile Only) ===== */
 @media (max-width: 1023px) {
@@ -1012,6 +1022,14 @@ main{background-color: #fff;}
     bottom: 160px !important;   /* move above bottom nav + cart */
     right: 95px !important;     /* avoid cart overlap */
     z-index: 2147483646 !important;
+  }
+
+  iframe[id*="acsb"],
+  iframe[src*="acsbapp.com"],
+  div[id*="acsb"] {
+    left: 12px !important;
+    right: auto !important;
+    bottom: 96px !important;
   }
 
 }
