@@ -804,7 +804,7 @@ main{background-color: #fff;}
   margin-bottom: 0.75rem;
   padding-left: 1.5rem;
   padding-right: 1.5rem;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  /* font-family: ui-serif, Georgia, "Times New Roman", serif; */
   font-weight: 600;
   color: #111827;
 }
