@@ -43,6 +43,8 @@ export default function Header({
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const { open: openCart, items } = useCart();
   const { items: wishlistItems } = useWishlist();
@@ -76,6 +78,24 @@ export default function Header({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    function handleOutsideClose(event: MouseEvent | TouchEvent) {
+      if (!open) return;
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (mobileMenuRef.current?.contains(target)) return;
+      if (mobileMenuButtonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    document.addEventListener("mousedown", handleOutsideClose);
+    document.addEventListener("touchstart", handleOutsideClose);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClose);
+      document.removeEventListener("touchstart", handleOutsideClose);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (initialCms) return;
@@ -149,11 +169,20 @@ export default function Header({
         {/* Mobile Menu Button */}
         <div className="flex lg:hidden justify-end">
           <button
+            ref={mobileMenuButtonRef}
             onClick={() => setOpen(!open)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
-            aria-label="Open menu"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition-colors duration-200 hover:bg-gray-100"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
           >
-            <span className="text-xl leading-none">☰</span>
+            <span
+              className={`text-xl leading-none transition-transform duration-200 ${
+                open ? "rotate-90 scale-95" : "rotate-0 scale-100"
+              }`}
+              aria-hidden
+            >
+              {open ? "✕" : "☰"}
+            </span>
           </button>
         </div>
 
@@ -294,8 +323,14 @@ export default function Header({
       </div>
 
       {/* Mobile Menu */}
-      {open && (
-        <div className="lg:hidden border-t px-4 py-4 space-y-3 bg-white">
+      <div
+        ref={mobileMenuRef}
+        className={`lg:hidden overflow-hidden border-t bg-white transition-all duration-300 ease-out ${
+          open ? "max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
+        }`}
+        aria-hidden={!open}
+      >
+        <div className="px-4 py-4 space-y-3">
           <a href="tel:07 2146 3568" className="block text-sm text-gray-700">
              07 2146 3568
           </a>
@@ -336,7 +371,7 @@ export default function Header({
             </PrefetchLink>
           )}
         </div>
-      )}
+      </div>
     </header>
   );
 }

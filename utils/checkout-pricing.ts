@@ -211,8 +211,13 @@ import { computeShippingRates } from "@/lib/shipping-rates-server";
 import { resolveWooLineItems } from "@/lib/woo/resolveLineItems";
 import { splitWooZoneShippingMethodId } from "@/lib/woo/shippingMethodIds";
 import type { WooLineItem } from "@/services/woocommerce";
+import { catalogLineKey } from "@/lib/woo/batchCheckoutCatalog";
+import { fetchCheckoutCatalogCached } from "@/lib/woo/checkoutCatalogCache";
 import { logRequestedItems, logWooBaseUrl } from "@/lib/woo/debugLogger";
 import { wcGet } from "@/lib/woocommerce/wc-fetch";
+import { categoryIdsFromCatalogProduct } from "@/lib/coupon/wooCouponEligibility";
+import { computeWooCouponDiscount } from "@/lib/coupon/computeWooCouponDiscount";
+import { wooCouponOrderGate } from "@/lib/coupon/wooCouponOrderGate";
 
 function normCountry(v?: string): string {
   const c = String(v || "")
@@ -274,7 +279,10 @@ function checkoutPayloadForQuote(input: CheckoutQuoteTotalsInput): CheckoutIniti
 }
 
 /** Same numbers as order creation / eWAY path — for checkout UI preview. */
-export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Promise<{
+export async function quoteCheckoutTotals(
+  input: CheckoutQuoteTotalsInput,
+  options?: ValidateCheckoutPricingOptions,
+): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
   shippingLine: {
@@ -287,10 +295,19 @@ export async function quoteCheckoutTotals(input: CheckoutQuoteTotalsInput): Prom
   /** True when subtotal was below the selected method's minimum and a different rate was applied. */
   shippingAdjusted: boolean;
 }> {
-  return validateAndRecalculateCheckout(checkoutPayloadForQuote(input));
+  return validateAndRecalculateCheckout(checkoutPayloadForQuote(input), options);
 }
 
-export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePayload): Promise<{
+export type ValidateCheckoutPricingOptions = {
+  requestId?: string;
+  currency?: string;
+  customerType?: string;
+};
+
+export async function validateAndRecalculateCheckout(
+  payload: CheckoutInitiatePayload,
+  options?: ValidateCheckoutPricingOptions,
+): Promise<{
   validatedLineItems: Array<{ product_id: number; variation_id?: number; quantity: number }>;
   wooLineItems: WooLineItem[];
   shippingLine: {
@@ -303,6 +320,8 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
   /** True when subtotal was below the selected method's minimum and a different rate was applied. */
   shippingAdjusted: boolean;
 }> {
+  let batchHits = 0;
+  let batchMiss = 0;
   const toItemKey = (productId: number, variationId?: number) => `${productId}:${variationId ?? 0}`;
 
   logWooBaseUrl();
@@ -345,14 +364,42 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
     quantity: it.quantity,
   }));
 
+  let catalog = new Map<string, Record<string, unknown>>();
+  try {
+    catalog = await fetchCheckoutCatalogCached(validatedLineItems, {
+      currency: options?.currency,
+      customerType: options?.customerType,
+      requestId: options?.requestId,
+    });
+  } catch (e) {
+    console.warn("[checkout-pricing] batch catalog fetch failed, using per-line fallback only", {
+      requestId: options?.requestId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   const unitPrices = await Promise.all(
     validatedLineItems.map(async (li, idx) => {
       const clientUnit = payload.line_items[idx]?.unit_price;
-      const path = li.variation_id
-        ? `/products/${li.product_id}/variations/${li.variation_id}`
-        : `/products/${li.product_id}`;
-      const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
-      const p = data || {};
+      const mapKey = catalogLineKey(li.product_id, li.variation_id);
+      let p: Record<string, unknown>;
+      if (catalog.has(mapKey)) {
+        batchHits += 1;
+        p = (catalog.get(mapKey) as Record<string, unknown>) ?? {};
+      } else {
+        batchMiss += 1;
+        const path = li.variation_id
+          ? `/products/${li.product_id}/variations/${li.variation_id}`
+          : `/products/${li.product_id}`;
+        console.warn("[checkout-pricing] catalog batch miss, fallback wcGet", {
+          path,
+          mapKey,
+          requestId: options?.requestId,
+        });
+        const { data } = await wcGet<Record<string, unknown>>(path, undefined, "noStore");
+        p = data || {};
+      }
+
       const wooUnit = Number.parseFloat(String(p.price ?? "0")) || 0;
       const unit =
         typeof clientUnit === "number" && Number.isFinite(clientUnit) && clientUnit > 0
@@ -363,11 +410,15 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
       const cls = taxClass.trim().toLowerCase().replace(/[\s_]+/g, "-");
       const status = taxStatus.trim().toLowerCase().replace(/[\s_]+/g, "-");
       const taxable = !(status === "none" || cls === "gst-free" || cls === "gstfree");
+      const onSale = Boolean(p.on_sale);
+      const categoryIds = categoryIdsFromCatalogProduct(p);
       return {
         key: toItemKey(li.product_id, li.variation_id),
         unit,
         qty: li.quantity,
         taxable,
+        on_sale: onSale,
+        categoryIds,
       };
     })
   );
@@ -388,16 +439,24 @@ export async function validateAndRecalculateCheckout(payload: CheckoutInitiatePa
       );
       const coupon = Array.isArray(couponRes.data) ? couponRes.data[0] : null;
       if (coupon && typeof coupon === "object" && coupon !== null) {
-        const c = coupon as { amount?: unknown; discount_type?: unknown };
-        const amount = Number.parseFloat(String(c.amount || "0")) || 0;
-        const type = String(c.discount_type || "");
-        if (type === "percent") {
-          discount = (subtotal * amount) / 100;
-        } else if (type === "fixed_cart") {
-          discount = amount;
-        } else if (type === "fixed_product") {
-          const qtyTotal = validatedLineItems.reduce((n, li) => n + li.quantity, 0);
-          discount = amount * qtyTotal;
+        const c = coupon as Record<string, unknown>;
+        const pricedLines = validatedLineItems.map((li, idx) => {
+          const up = unitPrices[idx];
+          return {
+            product_id: li.product_id,
+            ...(li.variation_id != null && li.variation_id > 0
+              ? { variation_id: li.variation_id }
+              : {}),
+            quantity: li.quantity,
+            unit: up?.unit ?? 0,
+            on_sale: up?.on_sale ?? false,
+            category_ids: up?.categoryIds ?? [],
+          };
+        });
+        const gate = wooCouponOrderGate(c, subtotal);
+        if (gate.ok) {
+          const { discount: d } = computeWooCouponDiscount(c, pricedLines);
+          discount = d;
         }
       }
     } catch {
@@ -482,6 +541,11 @@ if (selMin !== undefined && selMin > 0 && subtotal < selMin) {
   });
 
   const { method_id, instance_id } = splitWooZoneShippingMethodId(String(finalRate.id));
+
+  if (options?.requestId) {
+    console.log("[checkout][batch_stats]", options.requestId, { hits: batchHits, miss: batchMiss });
+  }
+
   return {
     validatedLineItems,
     wooLineItems,

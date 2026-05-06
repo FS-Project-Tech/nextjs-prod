@@ -9,6 +9,11 @@ import {
   cleanSearchResultTitle,
   cleanVariationOptionLine,
 } from "@/lib/search-display-name";
+import {
+  isLikelySkuToken,
+  parseSkuTokens,
+  toTypesenseExactArray,
+} from "@/lib/sku-search-tokens";
 
 const client = new Typesense.Client({
   nodes: [
@@ -70,6 +75,27 @@ async function loadCategorySlugToName(): Promise<Record<string, string>> {
     });
 
   return categoryNameBySlugPromise;
+}
+
+/**
+ * Routes where a debounced Typesense response should not auto-open the suggestion
+ * panel (e.g. after landing on PDP with the query still in the header field).
+ * The user can still open suggestions by focusing the input.
+ */
+function allowAutoOpenPanelForPath(pathname: string): boolean {
+  if (pathname.startsWith("/product/")) return false;
+  if (pathname.startsWith("/dashboard")) return false;
+  if (pathname.startsWith("/checkout")) return false;
+  if (pathname.startsWith("/cart")) return false;
+  if (pathname.startsWith("/order")) return false;
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password")
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function SearchSpinner() {
@@ -383,6 +409,15 @@ export default function HeaderSearch() {
     }
   }, [pathname, urlSearchQ]);
 
+  /** Always close suggestions after any navigation/redirect. */
+  useEffect(() => {
+    // Cancel stale responses from previous page and keep panel closed after redirects.
+    searchGenerationRef.current += 1;
+    closePanel();
+    setIsSearching(false);
+    suppressAutoOpenAfterNavigationRef.current = true;
+  }, [pathname, searchParams, closePanel]);
+
   const categoryLabel = useCallback(
     (slug: string) => {
       const key = String(slug || "")
@@ -443,17 +478,30 @@ export default function HeaderSearch() {
           .filter(Boolean)
           .join(" || ");
 
+        const skuTokens = parseSkuTokens(query);
+        const useSkuFilterSearch =
+          skuTokens.length > 1 &&
+          (/[,&;\n\r\t]/.test(query) || skuTokens.every((t) => isLikelySkuToken(t)));
+
+        const searchRequest: Record<string, unknown> = {
+          q: formattedQuery,
+          query_by: TYPESENSE_DEFAULT_QUERY_BY,
+          per_page: 10,
+          facet_by: "category,brand",
+          sort_by: "_text_match:desc",
+          split_join_tokens: "always",
+        };
+
+        if (useSkuFilterSearch) {
+          searchRequest.q = "*";
+          searchRequest.query_by = "name,sku";
+          searchRequest.filter_by = `sku:=${toTypesenseExactArray(skuTokens)}`;
+        }
+
         const res = await client
           .collections(process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME)
           .documents()
-          .search({
-            q: formattedQuery,
-            query_by: TYPESENSE_DEFAULT_QUERY_BY,
-            per_page: 10,
-            facet_by: "category,brand",
-            sort_by: "_text_match:desc",
-            split_join_tokens: "always",
-          });
+          .search(searchRequest);
 
         if (searchGenerationRef.current !== gen) return;
 
@@ -466,8 +514,14 @@ export default function HeaderSearch() {
         setBrands(brandFacet?.counts || []);
 
         if (suppressAutoOpenAfterNavigationRef.current) {
-          suppressAutoOpenAfterNavigationRef.current = false;
-        } else {
+          // Keep suppress until the user focuses the input or edits the query.
+          // Clearing here allowed a second fetch completion to reopen on PDP.
+        } else if (
+          !pathname.startsWith("/search") &&
+          allowAutoOpenPanelForPath(pathname)
+        ) {
+          // On /search route, keep the suggestion panel closed on URL load.
+          // Users can still open it intentionally by focusing the input.
           setShow(true);
         }
         setActiveIndex(-1);
@@ -486,7 +540,7 @@ export default function HeaderSearch() {
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [query]);
+  }, [query, pathname]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const n = flatRows.length;
@@ -546,7 +600,10 @@ export default function HeaderSearch() {
           aria-haspopup="listbox"
           value={query}
           onKeyDown={handleKeyDown}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            suppressAutoOpenAfterNavigationRef.current = false;
+            setQuery(e.target.value);
+          }}
           onFocus={() => {
             suppressAutoOpenAfterNavigationRef.current = false;
             if (query) setShow(true);

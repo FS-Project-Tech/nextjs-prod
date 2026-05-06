@@ -8,6 +8,10 @@ import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils
 /**
  * GET /api/checkout/get-order?orderId=<id>&key=<wc_order_key>[&AccessCode=…]
  * Loads order via WooCommerce REST (wc/v3) only. Requires matching order_key (guest-safe).
+ *
+ * `orderId` may be the WooCommerce **post ID** or the customer-facing **order number**
+ * (Sequential Order Numbers, etc.). When those differ, a direct GET /orders/{orderId} can
+ * return the wrong row (ID collision); we fall back to searching by exact order number + key.
  */
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,65 @@ const ORDER_REVIEW_WOO_FIELDS =
 
 function orderReviewReadParams(): { _fields: string } {
   return { _fields: ORDER_REVIEW_WOO_FIELDS };
+}
+
+function coerceOrderKey(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v.trim();
+  return String(v).trim();
+}
+
+async function fetchOrderById(
+  orderRef: string | number,
+  params: { _fields?: string },
+  readTimeout: number,
+): Promise<Record<string, unknown>> {
+  const { data } = await wcAPI.get(`/orders/${encodeURIComponent(String(orderRef))}`, {
+    timeout: readTimeout,
+    ...(Object.keys(params).length ? { params } : {}),
+  });
+  return data as Record<string, unknown>;
+}
+
+/**
+ * When the URL uses the display order # but WC REST resolved a different post by ID first,
+ * find the order whose `number` / `order_number` matches and whose `order_key` matches the URL.
+ */
+async function findOrderMatchingKeyByExactOrderNumber(
+  orderRef: string,
+  keyParam: string,
+  lean: { _fields: string },
+  readTimeout: number,
+): Promise<Record<string, unknown> | null> {
+  const ref = String(orderRef || "").trim();
+  if (!ref) return null;
+
+  const { data: orders } = await wcAPI.get("/orders", {
+    params: { search: ref, per_page: 100 },
+    timeout: readTimeout,
+  });
+  if (!Array.isArray(orders)) return null;
+
+  for (const raw of orders) {
+    const o = raw as { id?: number; number?: string; order_number?: string };
+    const num = String(o.number ?? "").trim();
+    const onum = String(o.order_number ?? "").trim();
+    if (num !== ref && onum !== ref) continue;
+
+    const id = Number(o.id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+
+    try {
+      const full = await fetchOrderById(id, lean, readTimeout);
+      const k = coerceOrderKey(full.order_key);
+      if (k && keysMatchWooOrder(k, keyParam)) {
+        return full;
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return null;
 }
 
 /** Fast read for order-review (avoid waiting on 90s budget when Woo is healthy). */
@@ -55,11 +118,7 @@ export async function GET(req: NextRequest) {
 
     let order: Record<string, unknown> | null = null;
     try {
-      const { data } = await wcAPI.get(`/orders/${encodeURIComponent(orderIdParam)}`, {
-        timeout: readTimeout,
-        params: lean,
-      });
-      order = data as Record<string, unknown>;
+      order = await fetchOrderById(orderIdParam, lean, readTimeout);
     } catch (firstErr: unknown) {
       const status = (firstErr as { response?: { status?: number } }).response?.status;
       if (status !== 404) throw firstErr;
@@ -70,14 +129,41 @@ export async function GET(req: NextRequest) {
       if (!postId) {
         return withRequestId(NextResponse.json({ error: "Order not found" }, { status: 404 }), requestId);
       }
-      const { data } = await wcAPI.get(`/orders/${postId}`, {
-        timeout: readTimeout,
-        params: lean,
-      });
-      order = data as Record<string, unknown>;
+      order = await fetchOrderById(postId, lean, readTimeout);
     }
 
-    const wooKey = typeof order.order_key === "string" ? order.order_key : "";
+    let wooKey = coerceOrderKey(order.order_key);
+    if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
+      const oid = Number(order.id ?? 0);
+      if (Number.isFinite(oid) && oid > 0) {
+        try {
+          const full = await fetchOrderById(oid, {}, readTimeout);
+          const altKey = coerceOrderKey(full.order_key);
+          if (altKey && keysMatchWooOrder(altKey, keyParam)) {
+            order = full;
+            wooKey = altKey;
+          }
+        } catch {
+          /* keep lean order + fail below */
+        }
+      }
+    }
+
+    wooKey = coerceOrderKey(order.order_key);
+    if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
+      const byNumber = await findOrderMatchingKeyByExactOrderNumber(
+        orderIdParam,
+        keyParam,
+        lean,
+        readTimeout,
+      );
+      if (byNumber) {
+        order = byNumber;
+        wooKey = coerceOrderKey(order.order_key);
+      }
+    }
+
+    wooKey = coerceOrderKey(order.order_key);
     if (!wooKey || !keysMatchWooOrder(wooKey, keyParam)) {
       return withRequestId(NextResponse.json({ error: "Invalid order key" }, { status: 403 }), requestId);
     }

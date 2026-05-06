@@ -64,7 +64,12 @@ export function normalizeAddressFromWp(
   ] as const;
   for (const key of keys) {
     const v = a[key] ?? a[prefix + key];
-    out[key] = v === undefined || v === null ? "" : v;
+    if (key === "label") {
+      const raw = v === undefined || v === null ? "" : String(v);
+      out[key] = raw.replace(/^legacy\s+/i, "").trim();
+    } else {
+      out[key] = v === undefined || v === null ? "" : v;
+    }
   }
   for (const key of NDIS_HCP_KEYS) {
     const v = a[key] ?? a[prefix + key];

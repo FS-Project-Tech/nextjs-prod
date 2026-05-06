@@ -138,14 +138,47 @@ export default function BottomNav() {
             }
 
             if (tab.key === "categories") {
+              /** Square gradient CTA — no shadows (flat). */
+              const categoriesContent = (
+                <div
+                  className={`relative flex flex-col items-center justify-center rounded-none px-2.5 py-2 transition-colors duration-200 ${
+                    categoriesOpen
+                      ? "bg-gradient-to-br from-teal-700 via-teal-800 to-emerald-900 text-white ring-2 ring-teal-300/90"
+                      : "bg-gradient-to-br from-teal-500 via-teal-600 to-emerald-700 text-white ring-2 ring-white/95"
+                  }`}
+                  suppressHydrationWarning
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-6 w-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.35}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    {tab.icon}
+                  </svg>
+                  <span className="mt-0.5 max-w-[5rem] truncate text-center text-[11px] font-bold leading-none tracking-tight text-white">
+                    {tab.label}
+                  </span>
+                </div>
+              );
               return (
-                <li key={tab.key} suppressHydrationWarning>
+                <li
+                  key={tab.key}
+                  className="relative flex items-center justify-center pb-0.5 pt-0.5"
+                  suppressHydrationWarning
+                >
                   <button
                     type="button"
                     onClick={() => setCategoriesOpen(true)}
-                    className="block w-full"
+                    className="relative block w-full max-w-[6rem] transition-transform duration-150 ease-out active:scale-[0.94] motion-safe:hover:scale-[1.04] motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    aria-expanded={categoriesOpen}
+                    aria-haspopup="dialog"
                   >
-                    {content}
+                    {categoriesContent}
                   </button>
                 </li>
               );

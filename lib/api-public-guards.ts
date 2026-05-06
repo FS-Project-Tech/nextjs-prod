@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { checkRateLimitSafe } from "@/lib/api-rate-limit";
+import { checkRateLimitSafe, rateLimitConsume } from "@/lib/api-rate-limit";
 import { getRateLimitIdentity } from "@/lib/rate-limit-identity";
 import { jsonApiError } from "@/lib/api-errors";
 
@@ -172,6 +172,48 @@ interface RouteRateLimitConfig {
   routeKey?: string;
   /** When true, log and allow the request (no 429). */
   softFail?: boolean;
+}
+
+/**
+ * Same contract as {@link rateLimit}, but uses in-process counters only — no Redis / Upstash / TCP backends.
+ * Use for checkout-related routes so rate limits stay off distributed stores.
+ */
+export function rateLimitMemory(config: Partial<RouteRateLimitConfig> = {}) {
+  const windowMs = config.windowMs ?? 60_000;
+  const maxRequests = config.maxRequests ?? 60;
+  const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
+  const routeKey = config.routeKey ?? `route:w${windowMs}:m${maxRequests}`;
+  const softFail = config.softFail === true;
+
+  return async (req: NextRequest): Promise<NextResponse | null> => {
+    const id = config.identifier
+      ? await Promise.resolve(config.identifier(req))
+      : await getRateLimitIdentity(req);
+    const local = rateLimitConsume(id, routeKey, maxRequests, windowSec);
+    if (local.allowed) return null;
+
+    if (softFail) {
+      console.warn("[rate-limit] soft-fail (memory)", { routeKey, path: req.nextUrl.pathname });
+      return null;
+    }
+
+    return NextResponse.json(
+      {
+        error: "Too many requests",
+        code: "RATE_LIMITED",
+        message: `Rate limit exceeded. Please try again in ${local.resetSec} seconds.`,
+        retryAfter: local.resetSec,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(local.resetSec),
+          "X-RateLimit-Limit": String(maxRequests),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  };
 }
 
 /**

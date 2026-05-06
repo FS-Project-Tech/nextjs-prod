@@ -1,9 +1,8 @@
 /**
  * Checkout session persistence.
  *
- * Default: in-memory Map (OK for single Node process / local dev).
- * On serverless multi-instance deployments, use Redis or another shared store
- * (implement CheckoutSessionStore and wire via env).
+ * Default: in-memory Map (per Node process). For multi-instance serverless, implement
+ * {@link CheckoutSessionStore} with a shared backend and wire via env.
  */
 
 import type { CheckoutSessionRecord } from "@/types/checkout-session";
@@ -83,6 +82,5 @@ function getGlobalStore(): InMemoryCheckoutSessionStore {
 }
 
 export function getCheckoutSessionStore(): CheckoutSessionStore {
-  // Future: if (process.env.CHECKOUT_SESSION_REDIS_URL) return new RedisCheckoutSessionStore(...)
   return getGlobalStore();
 }

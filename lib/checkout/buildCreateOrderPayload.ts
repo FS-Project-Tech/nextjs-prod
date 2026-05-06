@@ -1,9 +1,14 @@
 import type { CartItem } from "@/lib/types/cart";
 import {
+  getEmpowerDiscountSummary,
+  getEmpowerDiscountedUnitPrice,
+} from "@/lib/cart/empowerDiscount";
+import {
   buildHcpInfoJsonFromForm,
   buildNdisInfoJsonFromForm,
   normalizeNdisFundingType,
 } from "@/lib/checkout/ndisHcpPayload";
+import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import type { CheckoutFormData, ShippingMethodType } from "./schema";
 
 function billingBlock(data: CheckoutFormData) {
@@ -36,13 +41,16 @@ function shippingBlock(data: CheckoutFormData) {
   };
 }
 
-export function lineItemsFromCart(cartLines: CartItem[]) {
+export function lineItemsFromCart(cartLines: CartItem[], options?: { empowerApplied?: boolean }) {
+  const empowerApplied = options?.empowerApplied === true;
   return cartLines.map((line) => {
     const sku =
       line.sku != null && String(line.sku).trim() !== "" ? String(line.sku).trim() : undefined;
     const productId = Number(line.productId);
     const variationRaw = line.variationId != null ? Number(line.variationId) : NaN;
-    const unitFromCart = Number.parseFloat(String(line.price ?? "").trim());
+    const unitFromCart = empowerApplied
+      ? getEmpowerDiscountedUnitPrice(line)
+      : Number.parseFloat(String(line.price ?? "").trim());
     const unit_price =
       Number.isFinite(unitFromCart) && unitFromCart > 0 ? unitFromCart : undefined;
     return {
@@ -55,17 +63,30 @@ export function lineItemsFromCart(cartLines: CartItem[]) {
   });
 }
 
+function cartItemsForValidation(cartLines: CartItem[], options?: { empowerApplied?: boolean }): CartItem[] {
+  const empowerApplied = options?.empowerApplied === true;
+  if (!empowerApplied) return cartLines;
+  return cartLines.map((line) => {
+    const discountedUnit = getEmpowerDiscountedUnitPrice(line);
+    return {
+      ...line,
+      price: discountedUnit > 0 ? discountedUnit.toFixed(2) : String(line.price ?? "0"),
+    };
+  });
+}
+
 export function buildCheckoutQuoteTotalsBody(params: {
   data: CheckoutFormData;
   cartLines: CartItem[];
   appliedCoupon: { code: string } | null;
+  empowerApplied?: boolean;
 }): Record<string, unknown> | null {
-  const { data, cartLines, appliedCoupon } = params;
+  const { data, cartLines, appliedCoupon, empowerApplied } = params;
   const sm = data.shippingMethod as ShippingMethodType | undefined;
   if (!sm?.id) return null;
   const destination = data.shipToDifferentAddress ? shippingBlock(data) : billingBlock(data);
   return {
-    line_items: lineItemsFromCart(cartLines),
+    line_items: lineItemsFromCart(cartLines, { empowerApplied }),
     shipping_method_id: sm.id,
     shipping: {
       country: destination.country || "AU",
@@ -81,18 +102,31 @@ export function buildCheckoutQuoteTotalsBody(params: {
 export function buildCreateOrderPayload(params: {
   data: CheckoutFormData;
   cartLines: CartItem[];
-  paymentMethod: "eway" | "cod";
+  paymentMethod: "eway" | "cod" | "afterpay";
   appliedCouponCode?: string | null;
   couponFromUrl?: string | null;
   /** Stable UUID per browser tab/session for idempotent Woo checkout. */
   checkoutSessionId?: string | null;
+  empowerApplied?: boolean;
+  /** From last POST /api/checkout/quote-totals — required for fast create-session (eWAY). */
+  quoteSigning?: CheckoutQuoteSigningPayload | null;
 }): Record<string, unknown> {
-  const { data, cartLines, paymentMethod, appliedCouponCode, couponFromUrl, checkoutSessionId } =
+  const {
+    data,
+    cartLines,
+    paymentMethod,
+    appliedCouponCode,
+    couponFromUrl,
+    checkoutSessionId,
+    empowerApplied,
+    quoteSigning,
+  } =
     params;
   const billing = billingBlock(data);
   const shippingRaw = shippingBlock(data);
   const destination = data.shipToDifferentAddress ? shippingRaw : billing;
   const shippingMethod = data.shippingMethod as ShippingMethodType | undefined;
+  const empower = empowerApplied ? getEmpowerDiscountSummary(cartLines) : { applied: false, discountTotal: 0, itemsCount: 0 };
 
   const body: Record<string, unknown> = {
     billing,
@@ -109,9 +143,9 @@ export function buildCreateOrderPayload(params: {
       postcode: destination.postcode || "",
       country: destination.country || "AU",
     },
-    line_items: lineItemsFromCart(cartLines),
+    line_items: lineItemsFromCart(cartLines, { empowerApplied }),
     /** Needed for delivery plan → Woo line meta (COD + eWAY). eWAY still validates these server-side. */
-    cart_items: cartLines,
+    cart_items: cartItemsForValidation(cartLines, { empowerApplied }),
     shipping_method_id: shippingMethod?.id,
     payment_method: paymentMethod,
     /** Store API COD expects `payment_data: []`; kept on payload for parity and future direct Store calls. */
@@ -126,11 +160,18 @@ export function buildCreateOrderPayload(params: {
     discreet_packaging: data.discreetPackaging === true,
     newsletter: data.subscribe_newsletter === true,
     delivery_notes: data.deliveryInstructions?.trim() || undefined,
+    empower_program_applied: empower.applied,
+    empower_discount_total: empower.discountTotal,
+    empower_discount_items: empower.itemsCount,
   };
 
   const sid = typeof checkoutSessionId === "string" ? checkoutSessionId.trim() : "";
   if (sid) {
     body.checkout_session_id = sid;
+  }
+
+  if (quoteSigning) {
+    body.quote_signing = quoteSigning;
   }
 
   return body;

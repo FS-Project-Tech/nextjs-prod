@@ -6,7 +6,7 @@ const collection =
   process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
   process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME ||
   process.env.TYPESENSE_COLLECTION ||
-  "products";
+  "products_updated";
 
 const url = `https://${host}/collections/${collection}`;
 const res = await fetch(url, {

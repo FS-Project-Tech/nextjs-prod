@@ -51,7 +51,7 @@ export function mergeWooCustomerMetaDataInto(
   for (const row of md) {
     const k = row?.key != null ? String(row.key) : "";
     if (!k) continue;
-    if (k.startsWith("wc_address_book_address_")) {
+    if (k.startsWith("wc_address_book_address_") || k === "secondary_addresses") {
       target[k] = row.value;
     }
   }
@@ -61,6 +61,43 @@ export function buildAddressBookMetaMap(wpUser: unknown, wcCustomer?: unknown): 
   const map = collectWpUserMetaKeyValues(wpUser);
   mergeWooCustomerMetaDataInto(map, wcCustomer);
   return map;
+}
+
+function parseSecondaryAddressesRaw(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((row): row is Record<string, unknown> => !!row && typeof row === "object");
+  }
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return [];
+    try {
+      const j = JSON.parse(s) as unknown;
+      if (Array.isArray(j)) {
+        return j.filter((row): row is Record<string, unknown> => !!row && typeof row === "object");
+      }
+    } catch {
+      // ignore JSON parse failure and try PHP unserialize below
+    }
+    // Serialized payload may be either an array of rows or an object containing `addresses`.
+    if (s.startsWith("a:")) {
+      try {
+        const parsed = unserialize(s) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (row): row is Record<string, unknown> => !!row && typeof row === "object"
+          );
+        }
+        if (parsed && typeof parsed === "object" && Array.isArray((parsed as { addresses?: unknown }).addresses)) {
+          return ((parsed as { addresses: unknown[] }).addresses).filter(
+            (row): row is Record<string, unknown> => !!row && typeof row === "object"
+          );
+        }
+      } catch {
+        // ignore deserialize failure
+      }
+    }
+  }
+  return [];
 }
 
 function tryUnserializePhpAddressBlob(raw: unknown): Record<string, unknown> | null {
@@ -140,4 +177,39 @@ export function parseWcAddressBookMetaToAddresses(
     list.push(normalizeAddressFromWp(row, id));
   }
   return list;
+}
+
+/**
+ * Parse normalized `secondary_addresses` rows from merged meta (WP user + optional WC customer meta_data).
+ * Accepts array, JSON string, or serialized payload.
+ */
+export function parseSecondaryAddressesMetaToAddresses(
+  wpUser: unknown,
+  wcCustomer?: unknown
+): Record<string, unknown>[] {
+  const meta =
+    wcCustomer !== undefined
+      ? buildAddressBookMetaMap(wpUser, wcCustomer)
+      : collectWpUserMetaKeyValues(wpUser);
+
+  const raw = meta.secondary_addresses;
+  const rows = parseSecondaryAddressesRaw(raw);
+  const out: Record<string, unknown>[] = [];
+
+  for (const row of rows) {
+    const type = str(row.type).toLowerCase() === "shipping" ? "shipping" : "billing";
+    const id = str(row.id) || `secondary-${type}-${out.length + 1}`;
+    const normalized = normalizeAddressFromWp(
+      {
+        ...row,
+        type,
+        label: str(row.label) || str(row.address_nickname) || "",
+      },
+      id
+    );
+    if (!isNonEmptyAddressBlock(normalized)) continue;
+    out.push(normalized);
+  }
+
+  return out;
 }

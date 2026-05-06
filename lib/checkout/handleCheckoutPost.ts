@@ -8,45 +8,21 @@ import { randomUUID } from "node:crypto";
 import { after, NextRequest, NextResponse } from "next/server";
 import { parseCheckoutPayload } from "@/lib/checkout/initiatePayload";
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
-import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { executeWooCheckoutOrder } from "@/lib/checkout/executeWooCheckoutOrder";
-import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
+import {
+  executeWooCheckoutOrder,
+  type CheckoutRoutePerf,
+} from "@/lib/checkout/executeWooCheckoutOrder";
+import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate";
+import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
 import {
   countNdisDigitsInCheckoutPayload,
   stripEmptyNdisHcpFromInitiatePayload,
 } from "@/lib/checkout/ndisHcpPayload";
 import { isTimeoutError } from "@/lib/utils/errors";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
-import type { CheckoutInitiatePayload } from "@/types/checkout";
-import { checkIdempotency, storeIdempotencyResult } from "@/lib/checkout-security";
-
-/** Serialized checkout JSON + status for idempotent replay (headers from primary response are not replayed). */
-type SerializedCheckout = { status: number; json: unknown; cacheSuccess: boolean };
-
-const checkoutPostInflight = new Map<string, Promise<SerializedCheckout>>();
-
-function checkoutResponseShouldCache(json: unknown, status: number): boolean {
-  if (status < 200 || status >= 400) return false;
-  if (!json || typeof json !== "object") return false;
-  const o = json as Record<string, unknown>;
-  return o.success === true || o.success === "true";
-}
-
-async function serializeCheckoutNextResponse(res: NextResponse): Promise<SerializedCheckout> {
-  const status = res.status;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    json = { success: false, error: "Invalid checkout response" };
-  }
-  return {
-    status,
-    json,
-    cacheSuccess: checkoutResponseShouldCache(json, status),
-  };
-}
+import type { CheckoutActor } from "@/types/checkout";
+import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionDuplicateError";
 
 function clientIpFromRequest(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -200,8 +176,8 @@ class CheckoutTimeoutError extends Error {
 
 function restCheckoutTimeoutMs(): number {
   const n = Number(process.env.CHECKOUT_REST_CHECKOUT_TIMEOUT_MS);
-  /** Validate + minimal create + (eWAY only) extension PUT + eWAY; raise if your Woo host is slow. */
-  return Number.isFinite(n) && n > 0 ? n : 25_000;
+  /** Must exceed stacked Woo calls (each often `WOOCOMMERCE_API_TIMEOUT` ~45s). Default 60s avoids envelope 504 before inner axios completes. */
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
 }
 
 function isAbortLikeCheckout(e: unknown): boolean {
@@ -224,8 +200,36 @@ function withPromiseTimeout<T>(ms: number, promise: Promise<T>): Promise<T> {
   });
 }
 
-export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse> {
+function logCheckoutPerfSummary(opts: {
+  validateMs: number;
+  perf: CheckoutRoutePerf;
+  checkoutStarted: number;
+}) {
+  const total_time = Date.now() - opts.checkoutStarted;
+  opts.perf.total_time = total_time;
+  const rid = opts.perf.requestId;
+  console.log("[checkout] perf_summary", {
+    requestId: rid,
+    validate_time: opts.validateMs,
+    woo_create_time: opts.perf.wooCreateMs ?? 0,
+    woo_patch_time: opts.perf.wooPatchMs ?? 0,
+    payment_time: opts.perf.paymentMs ?? 0,
+    total_time,
+  });
+  if (total_time > 1500) {
+    console.warn("[checkout][slow]", rid, opts.perf);
+  }
+}
+
+export async function handleCheckoutPost(
+  req: NextRequest,
+  checkoutRequestId?: string,
+): Promise<NextResponse> {
   const started = Date.now();
+  let validateMs = 0;
+  const perf: CheckoutRoutePerf = {};
+  const correlationId = checkoutRequestId ?? randomUUID();
+  perf.requestId = correlationId;
   let rawPayload: unknown;
   try {
     rawPayload = await readJsonBody(req);
@@ -233,7 +237,7 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  let payload: CheckoutInitiatePayload;
+  let payload;
   try {
     payload = parseCheckoutPayload(rawPayload);
   } catch (error: unknown) {
@@ -248,45 +252,8 @@ export async function handleCheckoutPost(req: NextRequest): Promise<NextResponse
     );
   }
 
-  const idempotencyKey =
-    req.headers.get("idempotency-key")?.trim() ||
-    (typeof payload.checkout_session_id === "string" ? payload.checkout_session_id.trim() : "");
-
-  const runSerialized = async () =>
-    serializeCheckoutNextResponse(await executeCheckoutPostCore(req, payload, started));
-
-  if (idempotencyKey) {
-    const dup = checkIdempotency(idempotencyKey);
-    if (dup.isDuplicate && dup.result) {
-      const cached = dup.result as SerializedCheckout;
-      return NextResponse.json(cached.json, { status: cached.status });
-    }
-
-    let inflight = checkoutPostInflight.get(idempotencyKey);
-    if (!inflight) {
-      inflight = runSerialized().finally(() => {
-        checkoutPostInflight.delete(idempotencyKey);
-      });
-      checkoutPostInflight.set(idempotencyKey, inflight);
-    }
-
-    const ser = await inflight;
-    if (ser.cacheSuccess) {
-      storeIdempotencyResult(idempotencyKey, ser);
-    }
-    return NextResponse.json(ser.json, { status: ser.status });
-  }
-
-  const ser = await runSerialized();
-  return NextResponse.json(ser.json, { status: ser.status });
-}
-
-async function executeCheckoutPostCore(
-  req: NextRequest,
-  payload: CheckoutInitiatePayload,
-  started: number,
-): Promise<NextResponse> {
   console.log("[checkout] start", {
+    requestId: correlationId,
     payment_method: payload.payment_method,
     lines: payload.line_items?.length,
     shipping_method_id: payload.shipping_method_id,
@@ -308,6 +275,7 @@ async function executeCheckoutPostCore(
       actorRoles.includes("administrator") ||
       actorRoles.includes("b2b_user") ||
       actorRoles.includes("b2b30days") ||
+      actorRoles.includes("support_co_ordinator") ||
       actorRoles.includes("ndis-approved") ||
       Boolean(actor.ndisApproved);
     const guestNdisQualifies =
@@ -326,39 +294,50 @@ async function executeCheckoutPostCore(
     }
 
     payload = stripEmptyNdisHcpFromInitiatePayload(payload);
+    if (payload.empower_program_applied) {
+      console.log("[checkout][empower_discount_applied]", {
+        requestId: correlationId,
+        discountTotal: Number(payload.empower_discount_total || 0),
+        discountItems: Number(payload.empower_discount_items || 0),
+      });
+    }
 
     after(async () => {
       try {
         await syncCheckoutUserMeta(actor, payload);
       } catch (e) {
         console.warn("[checkout] user meta sync failed", {
+          requestId: correlationId,
           userId: actor.userId,
           message: e instanceof Error ? e.message : String(e),
         });
       }
     });
-    const pricing = await validateAndRecalculateCheckout(payload);
+    const tValidate0 = Date.now();
+    const gate = await pricingWithEwayCartGate(payload, {
+      requestId: correlationId,
+      currency: wooStoreCurrency(),
+      customerType: deriveCustomerPricingKey(actor),
+    });
+    validateMs = Date.now() - tValidate0;
+    console.log("[checkout] validate time:", { requestId: correlationId, ms: validateMs });
 
-    if (payload.payment_method === "eway") {
-      const cartCheck = await validateCartForEwayCheckout({
-        cart_items: payload.cart_items!,
-        totals: pricing.totals,
-      });
-      if (cartCheck.ok === false) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: cartCheck.errors[0]?.message ?? "Cart validation failed",
-            valid: cartCheck.valid,
-            errors: cartCheck.errors,
-            code: cartCheck.code,
-          },
-          { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
-        );
-      }
+    if (gate.ok === false) {
+      const cartCheck = gate.cartCheck;
+      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+      return NextResponse.json(
+        {
+          success: false,
+          error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+          valid: cartCheck.valid,
+          errors: cartCheck.errors,
+          code: cartCheck.code,
+        },
+        { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+      );
     }
 
-    const { wooLineItems, shippingLine, totals } = pricing;
+    const { wooLineItems, shippingLine, totals } = gate.pricing;
     const checkoutSessionId =
       typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
         ? payload.checkout_session_id.trim()
@@ -385,11 +364,14 @@ async function executeCheckoutPostCore(
         orderExtensionTiming,
         checkoutSessionId,
         totals: payload.payment_method === "eway" ? totals : undefined,
+        perf,
       }),
     );
 
     if (result.kind === "eway_error") {
+      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
       console.warn("[checkout] eWAY payment error (structured response)", {
+        requestId: correlationId,
         action: result.action,
         ms: Date.now() - started,
       });
@@ -407,9 +389,12 @@ async function executeCheckoutPostCore(
     }
 
     console.log("[checkout] ok", {
+      requestId: correlationId,
       kind: result.kind,
       totalMs: Date.now() - started,
     });
+
+    logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
 
     if (result.kind === "cod") {
       return jsonCodOrderPlaced(
@@ -419,17 +404,65 @@ async function executeCheckoutPostCore(
         result.wooOrderTotal,
       );
     }
-    return jsonEwayRedirect(
-      result.redirectUrl,
-      result.orderIdRaw,
-      result.orderKey,
-      checkoutSessionId,
-      {
-        paymentReused: result.paymentReused === true,
-        wooOrderTotal: result.wooOrderTotal,
-      },
+    if (result.kind === "eway") {
+      return jsonEwayRedirect(
+        result.redirectUrl,
+        result.orderIdRaw,
+        result.orderKey,
+        checkoutSessionId,
+        {
+          paymentReused: result.paymentReused === true,
+          wooOrderTotal: result.wooOrderTotal,
+        },
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, error: "Unsupported checkout payment result." },
+      { status: 500 },
     );
   } catch (error: unknown) {
+    logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+
+    if (error instanceof CheckoutSessionOrderExistsError) {
+      const e = error;
+      const checkoutSessionId =
+        typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
+          ? payload.checkout_session_id.trim()
+          : randomUUID();
+      console.warn("[checkout] duplicate_submit_same_session", {
+        requestId: correlationId,
+        orderId: e.orderIdRaw,
+        payment_method: e.paymentMethod,
+      });
+      if (e.paymentMethod === "cod") {
+        return jsonCodOrderPlaced(e.orderIdRaw, e.orderKey, checkoutSessionId, e.wooOrderTotal);
+      }
+      const oid = serializeOrderId(e.orderIdRaw);
+      return checkoutJsonResponse(
+        {
+          success: true,
+          data: {
+            type: "order_already_exists" as const,
+            orderId: oid,
+            order_ref: String(e.orderIdRaw),
+            order_key: e.orderKey,
+            checkout_session_id: checkoutSessionId,
+            duplicate_submission: true as const,
+            ...(e.wooOrderTotal != null ? { order_total: e.wooOrderTotal } : {}),
+          },
+          order_id: oid,
+          order_key: e.orderKey,
+          checkout_session_id: checkoutSessionId,
+          duplicate_submission: true,
+          ...(e.wooOrderTotal != null ? { order_total: e.wooOrderTotal } : {}),
+        },
+        e.orderIdRaw,
+        e.orderKey,
+        undefined,
+      );
+    }
+
     const timeoutBody = {
       success: false as const,
       code: "TIMEOUT" as const,
@@ -438,6 +471,7 @@ async function executeCheckoutPostCore(
 
     if (error instanceof CheckoutTimeoutError) {
       console.error("[checkout] timeout (envelope)", {
+        requestId: correlationId,
         ms: Date.now() - started,
         error,
       });
@@ -446,6 +480,7 @@ async function executeCheckoutPostCore(
 
     if (isTimeoutError(error) || isAbortLikeCheckout(error)) {
       console.error("[checkout] timeout (Woo/network)", {
+        requestId: correlationId,
         ms: Date.now() - started,
         error,
       });
@@ -468,7 +503,7 @@ async function executeCheckoutPostCore(
       );
     }
     if (cartErrData?.type === "insufficient_stock") {
-      console.error("[checkout] insufficient_stock", cartErrData);
+      console.error("[checkout] insufficient_stock", { requestId: correlationId, cartErrData });
       return NextResponse.json(
         {
           success: false,
@@ -496,7 +531,7 @@ async function executeCheckoutPostCore(
     if (errCode === "INVALID_TOTAL") {
       return NextResponse.json({ success: false, error: "Invalid total" }, { status: 400 });
     }
-    console.error("[checkout] error", error);
+    console.error("[checkout] error", { requestId: correlationId, error });
     const msg = error instanceof Error ? error.message : "Order creation failed";
     const status = hasAxiosStatus(error) ? Number((error as { response?: { status?: number } }).response?.status) : 0;
     const httpStatus =

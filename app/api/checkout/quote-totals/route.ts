@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseCheckoutQuoteTotalsInput } from "@/lib/checkout/initiatePayload";
+import { buildQuoteSnapshotV1, getQuoteSigningSecret, signQuoteSnapshot } from "@/lib/checkout/quoteSigning";
+import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
+import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { quoteCheckoutTotals } from "@/utils/checkout-pricing";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { API_RATE_LIMITS, rateLimit } from "@/lib/api-security";
+import { rateLimitMemory } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 
@@ -10,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
-  const limit = await rateLimit({
+  const limit = await rateLimitMemory({
     windowMs: 60 * 1000,
     maxRequests: 60,
     softFail: true,
@@ -37,8 +40,58 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { totals } = await quoteCheckoutTotals(input);
-    return withRequestId(secureResponse({ success: true, totals }), requestId);
+    const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    const pricing = await quoteCheckoutTotals(input, {
+      requestId,
+      currency: wooStoreCurrency(),
+      customerType: deriveCustomerPricingKey(actor),
+    });
+    const snapshot = buildQuoteSnapshotV1({
+      input,
+      pricing: {
+        totals: pricing.totals,
+        shippingLine: pricing.shippingLine,
+        validatedLineItems: pricing.validatedLineItems,
+        wooLineItems: pricing.wooLineItems,
+      },
+    });
+    const quote_signature = signQuoteSnapshot(snapshot);
+    if (!getQuoteSigningSecret() || !quote_signature) {
+      return withRequestId(
+        secureResponse(
+          {
+            success: true,
+            totals: pricing.totals,
+            shippingAdjusted: pricing.shippingAdjusted,
+            shippingLine: pricing.shippingLine,
+            validatedLineItems: pricing.validatedLineItems,
+            wooLineItems: pricing.wooLineItems,
+            signing_version: 1,
+            quote_signing_configured: false,
+          },
+          { status: 200 },
+        ),
+        requestId,
+      );
+    }
+    return withRequestId(
+      secureResponse(
+        {
+          success: true,
+          totals: pricing.totals,
+          shippingAdjusted: pricing.shippingAdjusted,
+          shippingLine: pricing.shippingLine,
+          validatedLineItems: pricing.validatedLineItems,
+          wooLineItems: pricing.wooLineItems,
+          quote_signature,
+          quote_snapshot: snapshot,
+          signing_version: 1,
+          quote_signing_configured: true,
+        },
+        { status: 200 },
+      ),
+      requestId,
+    );
   } catch (e: unknown) {
     return createApiErrorResponse(e, {
       requestId,

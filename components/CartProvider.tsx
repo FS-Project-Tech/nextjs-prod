@@ -1,5 +1,5 @@
 "use client";
-
+ 
 import {
   createContext,
   useCallback,
@@ -19,11 +19,12 @@ import {
   useCartStore,
   useCartStoreItems,
 } from "@/store/cartStore";
-
+import { readAppliedCouponFromSession } from "@/lib/coupon/clientAppliedCouponSession";
+ 
 export type { CartItem };
-
+ 
 const WOO_PUSH_DEBOUNCE_MS = 450;
-
+ 
 interface CartState {
   items: CartItem[];
   isOpen: boolean;
@@ -51,10 +52,15 @@ interface CartState {
   clearGuestCart: () => void;
   /** Clear a specific user's persisted bucket (does not change active user). */
   clearUserCart: (userId: string) => void;
+  /**
+   * Logged-in: true after the first `/api/dashboard/cart/load` attempt completes (or skipped when
+   * the user bucket already had lines). Guest sessions leave this false — ignore when no user.
+   */
+  hasLoadedServerCart: boolean;
 }
-
+ 
 const CartContext = createContext<CartState | undefined>(undefined);
-
+ 
 export default function CartProvider({ children }: { children: React.ReactNode }) {
   const items = useCartStoreItems();
   const [isOpen, setIsOpen] = useState(false);
@@ -76,11 +82,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   const wooSyncMutexRef = useRef(Promise.resolve());
   const wooPushDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wooPushDepthRef = useRef(0);
-
+ 
   useEffect(() => {
     userIdRef.current = user?.id ? String(user.id) : undefined;
   }, [user?.id]);
-
+ 
   /** Guest session: no active user, optional legacy guest import. */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -89,7 +95,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       return;
     }
     if (user?.id) return;
-
+ 
     loginTransitionReadyUidRef.current = null;
     useCartStore.getState().setActiveUserId(null);
     useCartStore.getState().hydrateGuestBucketFromLegacyIfEmpty();
@@ -98,7 +104,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     loadRetryCount.current = 0;
     setIsHydrated(true);
   }, [authLoading, user?.id]);
-
+ 
   const saveCartToServerNow = useCallback(async (lines: CartItem[]): Promise<boolean> => {
     if (!userIdRef.current) return false;
     const snapshot = JSON.stringify({ items: lines });
@@ -122,7 +128,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     }
     return false;
   }, []);
-
+ 
   useEffect(() => {
     if (!user?.id || typeof window === "undefined") return;
     const onUnload = () => {
@@ -138,14 +144,14 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       window.removeEventListener("pagehide", onUnload);
     };
   }, [user?.id]);
-
+ 
   const cancelDebouncedWooPush = useCallback(() => {
     if (wooPushDebounceRef.current) {
       clearTimeout(wooPushDebounceRef.current);
       wooPushDebounceRef.current = null;
     }
   }, []);
-
+ 
   const performWooPush = useCallback(async (lines: CartItem[], couponCode?: string) => {
     wooPushDepthRef.current += 1;
     if (wooPushDepthRef.current === 1) {
@@ -156,7 +162,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       if (process.env.NODE_ENV === "development") {
         console.log("[CartProvider] Woo push — Zustand snapshot (source of truth):", lines);
       }
-
+ 
       if (lines.length === 0) {
         const res = await fetch("/api/cart/clear", {
           method: "POST",
@@ -178,7 +184,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
         return;
       }
-
+ 
       const res = await fetch("/api/cart/add-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,7 +215,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       }
     }
   }, []);
-
+ 
   const enqueueWooPush = useCallback(
     (lines: CartItem[], couponCode?: string) => {
       if (cartMergeBlockingRef.current) {
@@ -218,8 +224,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
         return;
       }
+      const trimmedExplicit = couponCode?.trim();
+      const fromSession = readAppliedCouponFromSession().code ?? undefined;
+      const resolvedCoupon = trimmedExplicit || fromSession;
       wooSyncMutexRef.current = wooSyncMutexRef.current
-        .then(() => performWooPush(lines, couponCode))
+        .then(() => performWooPush(lines, resolvedCoupon))
         .catch((e) => {
           const msg = e instanceof Error ? e.message : "Cart sync failed";
           setSyncError(msg);
@@ -230,7 +239,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     },
     [performWooPush],
   );
-
+ 
   /**
    * Runs before paint and before dashboard `useEffect` so `activeUserId` is set before any `setItems`
    * from `/api/dashboard/cart/load`.
@@ -238,15 +247,15 @@ export default function CartProvider({ children }: { children: React.ReactNode }
   useLayoutEffect(() => {
     if (typeof window === "undefined" || authLoading) return;
     if (!user?.id) return;
-
+ 
     const uid = String(user.id);
     const needsTransition = loginTransitionReadyUidRef.current !== uid;
-
+ 
     if (!needsTransition) {
       setIsHydrated(true);
       return;
     }
-
+ 
     cartMergeBlockingRef.current = true;
     setIsCartMerging(true);
     try {
@@ -276,11 +285,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       setIsCartMerging(false);
       setIsHydrated(true);
     }
-
+ 
     cancelDebouncedWooPush();
     enqueueWooPush(getActiveCartSnapshot());
   }, [authLoading, user?.id, cancelDebouncedWooPush, enqueueWooPush]);
-
+ 
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isHydrated || typeof window === "undefined") return;
@@ -300,9 +309,9 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       setHasLoadedServerCart(true);
       return;
     }
-
+ 
     let cancelled = false;
-
+ 
     const load = async () => {
       const generationAtStart = serverCartLoadGenerationRef.current;
       try {
@@ -346,9 +355,9 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
       }
     };
-
+ 
     retryTimeoutRef.current = setTimeout(load, 600);
-
+ 
     return () => {
       cancelled = true;
       if (retryTimeoutRef.current) {
@@ -357,7 +366,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       }
     };
   }, [isHydrated, isCartMerging, user?.id, hasLoadedServerCart]);
-
+ 
   const scheduleDebouncedWooPush = useCallback(() => {
     if (cartMergeBlockingRef.current) return;
     cancelDebouncedWooPush();
@@ -366,9 +375,9 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       enqueueWooPush(getActiveCartSnapshot());
     }, WOO_PUSH_DEBOUNCE_MS);
   }, [cancelDebouncedWooPush, enqueueWooPush]);
-
+ 
   const close = useCallback(() => setIsOpen(false), []);
-
+ 
   const addItem = useCallback(
     (input: Omit<CartItem, "id"> & { id?: string }) => {
       serverCartLoadGenerationRef.current += 1;
@@ -379,7 +388,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     },
     [scheduleDebouncedWooPush],
   );
-
+ 
   const removeItem = useCallback(
     (id: string) => {
       serverCartLoadGenerationRef.current += 1;
@@ -388,17 +397,17 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         cartSaveTimerRef.current = null;
       }
       cancelDebouncedWooPush();
-
+ 
       const line = getActiveCartSnapshot().find((i) => i.id === id);
       if (!line) return;
-
+ 
       useCartStore.getState().removeItem(id);
       void saveCartToServerNow(getActiveCartSnapshot());
       enqueueWooPush(getActiveCartSnapshot());
     },
     [saveCartToServerNow, cancelDebouncedWooPush, enqueueWooPush],
   );
-
+ 
   const updateItemQty = useCallback(
     (id: string, qty: number) => {
       serverCartLoadGenerationRef.current += 1;
@@ -412,7 +421,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     },
     [saveCartToServerNow, scheduleDebouncedWooPush],
   );
-
+ 
   const clear = useCallback(() => {
     serverCartLoadGenerationRef.current += 1;
     if (cartSaveTimerRef.current) {
@@ -425,24 +434,24 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     void saveCartToServerNow([]);
     enqueueWooPush([]);
   }, [saveCartToServerNow, cancelDebouncedWooPush, enqueueWooPush]);
-
+ 
   useEffect(() => {
     if (!isHydrated) return;
     if (!user?.id) return;
     if (!hasLoadedServerCart) return;
-
+ 
     const snapshot = JSON.stringify({ items });
     if (snapshot === lastSavedSnapshotRef.current) {
       return;
     }
-
+ 
     let cancelled = false;
-
+ 
     if (cartSaveTimerRef.current) {
       clearTimeout(cartSaveTimerRef.current);
       cartSaveTimerRef.current = null;
     }
-
+ 
     cartSaveTimerRef.current = setTimeout(() => {
       cartSaveTimerRef.current = null;
       if (cancelled) return;
@@ -467,7 +476,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         }
       })();
     }, 400);
-
+ 
     return () => {
       cancelled = true;
       if (cartSaveTimerRef.current) {
@@ -476,15 +485,15 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       }
     };
   }, [items, isHydrated, user?.id, hasLoadedServerCart]);
-
+ 
   const clearGuestCart = useCallback(() => {
     useCartStore.getState().clearGuestCartOnly();
   }, []);
-
+ 
   const clearUserCart = useCallback((userId: string) => {
     useCartStore.getState().clearUserCartBucket(userId);
   }, []);
-
+ 
   const syncWithWooCommerce = useCallback(
     async (couponCode?: string) => {
       if (cartMergeBlockingRef.current) return;
@@ -505,13 +514,13 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     },
     [cancelDebouncedWooPush, performWooPush],
   );
-
+ 
   const refreshCartFromServer = useCallback(() => {
     serverCartLoadGenerationRef.current += 1;
     loadRetryCount.current = 0;
     setHasLoadedServerCart(false);
   }, []);
-
+ 
   const open = useCallback(() => {
     if (items.length > 0 && !cartMergeBlockingRef.current) {
       cancelDebouncedWooPush();
@@ -521,15 +530,15 @@ export default function CartProvider({ children }: { children: React.ReactNode }
     }
     setIsOpen(true);
   }, [items.length, user?.id, cancelDebouncedWooPush, enqueueWooPush, refreshCartFromServer]);
-
+ 
   const validateCart = useCallback(async () => {
     const snapshot = getActiveCartSnapshot();
     if (snapshot.length === 0) return { valid: true, errors: [] };
-
+ 
     if (process.env.NODE_ENV === "development") {
       console.log("[CartProvider] validateCart (checkout prep) — active bucket:", snapshot);
     }
-
+ 
     try {
       const response = await fetch("/api/validate-cart", {
         method: "POST",
@@ -538,29 +547,38 @@ export default function CartProvider({ children }: { children: React.ReactNode }
         cache: "no-store",
         body: JSON.stringify({ items: snapshot }),
       });
-
+ 
       const data = (await response.json().catch(() => ({}))) as {
         valid?: boolean;
         errors?: Array<{ itemId: string; message: string }>;
         items?: CartItem[];
       };
-
+ 
       if (!response.ok) {
         return {
           valid: false,
           errors: [{ itemId: "unknown", message: "Validation failed" }],
         };
       }
-
+ 
       if (
         data.valid === true &&
         Array.isArray(data.items) &&
         data.items.length === snapshot.length &&
         data.items.length > 0
       ) {
-        useCartStore.getState().replaceItems(data.items);
+        const byId = new Map(snapshot.map((row) => [row.id, row]));
+        const merged = data.items.map((row) => {
+          const prev = byId.get(row.id);
+          if (!prev) return row;
+          return {
+            ...row,
+            empowerEligible: prev.empowerEligible === true,
+          };
+        });
+        useCartStore.getState().replaceItems(merged);
         if (process.env.NODE_ENV === "development") {
-          console.log("[CartProvider] validate-cart applied Woo prices to Zustand:", data.items);
+          console.log("[CartProvider] validate-cart applied Woo prices to Zustand:", merged);
         }
       } else if (data.valid === true && process.env.NODE_ENV === "development") {
         console.warn("[CartProvider] validate-cart OK but skipped replaceItems (unexpected payload)", {
@@ -568,7 +586,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
           returnedLen: Array.isArray(data.items) ? data.items.length : -1,
         });
       }
-
+ 
       return {
         valid: Boolean(data.valid),
         errors: Array.isArray(data.errors) ? data.errors : [],
@@ -581,11 +599,11 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       };
     }
   }, []);
-
+ 
   const total = useMemo(() => {
     return calculateSubtotal(items).toFixed(2);
   }, [items]);
-
+ 
   const value: CartState = useMemo(
     () => ({
       items,
@@ -606,6 +624,7 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       validateCart,
       total,
       refreshCartFromServer,
+      hasLoadedServerCart,
     }),
     [
       items,
@@ -626,12 +645,13 @@ export default function CartProvider({ children }: { children: React.ReactNode }
       validateCart,
       total,
       refreshCartFromServer,
+      hasLoadedServerCart,
     ],
   );
-
+ 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
-
+ 
 export function useCart() {
   const ctx = useContext(CartContext);
   if (!ctx) throw new Error("useCart must be used within CartProvider");

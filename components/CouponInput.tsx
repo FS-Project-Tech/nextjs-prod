@@ -16,7 +16,8 @@ interface CouponInputProps {
 export default function CouponInput({ className = "", onApplied, onRemoved }: CouponInputProps) {
   const [code, setCode] = useState("");
   const { items, total } = useCart();
-  const { appliedCoupon, isLoading, error, applyCoupon, removeCoupon } = useCoupon();
+  const { appliedCoupon, discount: couponDiscountAmount, isLoading, error, applyCoupon, removeCoupon } =
+    useCoupon();
 
   const subtotal = parseCartTotal(total);
 
@@ -98,10 +99,12 @@ export default function CouponInput({ className = "", onApplied, onRemoved }: Co
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <div>
                 <div className="text-sm font-semibold text-emerald-900">
-                  Coupon saved: {appliedCoupon.code}
+                  Coupon applied: {appliedCoupon.code}
                 </div>
                 <div className="text-xs text-emerald-700">
-                  Final discount is confirmed when you complete checkout.
+                  {couponDiscountAmount > 0
+                    ? `About $${couponDiscountAmount.toFixed(2)} off this order (confirmed at checkout).`
+                    : "Discount is confirmed when you complete checkout."}
                 </div>
               </div>
             </div>

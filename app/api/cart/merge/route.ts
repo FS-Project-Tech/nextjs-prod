@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthToken } from "@/lib/auth-server";
 import { syncCartAfterLogin } from "@/lib/graphql/auth-server";
-import { API_RATE_LIMITS, rateLimit, validateTrustedBrowserOrigin } from "@/lib/api-security";
+import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 
 /**
  * POST /api/cart/merge
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const limit = await rateLimit(API_RATE_LIMITS.CART_MERGE)(request);
+    const limit = await rateLimitMemory(API_RATE_LIMITS.CART_MERGE)(request);
     if (limit) return limit;
 
     // Verify authentication

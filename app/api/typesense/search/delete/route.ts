@@ -3,18 +3,22 @@ import Typesense from "typesense";
 import { constantTimeEqualString, readBearerToken } from "@/lib/constant-time-node";
 import { logInvalidAuth } from "@/lib/api-logging";
 import { getClientIp } from "@/lib/rate-limit";
+import { getTypesenseCollectionName } from "@/lib/typesenseClient";
 
 export const runtime = "nodejs";
 
 const client = new Typesense.Client({
   nodes: [
     {
-      host: process.env.NEXT_PUBLIC_TYPESENSE_HOST!,
+      host: (process.env.TYPESENSE_HOST || process.env.NEXT_PUBLIC_TYPESENSE_HOST || "").replace(
+        /^https?:\/\//,
+        ""
+      ),
       port: 443,
       protocol: "https",
     },
   ],
-  apiKey: process.env.NEXT_PUBLIC_TYPESENSE_API_KEY!,
+  apiKey: (process.env.TYPESENSE_ADMIN_API_KEY || process.env.TYPESENSE_API_KEY || "").trim(),
 });
 
 function isSafeDocumentId(id: string | null): id is string {
@@ -46,7 +50,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    await client.collections("products_updated").documents(id).delete();
+    await client.collections(getTypesenseCollectionName()).documents(id).delete();
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("[typesense/delete]", e);

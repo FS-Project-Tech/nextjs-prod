@@ -8,9 +8,9 @@ export {
 } from "./wc-fetch";
 export * from "./types";
 export * from "./product-list";
+export * from "./product-sitemap";
 export * from "./product-single";
 export * from "./reviews";
 export * from "./categories";
 export * from "./orders";
 export * from "./customers";
-

@@ -255,9 +255,20 @@ export type EwayVerifyResult =
       success: boolean;
       transactionId?: string;
       responseCode?: string;
+      /** Human-readable reason from eWAY (declines, CVV validation, etc.) when provided. */
+      responseMessage?: string;
       invoiceReference?: string;
     }
   | { ok: false; error: string };
+
+function readEwayTransactionResponseMessage(tx: Record<string, unknown> | undefined): string | undefined {
+  if (!tx) return undefined;
+  for (const key of ["ResponseMessage", "Message", "BeagleMessage"] as const) {
+    const v = tx[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
 
 export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyResult> {
   const apiKey = process.env.EWAY_API_KEY?.trim();
@@ -339,12 +350,14 @@ export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyR
   const approved = responseCode === undefined ? txStatus : responseCode === "00";
 
   const invoiceReference = extractInvoiceReferenceFromEwayJson(json, txRaw);
+  const responseMessage = readEwayTransactionResponseMessage(txRaw);
 
   console.log("[eway] verify AccessCode result", {
     transactionStatus: txStatus,
     responseCode: responseCode ?? null,
     approved,
     hasInvoiceRef: Boolean(invoiceReference),
+    responseMessage: responseMessage ?? null,
   });
 
   return {
@@ -352,6 +365,7 @@ export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyR
     success: txStatus && approved,
     transactionId,
     responseCode,
+    ...(responseMessage ? { responseMessage } : {}),
     ...(invoiceReference ? { invoiceReference } : {}),
   };
 }

@@ -82,6 +82,12 @@ export async function GET(request: NextRequest) {
             const price = p.price || "0";
             const regular = p.regular_price || "";
             const sale = p.sale_price || "";
+            const regNum = Number(regular);
+            const saleNum = Number(sale);
+            const salePct =
+              p.on_sale && regular && sale && regNum > 0 && saleNum > 0 && saleNum < regNum
+                ? Math.round(((regNum - saleNum) / regNum) * 100)
+                : null;
 
             return {
               id: p.id,
@@ -94,10 +100,7 @@ export async function GET(request: NextRequest) {
               on_sale: p.on_sale || false,
               tax_class: p.tax_class || undefined,
               tax_status: p.tax_status || undefined,
-              sale_percentage:
-                regular && sale
-                  ? Math.round(((Number(regular) - Number(sale)) / Number(regular)) * 100)
-                  : null,
+              sale_percentage: salePct,
               image: p.images?.[0]?.src || "",
               image_alt: p.images?.[0]?.alt || p.name,
               average_rating: Number(p.average_rating || 0),

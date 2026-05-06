@@ -18,13 +18,18 @@ export type ValidateCartForEwayResult =
 /**
  * Server-only: same validation as POST /api/validate-cart, then ensures line subtotal matches
  * {@link validateAndRecalculateCheckout} so eWAY can charge the validated grand total safely.
+ *
+ * Pass {@link params.validationResult} when {@link runFullCartValidation} already ran (e.g. in parallel
+ * with pricing) so Woo REST is not hit twice.
  */
 export async function validateCartForEwayCheckout(params: {
   cart_items: CartItem[];
   totals: CheckoutTotals;
+  /** When set, skips a second {@link runFullCartValidation}. */
+  validationResult?: Awaited<ReturnType<typeof runFullCartValidation>>;
 }): Promise<ValidateCartForEwayResult> {
-  const { cart_items, totals } = params;
-  const result = await runFullCartValidation(cart_items);
+  const { cart_items, totals, validationResult } = params;
+  const result = validationResult ?? (await runFullCartValidation(cart_items));
   if (!result.valid) {
     return { ok: false, valid: false, errors: result.errors, code: "STOCK_OR_PRICE" };
   }

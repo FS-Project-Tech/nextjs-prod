@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useCart } from "@/components/CartProvider";
-import { getActiveCartSnapshot } from "@/store/cartStore";
+import {
+  getActiveCartSnapshot,
+  getCartPersistHydrated,
+  subscribeCartPersistHydrated,
+} from "@/store/cartStore";
 import { useToast } from "@/components/ToastProvider";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useUser } from "@/hooks/useUser";
@@ -13,10 +17,24 @@ import { useCoupon } from "@/components/CouponProvider";
 import { useCheckoutTotals } from "@/hooks/useCheckoutTotals";
 import { parseCartTotal } from "@/lib/cart/parseCartTotal";
 import { calculateTaxableSubtotal } from "@/lib/cart/pricing";
+import { getEmpowerDiscountSummary } from "@/lib/cart/empowerDiscount";
 import { submitCheckoutOrder } from "@/lib/payment/submitCheckoutOrder";
 import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
+import {
+  cleanupStaleCheckoutSubmitLock,
+  clearCheckoutSubmitLock,
+  hasRecentSubmitLockForRecovery,
+  readActiveSubmitId,
+  shouldBlockSubmitDueToRecentLock,
+  writeCheckoutSubmitLock,
+} from "@/lib/checkout/checkoutSubmitSession";
 import { buildCheckoutQuoteTotalsBody } from "@/lib/checkout/buildCreateOrderPayload";
-import type { CheckoutTotals } from "@/types/checkout";
+import type {
+  CheckoutPlacingPhase,
+  CheckoutQuoteSnapshotV1,
+  CheckoutQuoteSigningPayload,
+  CheckoutTotals,
+} from "@/types/checkout";
 import { checkoutSchema, type CheckoutFormData, type ShippingMethodType } from "./schema";
 import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
 import { useMountFlag, useCheckoutQueryToasts } from "./useCheckoutSideEffects";
@@ -29,17 +47,31 @@ const QUOTE_TOTALS_DEBOUNCE_MS = 120;
 export function useCheckoutPageState() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { items: cartLines, clear: clearLocalCart, total: cartTotalString, validateCart } = useCart();
+  const {
+    items: cartLines,
+    clear: clearLocalCart,
+    total: cartTotalString,
+    validateCart,
+    isHydrated: cartIsHydrated,
+    hasLoadedServerCart,
+  } = useCart();
   const cartLinesRef = useRef(cartLines);
   cartLinesRef.current = cartLines;
   const quoteEpochRef = useRef(0);
+  /** Latest quote-totals fetch; aborted on submit so submit traffic is not contending with quote. */
+  const quoteFetchAbortRef = useRef<AbortController | null>(null);
+  /** HMAC bundle from the last successful quote-totals (fast create-session). Cleared when quote is invalidated. */
+  const lastSignedQuoteRef = useRef<CheckoutQuoteSigningPayload | null>(null);
   const { success, error: showError } = useToast();
   const { appliedCoupon, discount: couponDiscountAmount } = useCoupon();
-  const { user, sessionStatus } = useUser();
+  const { user, sessionStatus, loading: authLoading } = useUser();
   const { addresses } = useAddresses();
 
   const [isMounted, setIsMounted] = useState(false);
+  const [cartPersistReady, setCartPersistReady] = useState(getCartPersistHydrated);
   const [placing, setPlacing] = useState(false);
+  const [placingSubmitPhase, setPlacingSubmitPhase] = useState<CheckoutPlacingPhase>("idle");
+  const [empowerDiscountApplied, setEmpowerDiscountApplied] = useState(false);
   const submitGuardRef = useRef(false);
   const redirectPendingRef = useRef(false);
   const checkoutSessionIdRef = useRef("");
@@ -66,11 +98,18 @@ export function useCheckoutPageState() {
   const [postSubmitNavigation, setPostSubmitNavigation] = useState<
     null | "secure_payment" | "order_confirmation"
   >(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod">("eway");
+  const [recoveryBannerVisible, setRecoveryBannerVisible] = useState(false);
+  const [recoveryChecking, setRecoveryChecking] = useState(false);
+  const [placingSlow, setPlacingSlow] = useState(false);
+  const recoveryAbortRef = useRef<AbortController | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod" | "afterpay">(
+    "eway",
+  );
 
+  /** Copy only: submit always tries `/api/checkout/create-session` first for card; set env to `"false"` for legacy hosted wording. */
   const ewayTokenFlowEnabled =
-    typeof process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "string" &&
-    process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW === "true";
+    typeof process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW !== "string" ||
+    process.env.NEXT_PUBLIC_CHECKOUT_EWAY_TOKEN_FLOW !== "false";
 
   const billingAddresses = useMemo(
     () => addresses.filter((row) => row.type === "billing"),
@@ -121,7 +160,8 @@ export function useCheckoutPageState() {
     const isNdisApprovedRole = roles.includes("ndis-approved");
     const isB2bUser = roles.includes("b2b_user");
     const isB2b30Days = roles.includes("b2b30days");
-    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days) return true;
+    const isSupportCoordinator = roles.includes("support_co_ordinator");
+    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days || isSupportCoordinator) return true;
     if (user) return false;
     if (sessionStatus !== "unauthenticated") return false;
     const digits = `${watchedCustNdis}${watchedLegacyNdis}`.replace(/\D/g, "");
@@ -199,14 +239,192 @@ export function useCheckoutPageState() {
     ? Number((watchedShippingMethod as ShippingMethodType)?.cost || 0)
     : 0;
   const couponDiscount = couponDiscountAmount || 0;
+  const empowerSummary = useMemo(() => getEmpowerDiscountSummary(cartLines), [cartLines]);
+  const empowerDiscount = empowerDiscountApplied ? empowerSummary.discountTotal : 0;
+  const checkoutDiscountTotal = couponDiscount + empowerDiscount;
   const { gst, orderTotal } = useCheckoutTotals(
     subtotal,
     taxableSubtotal,
     shippingCost,
-    couponDiscount
+    checkoutDiscountTotal
   );
+  useEffect(() => {
+    if (!empowerSummary.applied && empowerDiscountApplied) {
+      setEmpowerDiscountApplied(false);
+    }
+  }, [empowerSummary.applied, empowerDiscountApplied]);
+
+  const onApplyEmpowerDiscount = useCallback(() => {
+    if (!empowerSummary.applied) return;
+    setEmpowerDiscountApplied(true);
+    success("Empower program discount apply");
+    console.log("[checkout][empower_discount_apply_clicked]");
+  }, [empowerSummary.applied, success]);
 
   useMountFlag(setIsMounted);
+
+  useEffect(() => {
+    if (getCartPersistHydrated()) {
+      setCartPersistReady(true);
+      return;
+    }
+    return subscribeCartPersistHydrated(() => setCartPersistReady(true));
+  }, []);
+
+  const cartReady = useMemo(() => {
+    if (!cartPersistReady) return false;
+    if (authLoading) return false;
+    if (!cartIsHydrated) return false;
+    if (user?.id) {
+      if (cartLines.length > 0) return true;
+      return hasLoadedServerCart;
+    }
+    return true;
+  }, [
+    authLoading,
+    cartIsHydrated,
+    cartLines.length,
+    cartPersistReady,
+    hasLoadedServerCart,
+    user?.id,
+  ]);
+
+  /**
+   * Restoring checkout via browser Back after leaving for eWAY uses the back-forward cache:
+   * React state can still show `postSubmitNavigation === "secure_payment"` and `placing === true`
+   * even though the redirect already ran. Clear those so the form (or empty cart) renders.
+   */
+  const runCheckoutRecovery = useCallback(async () => {
+    if (typeof window === "undefined" || !isMounted) return;
+    cleanupStaleCheckoutSubmitLock();
+    if (!hasRecentSubmitLockForRecovery()) {
+      setRecoveryBannerVisible(false);
+      setRecoveryChecking(false);
+      return;
+    }
+
+    recoveryAbortRef.current?.abort();
+    const ac = new AbortController();
+    recoveryAbortRef.current = ac;
+
+    setRecoveryBannerVisible(true);
+    setRecoveryChecking(true);
+    const sessionId = ensureCheckoutSessionId();
+    const lockRequestId = readActiveSubmitId();
+    console.log("[checkout][recovery_triggered]", { requestId: lockRequestId ?? undefined });
+
+    type LastStatusJson = {
+      hasRecentOrder?: boolean;
+      woo_order_id?: number;
+      status?: string;
+      order_key?: string;
+    };
+
+    try {
+      const res = await fetch(
+        `/api/checkout/last-status?session_id=${encodeURIComponent(sessionId)}`,
+        { credentials: "include", cache: "no-store", signal: ac.signal }
+      );
+      const headerRid = res.headers.get("x-request-id")?.trim();
+      const json = (await res.json()) as LastStatusJson;
+      if (ac.signal.aborted) return;
+
+      const rid = headerRid || lockRequestId || undefined;
+
+      if (json.hasRecentOrder && json.woo_order_id != null) {
+        const st = String(json.status || "").toLowerCase();
+        console.log("[checkout][recovered_order]", {
+          requestId: rid,
+          woo_order_id: json.woo_order_id,
+          status: st,
+        });
+        if (st === "processing" || st === "completed" || st === "on-hold") {
+          clearCheckoutSubmitLock();
+          router.replace(`/thank-you?order=${encodeURIComponent(String(json.woo_order_id))}`, {
+            scroll: false,
+          });
+          return;
+        }
+        if (st === "pending") {
+          clearCheckoutSubmitLock();
+          const oid = String(json.woo_order_id);
+          const keyQs =
+            typeof json.order_key === "string" && json.order_key.trim() !== ""
+              ? `&key=${encodeURIComponent(json.order_key.trim())}`
+              : "";
+          router.replace(
+            `/checkout/order-review?orderId=${encodeURIComponent(oid)}${keyQs}&pm=${encodeURIComponent("eway")}`,
+            { scroll: false }
+          );
+          return;
+        }
+      }
+
+      clearCheckoutSubmitLock();
+      setPlacing(false);
+      submitGuardRef.current = false;
+      redirectPendingRef.current = false;
+      setPostSubmitNavigation(null);
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      clearCheckoutSubmitLock();
+      setPlacing(false);
+      submitGuardRef.current = false;
+      redirectPendingRef.current = false;
+    } finally {
+      if (!ac.signal.aborted) {
+        setRecoveryChecking(false);
+        setRecoveryBannerVisible(false);
+      }
+    }
+  }, [ensureCheckoutSessionId, isMounted, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setPostSubmitNavigation(null);
+        setPlacing(false);
+        submitGuardRef.current = false;
+        redirectPendingRef.current = false;
+      }
+      void runCheckoutRecovery();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [runCheckoutRecovery]);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    void runCheckoutRecovery();
+    return () => recoveryAbortRef.current?.abort();
+  }, [isMounted, runCheckoutRecovery]);
+
+  useEffect(() => {
+    if (!placing) {
+      setPlacingSlow(false);
+      setPlacingSubmitPhase("idle");
+      return;
+    }
+    const t = window.setTimeout(() => setPlacingSlow(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [placing]);
+
+  /**
+   * eWAY path does not clear the cart before redirect. An empty cart plus `secure_payment`
+   * usually means stale UI (hydration gap or abandoned redirect); avoid infinite spinner on `/checkout`.
+   */
+  useEffect(() => {
+    if (postSubmitNavigation !== "secure_payment") return;
+    const id = window.requestAnimationFrame(() => {
+      if (cartLinesRef.current.length > 0) return;
+      setPostSubmitNavigation(null);
+      setPlacing(false);
+      submitGuardRef.current = false;
+      redirectPendingRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [postSubmitNavigation, cartLines.length]);
 
   /** One Woo price refresh on checkout so line row prices match quote-totals / order creation. */
   const checkoutPriceSyncRef = useRef(false);
@@ -237,9 +455,11 @@ export function useCheckoutPageState() {
     // Drop previous quote immediately so Order summary uses client totals (selected rate, coupon, GST)
     // instead of stale server shipping/total until the new quote returns.
     setServerTotals(null);
+    lastSignedQuoteRef.current = null;
     quoteEpochRef.current += 1;
     const epoch = quoteEpochRef.current;
     const ac = new AbortController();
+    quoteFetchAbortRef.current = ac;
     const timer = window.setTimeout(() => {
       if (quoteEpochRef.current !== epoch) return;
 
@@ -249,6 +469,7 @@ export function useCheckoutPageState() {
         data,
         cartLines: linesSnapshot,
         appliedCoupon,
+        empowerApplied: empowerDiscountApplied,
       });
       if (!body) {
         setServerTotals(null);
@@ -273,19 +494,29 @@ export function useCheckoutPageState() {
           success?: boolean;
           totals?: CheckoutTotals;
           error?: string;
-          shippingAdjusted?: boolean; // 👈 ADD
+          shippingAdjusted?: boolean;
           shippingLine?: {
             method_id: string;
             method_title: string;
           };
+          quote_signature?: string;
+          quote_snapshot?: CheckoutQuoteSnapshotV1;
         };
-      
+
         if (!res.ok || !json.success || !json.totals) {
           if (quoteEpochRef.current === epoch) setServerTotals(null);
           return;
         }
-      
-        // ✅ ADD HERE
+
+        if (json.quote_signature && json.quote_snapshot) {
+          lastSignedQuoteRef.current = {
+            signature: json.quote_signature,
+            snapshot: json.quote_snapshot,
+          };
+        } else {
+          lastSignedQuoteRef.current = null;
+        }
+
         if (json.shippingAdjusted && json.shippingLine?.method_id) {
           success("Shipping method updated automatically"); // your toast
       
@@ -307,6 +538,7 @@ export function useCheckoutPageState() {
     return () => {
       window.clearTimeout(timer);
       ac.abort();
+      if (quoteFetchAbortRef.current === ac) quoteFetchAbortRef.current = null;
     };
   }, [
     isMounted,
@@ -326,11 +558,27 @@ export function useCheckoutPageState() {
     getValues,
   ]);
 
+  /**
+   * `serverTotals.discount` is often `0` (valid) when the quote path omits the coupon; `??` does not
+   * fall through for `0`, so the order summary was clobbering the client-validated discount and total.
+   */
+  const serverQuoteOmittingCoupon = useMemo(() => {
+    if (appliedCoupon == null || couponDiscount <= 0) return false;
+    if (serverTotals == null) return false;
+    return serverTotals.discount === 0;
+  }, [appliedCoupon, couponDiscount, serverTotals]);
+
   const summarySubtotal = serverTotals?.subtotal ?? subtotal;
   const summaryShipping = serverTotals?.shipping ?? shippingCost;
-  const summaryDiscount = serverTotals?.discount ?? couponDiscount;
-  const summaryGst = serverTotals?.gst ?? gst;
-  const summaryOrderTotal = serverTotals?.total ?? orderTotal;
+  const summaryDiscount = serverQuoteOmittingCoupon
+    ? couponDiscount
+    : serverTotals != null && typeof serverTotals.discount === "number"
+      ? serverTotals.discount
+      : couponDiscount;
+  const summaryGst = serverQuoteOmittingCoupon ? gst : (serverTotals?.gst ?? gst);
+  const summaryOrderTotal = serverQuoteOmittingCoupon
+    ? orderTotal
+    : (serverTotals?.total ?? orderTotal);
   const summaryCartSubtotal = serverTotals?.subtotal ?? cartSubtotal;
 
   useCheckoutQueryToasts(isMounted, searchParams, showError);
@@ -358,15 +606,28 @@ export function useCheckoutPageState() {
   const onSubmit = useCallback(
     async (data: CheckoutFormData) => {
       if (placing) return;
-      const validated = await validateCart();
-      if (!validated.valid) {
-        const first = validated.errors[0]?.message?.trim();
-        showError(first || "Your cart could not be validated. Please review your items.");
+      quoteEpochRef.current += 1;
+      quoteFetchAbortRef.current?.abort();
+      quoteFetchAbortRef.current = null;
+      setPlacing(true);
+      setPlacingSubmitPhase("payment");
+      if (shouldBlockSubmitDueToRecentLock()) {
+        const blockedId = readActiveSubmitId();
+        console.log("[checkout][submit_blocked]", { requestId: blockedId ?? undefined });
+        showError("Please wait a moment before trying again.");
+        setPlacing(false);
         return;
       }
+      const submitId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      writeCheckoutSubmitLock(submitId);
+      console.log("[checkout][submit_started]", { requestId: submitId });
+
       const linesForOrder = getActiveCartSnapshot();
       if (process.env.NODE_ENV === "development") {
-        console.log("[checkout] placing order with Zustand lines (post-validation):", linesForOrder);
+        console.log("[checkout] placing order with Zustand lines:", linesForOrder);
       }
       await submitCheckoutOrder({
         data,
@@ -376,6 +637,7 @@ export function useCheckoutPageState() {
         ewayTokenFlowEnabled,
         appliedCoupon,
         couponSearchParam: searchParams.get("coupon"),
+        empowerApplied: empowerDiscountApplied,
         showError,
         success,
         clearLocalCart,
@@ -385,16 +647,17 @@ export function useCheckoutPageState() {
         redirectPendingRef,
         replaceInternalPath: replaceInternalCheckoutPath,
         setPlacing,
+        signedQuote: lastSignedQuoteRef.current,
       });
     },
     [
       placing,
-      validateCart,
+      showError,
       selectedPaymentMethod,
       ewayTokenFlowEnabled,
       appliedCoupon,
+      empowerDiscountApplied,
       searchParams,
-      showError,
       success,
       clearLocalCart,
       user?.id,
@@ -414,10 +677,15 @@ export function useCheckoutPageState() {
 
   return {
     isMounted,
+    cartReady,
     cartLines,
     subtotal: summarySubtotal,
     cartSubtotal: summaryCartSubtotal,
     couponDiscount: summaryDiscount,
+    empowerDiscount,
+    empowerDiscountEligible: empowerSummary.applied,
+    empowerDiscountApplied,
+    onApplyEmpowerDiscount,
     appliedCoupon,
     shippingCost: summaryShipping,
     gst: summaryGst,
@@ -425,6 +693,7 @@ export function useCheckoutPageState() {
     totalsQuoteLoading,
     postSubmitNavigation,
     placing,
+    placingSubmitPhase,
     selectedPaymentMethod,
     setSelectedPaymentMethod,
     user,
@@ -445,5 +714,8 @@ export function useCheckoutPageState() {
     ewayTokenFlowEnabled,
     canUseOnAccount,
     onFormSubmit,
+    recoveryBannerVisible,
+    recoveryChecking,
+    placingSlow,
   };
 }

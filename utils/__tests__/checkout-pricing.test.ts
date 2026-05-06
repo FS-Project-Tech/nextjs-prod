@@ -44,6 +44,31 @@ describe("validateAndRecalculateCheckout", () => {
         },
       ],
     });
+    wcGet.mockImplementation((path: string, params?: Record<string, unknown>) => {
+      if (path === "/coupons") {
+        return Promise.resolve({ data: [] });
+      }
+      if (path === "/products" && params && "include" in params) {
+        const inc = String(params.include || "");
+        const id = Number(inc.split(",")[0]?.trim() || "0");
+        return Promise.resolve({
+          data: [
+            {
+              id,
+              price: id === 5 ? "12.50" : "10.00",
+              tax_class: id === 5 ? "" : "gst-free",
+              tax_status: id === 5 ? "taxable" : "none",
+            },
+          ],
+        });
+      }
+      if (path === "/products/5") {
+        return Promise.resolve({
+          data: { price: "10.00", tax_class: "gst-free", tax_status: "none" },
+        });
+      }
+      return Promise.resolve({ data: path === "/products" ? [] : {} });
+    });
   });
 
   it("fails when Woo validation drops requested items (stale cart)", async () => {
@@ -104,9 +129,6 @@ describe("validateAndRecalculateCheckout", () => {
       ok: true,
       line_items: [{ product_id: 5, quantity: 3 }],
     });
-    wcGet.mockResolvedValue({
-      data: { price: "12.50", tax_class: "", tax_status: "taxable" },
-    });
 
     const r = await validateAndRecalculateCheckout({
       billing: {
@@ -152,9 +174,6 @@ describe("validateAndRecalculateCheckout", () => {
     resolveWooLineItems.mockResolvedValue({
       ok: true,
       line_items: [{ product_id: 5, quantity: 2 }],
-    });
-    wcGet.mockResolvedValue({
-      data: { price: "10.00", tax_class: "gst-free", tax_status: "none" },
     });
 
     const r = await validateAndRecalculateCheckout({

@@ -6,6 +6,7 @@ import { memo, useState, useCallback, useMemo, type MouseEvent } from "react";
 import { useCart } from "@/components/CartProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
+import { hasEmpowerTag } from "@/lib/cart/empowerDiscount";
 import { formatPriceWithLabel } from "@/lib/format-utils";
 
 // ============================================================================
@@ -254,6 +255,8 @@ function ProductCardComponent({
   compact = false,
   sale_percentage: salePercentageFromBackend,
   variation_id: variationId,
+  tags,
+  brands,
 }: ProductCardProps) {
   // Hooks
   const { addItem, open: openCart } = useCart();
@@ -287,6 +290,7 @@ function ProductCardComponent({
     if (!imageUrl || imageUrl.trim() === "" || imageError) return PLACEHOLDER_IMAGE;
     return imageUrl;
   }, [imageUrl, imageError]);
+  const empowerEligible = useMemo(() => hasEmpowerTag(tags), [tags]);
 
   // Event handlers (useCallback for stable references)
   const handleImageError = useCallback(() => {
@@ -308,6 +312,7 @@ function ProductCardComponent({
         sku: sku || undefined,
         tax_class: tax_class || undefined,
         tax_status: tax_status || undefined,
+        empowerEligible,
       });
 
       openCart();
@@ -328,6 +333,7 @@ function ProductCardComponent({
     sku,
     tax_class,
     tax_status,
+    empowerEligible,
     addingToCart,
     addItem,
     openCart,
@@ -335,26 +341,30 @@ function ProductCardComponent({
     showError,
   ]);
 
-  /** Ignore index/API sale % when it disagrees with prices + flags (e.g. legacy sale_price "0" → 100%). */
-  const bogusBackendSalePct =
+  // Ignore impossible "100% off" from index when prices show full retail (e.g. sale_price "0.00" → bogus 100%).
+  const ignoreBackendPct =
+    salePercentageFromBackend === 100 && !priceData.isOnSale && !on_sale;
+  const saleDiscountForBadge =
     salePercentageFromBackend != null &&
     salePercentageFromBackend > 0 &&
-    !priceData.isOnSale &&
-    !on_sale;
-  const trustedSalePercentage = bogusBackendSalePct ? null : salePercentageFromBackend;
-
-  const saleDiscountForBadge =
-    trustedSalePercentage != null && trustedSalePercentage > 0
-      ? trustedSalePercentage
+    !ignoreBackendPct
+      ? salePercentageFromBackend
       : priceData.discount;
   const saleBadgeSaleOnly =
     on_sale &&
     !priceData.isOnSale &&
-    (trustedSalePercentage == null || trustedSalePercentage <= 0);
+    (salePercentageFromBackend == null || salePercentageFromBackend <= 0);
   const showSaleBadge =
-    (trustedSalePercentage != null && trustedSalePercentage > 0) ||
-    priceData.isOnSale ||
-    on_sale;
+    ((salePercentageFromBackend != null && salePercentageFromBackend > 0 && !ignoreBackendPct) ||
+      priceData.isOnSale ||
+      on_sale);
+  const productTag = useMemo(() => {
+    const firstTag = (tags || []).find((t) => String(t?.name || "").trim().length > 0);
+    if (firstTag) return String(firstTag.name).trim();
+    const firstBrand = (brands || []).find((b) => String(b?.name || "").trim().length > 0);
+    if (firstBrand) return String(firstBrand.name).trim();
+    return "";
+  }, [tags, brands]);
 
   return (
     <article
@@ -387,6 +397,12 @@ function ProductCardComponent({
                 className="rounded-full bg-white shadow-sm transition hover:scale-110"
               />
             </div>
+
+            {productTag ? (
+              <span className="absolute right-2 top-2 z-10 inline-flex max-w-[60%] items-center truncate rounded-full bg-orange-500 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-sm">
+                {productTag}
+              </span>
+            ) : null}
 
             {showSaleBadge ? (
               <DiscountBadge discount={saleDiscountForBadge} saleOnly={saleBadgeSaleOnly} />
@@ -481,7 +497,9 @@ function propsAreEqual(prev: ProductCardProps, next: ProductCardProps): boolean 
     prev.priority === next.priority &&
     prev.compact === next.compact &&
     prev.sale_percentage === next.sale_percentage &&
-    prev.variation_id === next.variation_id
+    prev.variation_id === next.variation_id &&
+    JSON.stringify(prev.tags || []) === JSON.stringify(next.tags || []) &&
+    JSON.stringify(prev.brands || []) === JSON.stringify(next.brands || [])
   );
 }
 

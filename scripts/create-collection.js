@@ -1,5 +1,5 @@
 /**
- * Creates the Typesense `products` collection (admin API key required).
+ * Creates the Typesense `products_updated` collection (admin API key required).
  *
  * Loads repo-root `.env` automatically (same vars as Next.js).
  *
@@ -27,6 +27,12 @@ const apiKey = (
   process.env.NEXT_PUBLIC_TYPESENSE_API_KEY ||
   ""
 ).trim();
+const collection = (
+  process.env.TYPESENSE_COLLECTION ||
+  process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
+  process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME ||
+  "products_updated"
+).trim();
 
 if (!host || !apiKey) {
   console.error(
@@ -47,14 +53,14 @@ const client = new Typesense.Client({
 async function createCollection() {
   try {
     const schema = {
-      name: "products_updated",
+      name: collection,
       enable_nested_fields: true,
       fields: [
         { name: "id", type: "string" },
 
         { name: "name", type: "string" },
         { name: "slug", type: "string" },
-
+        { name: "custom_badge", type: "string", facet: true, optional: true },
         /** Parent: multiple SKUs; variation: single SKU — always string[] (see woo-search-api.php). */
         { name: "sku", type: "string[]", optional: true },
 
@@ -87,6 +93,8 @@ async function createCollection() {
 
         { name: "average_rating", type: "float", optional: true },
         { name: "rating_count", type: "int32", optional: true },
+        { name: "popularity", type: "int32", optional: true },
+        { name: "date_created", type: "int64", optional: true },
 
         { name: "updated_at", type: "int64" },
       ],
@@ -95,7 +103,7 @@ async function createCollection() {
 
     await client.collections().create(schema);
 
-    console.log("✅ Collection `products` created.");
+    console.log(`✅ Collection \`${collection}\` created.`);
   } catch (err) {
     console.error("❌ Error:", err.message);
     if (err.importResults) console.error(err.importResults);

@@ -16,7 +16,6 @@ const HEADER_ROW_HEIGHT = 8;
 const FONT_SIZE_BODY = 9;
 const FONT_SIZE_HEADER = 10;
 const FONT_SIZE_TITLE = 16;
-const FONT_SIZE_COVER = 22;
 
 function formatAttributeColumn(attrs: Array<{ name?: string; options?: string[] }>): string {
   if (!attrs.length) return "—";
@@ -68,6 +67,7 @@ export async function generateCataloguePDF(
   parentName: string,
   subcategories: SubcategoryInfo[]
 ): Promise<Blob> {
+  void parentName;
   const subcategoryData: {
     name: string;
     rows: CatalogueRow[];
@@ -111,20 +111,6 @@ export async function generateCataloguePDF(
   function checkPageBreak(needed: number): void {
     if (y + needed > PAGE_H - MARGIN) addPage();
   }
-
-  // Cover page
-  pdf.setFontSize(FONT_SIZE_COVER);
-  pdf.setFont("helvetica", "bold");
-  pdf.text(parentName, PAGE_W / 2, 80, { align: "center" });
-  pdf.setFontSize(12);
-  pdf.setFont("helvetica", "normal");
-  pdf.text("Digital catalogue", PAGE_W / 2, 95, { align: "center" });
-  pdf.setFontSize(10);
-  pdf.setTextColor(100, 116, 139);
-  pdf.text(`Generated on ${new Date().toLocaleString()}`, PAGE_W / 2, PAGE_H - 20, {
-    align: "center",
-  });
-  pdf.setTextColor(0, 0, 0);
 
   addPage();
 

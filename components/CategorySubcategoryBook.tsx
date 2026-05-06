@@ -46,7 +46,18 @@ export default function CategorySubcategoryBook({
   const [bookOpen, setBookOpen] = useState(false);
   const [isFlippingOpen, setIsFlippingOpen] = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const bookRef = useRef<{ pageFlip: () => { flipNext: () => void; flipPrev: () => void } }>(null);
+
+  useEffect(() => {
+    const updateViewport = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
  
   const handleDownloadPdf = useCallback(async () => {
     setPdfDownloading(true);
@@ -104,6 +115,10 @@ export default function CategorySubcategoryBook({
  
   const canGoNext = currentPage < totalPages - 1;
   const canGoPrev = true;
+  const openBookWidth = isMobile ? 320 : BOOK_PAGE_WIDTH;
+  const openBookHeight = isMobile ? 640 : BOOK_SPREAD_HEIGHT;
+  const coverWidth = isMobile ? 260 : COVER_WIDTH;
+  const coverHeight = isMobile ? 500 : COVER_HEIGHT;
  
   /**
    * Each subcategory uses two flip pages: intro at 2*index, table at 2*index+1.
@@ -137,13 +152,13 @@ export default function CategorySubcategoryBook({
           <div
             className="relative overflow-hidden"
             style={{
-              width: COVER_WIDTH,
-              height: COVER_HEIGHT,
+              width: coverWidth,
+              height: coverHeight,
               perspective: "1200px",
             }}
           >
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-8 text-center rounded-r-lg shadow-inner transition-transform duration-[600ms] ease-in-out origin-left"
+              className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-6 text-center rounded-r-lg shadow-inner transition-transform duration-[600ms] ease-in-out origin-left"
               style={{
                 transform: isFlippingOpen ? "rotateY(-180deg)" : "rotateY(0deg)",
                 backfaceVisibility: "hidden",
@@ -185,81 +200,101 @@ export default function CategorySubcategoryBook({
           Page {currentPage + 1} of {totalPages}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full max-w-[760px] flex-col items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goPrev}
+            disabled={!canGoPrev}
+            className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div className="bg-gradient-to-b from-gray-200 to-gray-300 p-2 sm:p-4 rounded-2xl shadow-inner">
+            <HTMLFlipBook
+              ref={bookRef}
+              width={openBookWidth}
+              height={openBookHeight}
+              size="fixed"
+              minWidth={0}
+              maxWidth={0}
+              minHeight={0}
+              maxHeight={0}
+              showCover={false}
+              startPage={0}
+              drawShadow
+              flippingTime={FLIP_DURATION_MS}
+              usePortrait={isMobile}
+              startZIndex={0}
+              autoSize
+              maxShadowOpacity={0.5}
+              mobileScrollSupport
+              clickEventForward
+              useMouseEvents
+              swipeDistance={30}
+              showPageCorners
+              disableFlipByClick={true}
+              className=""
+              style={{}}
+              onFlip={handleFlip}
+            >
+              {subcategories.flatMap((sub, index) => {
+                const introPageNumber = index * 2 + 1;
+                const tablePageNumber = index * 2 + 2;
+                return [
+                  <Page key={`intro-${sub.id}`} number={introPageNumber}>
+                    <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-8 text-center">
+                      <h1 className="text-2xl font-bold mb-2">{sub.name}</h1>
+                      <p className="text-sm text-teal-100 mb-1">{parentName}</p>
+                      <p className="text-xs text-teal-100/80">
+                        Flip the page to view SKU, product name, size and price for this subcategory.
+                      </p>
+                    </div>
+                  </Page>,
+                  <Page key={`table-${sub.id}`} number={tablePageNumber}>
+                    <div className="h-full flex flex-col bg-gray-50">
+                      <div className="px-4 py-2 border-b border-gray-200 bg-white text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        {sub.name} — Digital Catalogue
+                      </div>
+                      <div className="flex-1 overflow-auto p-3">
+                        <SubcategoryDigitalCatalogue
+                          subcategorySlug={sub.slug}
+                          subcategoryName={sub.name}
+                          parentName={parentName}
+                          shouldLoad={shouldLoadSubcategoryTable(index)}
+                        />
+                      </div>
+                    </div>
+                  </Page>,
+                ];
+              })}
+            </HTMLFlipBook>
+          </div>
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={!canGoNext}
+            className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={goPrev}
           disabled={!canGoPrev}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="md:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="bg-gradient-to-b from-gray-200 to-gray-300 p-4 rounded-2xl shadow-inner">
-          <HTMLFlipBook
-            ref={bookRef}
-            width={BOOK_PAGE_WIDTH}
-            height={BOOK_SPREAD_HEIGHT}
-            size="fixed"
-            minWidth={0}
-            maxWidth={0}
-            minHeight={0}
-            maxHeight={0}
-            showCover={false}
-            startPage={0}
-            drawShadow
-            flippingTime={FLIP_DURATION_MS}
-            usePortrait={false}
-            startZIndex={0}
-            autoSize
-            maxShadowOpacity={0.5}
-            mobileScrollSupport
-            clickEventForward
-            useMouseEvents
-            swipeDistance={30}
-            showPageCorners
-            disableFlipByClick={true}
-            className=""
-            style={{}}
-            onFlip={handleFlip}
-          >
-            {subcategories.flatMap((sub, index) => {
-              const introPageNumber = index * 2 + 1;
-              const tablePageNumber = index * 2 + 2;
-              return [
-                <Page key={`intro-${sub.id}`} number={introPageNumber}>
-                  <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-teal-700 to-teal-900 text-white p-8 text-center">
-                    <h1 className="text-2xl font-bold mb-2">{sub.name}</h1>
-                    <p className="text-sm text-teal-100 mb-1">{parentName}</p>
-                    <p className="text-xs text-teal-100/80">
-                      Flip the page to view SKU, product name, size and price for this subcategory.
-                    </p>
-                  </div>
-                </Page>,
-                <Page key={`table-${sub.id}`} number={tablePageNumber}>
-                  <div className="h-full flex flex-col bg-gray-50">
-                    <div className="px-4 py-2 border-b border-gray-200 bg-white text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                      {sub.name} — Digital Catalogue
-                    </div>
-                    <div className="flex-1 overflow-auto p-3">
-                      <SubcategoryDigitalCatalogue
-                        subcategorySlug={sub.slug}
-                        subcategoryName={sub.name}
-                        parentName={parentName}
-                        shouldLoad={shouldLoadSubcategoryTable(index)}
-                      />
-                    </div>
-                  </div>
-                </Page>,
-              ];
-            })}
-          </HTMLFlipBook>
-        </div>
         <button
           type="button"
           onClick={goNext}
           disabled={!canGoNext}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="md:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-400"
           aria-label="Next page"
         >
           <ChevronRight className="h-5 w-5" />

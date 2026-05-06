@@ -1,7 +1,11 @@
 import type { CartItem } from "@/lib/types/cart";
+import type { WooLineItem } from "@/services/woocommerce";
 
 /** Woo REST `payment_method` for headless checkout. */
-export type PaymentMethod = "eway" | "cod";
+export type PaymentMethod = "eway" | "cod" | "afterpay";
+
+/** Submit CTA + overlay: cart validation vs payment API / redirect. */
+export type CheckoutPlacingPhase = "idle" | "validating" | "payment";
 
 export type CheckoutCartItem = {
   /** Resolved from SKU server-side when possible; optional if `sku` is sent. */
@@ -39,6 +43,56 @@ export type CheckoutResumePayload = {
   order_key: string;
 };
 
+export type CheckoutActor = {
+  authenticated: boolean;
+  userId?: number;
+  email?: string;
+  role?: string;
+  roles: string[];
+  ndisApproved: boolean;
+};
+
+export type CheckoutTotals = {
+  subtotal: number;
+  shipping: number;
+  discount: number;
+  gst: number;
+  total: number;
+  totalCents: number;
+};
+
+/** Woo REST order `shipping_lines[]` — include `instance_id` when known so WC applies correct shipping tax rules. */
+export type CheckoutWooShippingLine = {
+  method_id: string;
+  method_title: string;
+  total: string;
+  instance_id?: string;
+};
+
+/** Immutable quote state signed at quote-totals time; echoed on create-session for verification. */
+export type CheckoutQuoteSnapshotV1 = {
+  v: 1;
+  currency: string;
+  issued_at_ms: number;
+  line_items_digest: string;
+  totals: CheckoutTotals;
+  shipping_method_id: string;
+  shipping_line: CheckoutWooShippingLine;
+  validated_line_items: Array<{
+    product_id: number;
+    variation_id?: number;
+    quantity: number;
+  }>;
+  woo_line_items: WooLineItem[];
+  coupon_code: string | null;
+  insurance_option: "yes" | "no";
+};
+
+export type CheckoutQuoteSigningPayload = {
+  signature: string;
+  snapshot: CheckoutQuoteSnapshotV1;
+};
+
 export type CheckoutInitiatePayload = {
   billing: CheckoutAddress;
   shipping: CheckoutAddress;
@@ -68,32 +122,17 @@ export type CheckoutInitiatePayload = {
   discreet_packaging?: boolean;
   newsletter?: boolean;
   delivery_notes?: string;
-};
-
-export type CheckoutActor = {
-  authenticated: boolean;
-  userId?: number;
-  email?: string;
-  role?: string;
-  roles: string[];
-  ndisApproved: boolean;
-};
-
-export type CheckoutTotals = {
-  subtotal: number;
-  shipping: number;
-  discount: number;
-  gst: number;
-  total: number;
-  totalCents: number;
-};
-
-/** Woo REST order `shipping_lines[]` — include `instance_id` when known so WC applies correct shipping tax rules. */
-export type CheckoutWooShippingLine = {
-  method_id: string;
-  method_title: string;
-  total: string;
-  instance_id?: string;
+  /** Campaign tracking: true when at least one Empower line discount was applied. */
+  empower_program_applied?: boolean;
+  /** Campaign tracking: total Empower discount (major units). */
+  empower_discount_total?: number;
+  /** Campaign tracking: summed quantity of Empower-discounted lines. */
+  empower_discount_items?: number;
+  /**
+   * HMAC-signed bundle from POST /api/checkout/quote-totals — required for fast create-session
+   * (avoids re-running Woo pricing in Next). Tampering invalidates the signature.
+   */
+  quote_signing?: CheckoutQuoteSigningPayload;
 };
 
 export type PendingEwayOrder = {

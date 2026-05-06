@@ -54,7 +54,7 @@ export default function NdisSection({
           >
             <p className="mb-4 text-xs text-gray-500">Add your NDIS information before checkout.</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+              {/* <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Participants Full Name
                 </label>
@@ -70,7 +70,7 @@ export default function NdisSection({
                     />
                   )}
                 />
-              </div>
+              </div> */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">NDIS Number</label>
                 <Controller

@@ -26,7 +26,7 @@ function Spinner({ label }: { label: string }) {
 function CheckoutPageInner() {
   const checkout = useCheckoutPageState();
 
-  if (!checkout.isMounted) {
+  if (!checkout.isMounted || !checkout.cartReady) {
     return <Spinner label="Loading checkout…" />;
   }
 
@@ -36,6 +36,10 @@ function CheckoutPageInner() {
     subtotal,
     cartSubtotal,
     couponDiscount,
+    empowerDiscount,
+    empowerDiscountEligible,
+    empowerDiscountApplied,
+    onApplyEmpowerDiscount,
     appliedCoupon,
     shippingCost,
     gst,
@@ -62,12 +66,13 @@ function CheckoutPageInner() {
     ewayTokenFlowEnabled,
     canUseOnAccount,
     onFormSubmit,
+    recoveryBannerVisible,
+    recoveryChecking,
+    placingSlow,
+    placingSubmitPhase,
   } = checkout;
 
   if (cartLines.length === 0) {
-    if (postSubmitNavigation === "secure_payment") {
-      return <Spinner label="Redirecting to secure payment…" />;
-    }
     if (postSubmitNavigation === "order_confirmation") {
       return <Spinner label="Redirecting to order confirmation…" />;
     }
@@ -95,6 +100,19 @@ function CheckoutPageInner() {
         Skip to checkout form
       </a>
       <div className="container min-h-screen py-10">
+        {recoveryBannerVisible ? (
+          <div
+            className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="font-medium">We&apos;re checking your order status…</p>
+            {recoveryChecking ? (
+              <p className="mt-1 text-amber-900/80">This only takes a moment.</p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold text-gray-900">Checkout</h1>
           <Link
@@ -120,6 +138,14 @@ function CheckoutPageInner() {
                 />
                 <p className="text-sm font-medium text-gray-900">Processing checkout…</p>
                 <p className="mt-1 text-xs text-gray-600">Please do not refresh or close this page.</p>
+                {placingSlow ? (
+                  <div className="mt-4 border-t border-gray-200 pt-4">
+                    <p className="text-sm text-gray-800">
+                      Still working… checkout can take a minute. Please keep this page open — do not
+                      refresh or submit again.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -154,6 +180,10 @@ function CheckoutPageInner() {
                 items={cartLines}
                 subtotal={subtotal}
                 couponDiscount={couponDiscount}
+                empowerDiscount={empowerDiscount}
+                empowerDiscountEligible={empowerDiscountEligible}
+                empowerDiscountApplied={empowerDiscountApplied}
+                onApplyEmpowerDiscount={onApplyEmpowerDiscount}
                 appliedCoupon={appliedCoupon}
                 shippingCost={shippingCost}
                 gst={gst}
@@ -168,6 +198,7 @@ function CheckoutPageInner() {
                 selectedPaymentMethod={selectedPaymentMethod}
                 onPaymentMethodChange={setSelectedPaymentMethod}
                 placing={placing}
+                placingSubmitPhase={placingSubmitPhase}
                 ewayTokenFlowEnabled={ewayTokenFlowEnabled}
                 canUseOnAccount={canUseOnAccount}
               />

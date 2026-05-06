@@ -20,6 +20,7 @@ import {
   flatHcpOrderMetaRowsFromHcpInfoJson,
   flatNdisOrderMetaRowsFromNdisInfoJson,
 } from "@/lib/checkout/ndisHcpPayload";
+import { humanReadableAdditionalCheckoutMeta } from "@/lib/checkout/additionalOrderMetaHuman";
  
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
@@ -70,8 +71,12 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
   }
   const deliveryAuth = trimMetaString(payload.delivery_authority ?? "", META_MAX_SHORT);
   if (deliveryAuth) rows.push({ key: "delivery_authority", value: deliveryAuth });
-  if (payload.no_paperwork === true) rows.push({ key: "no_paperwork", value: "yes" });
-  if (payload.discreet_packaging === true) rows.push({ key: "discreet_packaging", value: "yes" });
+  rows.push(...humanReadableAdditionalCheckoutMeta(payload));
+  rows.push({ key: "no_paperwork", value: payload.no_paperwork === true ? "yes" : "no" });
+  rows.push({
+    key: "discreet_packaging",
+    value: payload.discreet_packaging === true ? "yes" : "no",
+  });
   if (payload.newsletter === true) rows.push({ key: "newsletter", value: "yes" });
   const notes = trimMetaString(payload.delivery_notes ?? "", META_MAX_NOTES);
   if (notes) rows.push({ key: "delivery_notes", value: notes });
@@ -79,12 +84,40 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
     key: INSURANCE_OPTION_META_KEY,
     value: payload.insurance_option === "yes" ? "yes" : "no",
   });
+  if (payload.empower_program_applied === true) {
+    rows.push({ key: "empower_program_applied", value: "yes" });
+    rows.push({
+      key: "empower_discount_total",
+      value: Number(payload.empower_discount_total || 0).toFixed(2),
+    });
+    rows.push({
+      key: "empower_discount_items",
+      value: Math.max(0, Math.floor(Number(payload.empower_discount_items || 0))),
+    });
+  }
   rows.push({ key: "headless_payment_method", value: payload.payment_method });
   return rows;
 }
  
+/** Optional timings filled during `/api/checkout` for observability (no API contract change). */
+export type CheckoutRoutePerf = {
+  /** Checkout correlation id (crypto.randomUUID from `/api/checkout`). */
+  requestId?: string;
+  wooCreateMs?: number;
+  wooPatchMs?: number;
+  paymentMs?: number;
+  /** Wall-clock checkout duration (ms), set when perf_summary is logged. */
+  total_time?: number;
+};
+
 export type WooCheckoutExecuteResult =
   | { kind: "cod"; orderIdRaw: string | number | bigint; orderKey: string; wooOrderTotal: string | null }
+  | {
+      kind: "afterpay";
+      orderIdRaw: string | number | bigint;
+      orderKey: string;
+      wooOrderTotal: string | null;
+    }
   | {
       kind: "eway";
       orderIdRaw: string | number | bigint;
@@ -122,6 +155,7 @@ export async function executeWooCheckoutOrder(input: {
   checkoutSessionId: string;
   /** Required for eWAY: server quote used for the gateway amount (not Woo session / stale `order.total`). */
   totals?: CheckoutTotals;
+  perf?: CheckoutRoutePerf;
 }): Promise<WooCheckoutExecuteResult> {
   const {
     payload,
@@ -132,20 +166,24 @@ export async function executeWooCheckoutOrder(input: {
     orderExtensionTiming,
     checkoutSessionId,
     totals: checkoutTotals,
+    perf,
   } = input;
   const isCod = payload.payment_method === "cod";
-  if (!isCod && !checkoutTotals) {
+  const isAfterpay = payload.payment_method === "afterpay";
+  if (!isCod && !isAfterpay && !checkoutTotals) {
     throw new Error("Validated checkout totals are required for card (eWAY) payment.");
   }
-  const paymentTitle = isCod ? "On Account" : "Credit Card (eWAY)";
-  /** Phase 1: always `pending` + `set_paid: false`. COD → `processing` is applied in phase-2 PUT. */
+  const paymentTitle = isCod ? "On Account" : isAfterpay ? "Afterpay" : "Credit Card (eWAY)";
+  /** Phase 1: always `pending` + `set_paid: false`. COD → `processing` is applied in phase-2 PUT. Afterpay → paid via gateway before order create. */
   const orderStatus = "pending";
- 
+
+  const requestId = perf?.requestId;
+
   const wooInput: WooCreateOrderInput = {
     payment_method: payload.payment_method,
     payment_method_title: paymentTitle,
-    set_paid: false,
-    status: orderStatus,
+    set_paid: isAfterpay ? true : false,
+    status: isAfterpay ? "processing" : orderStatus,
     customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
     line_items: wooLineItems,
     billing: {
@@ -178,7 +216,33 @@ export async function executeWooCheckoutOrder(input: {
     checkoutSessionId,
     actor,
     customerIp,
+    perf,
   });
+
+  if (perf) {
+    console.log("[checkout] woo order create time:", {
+      requestId,
+      ms: perf.wooCreateMs ?? 0,
+    });
+    console.log("[checkout] woo extension patch time:", {
+      requestId,
+      ms: perf.wooPatchMs ?? 0,
+    });
+  }
+
+  /**
+   * eWAY `handlePayment` resolves `postId` and `order_key` from the persisted Woo order immediately,
+   * so payment init cannot safely overlap `upsertValidatedCheckoutOrder`. If a future gateway allows
+   * starting hosted checkout from payload alone, gate overlap there and on mismatch log
+   * `[checkout][payment_parallel_fallback]` then run `handlePayment` sequentially (same inputs).
+   */
+  if (payload.payment_method === "eway") {
+    console.log("[checkout] payment_pipeline", {
+      requestId,
+      mode: "sequential",
+      reason: "eway_handlePayment_requires_woo_order_id_and_key",
+    });
+  }
  
   if (orderExtensionTiming.mode === "after_response" && payload.payment_method === "cod") {
     const postIdRaw = extractWooOrderId(order);
@@ -242,11 +306,35 @@ export async function executeWooCheckoutOrder(input: {
   if (isCod) {
     return { kind: "cod", orderIdRaw, orderKey, wooOrderTotal: readWooOrderTotal(orderForPayment) };
   }
- 
+
+  if (isAfterpay) {
+    if (postId != null && validatedEwayTotalStr) {
+      const om = orderForPayment as {
+        meta_data?: Array<{ id?: number; key: string; value: unknown }>;
+      };
+      try {
+        await updateWooOrder(postId, {
+          meta_data: mergeWooOrderMetaByKey(om.meta_data, [
+            { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: validatedEwayTotalStr },
+          ]),
+        });
+        orderForPayment = await getWooOrder(String(postId));
+      } catch (e) {
+        console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
+      }
+    }
+    return {
+      kind: "afterpay",
+      orderIdRaw,
+      orderKey,
+      wooOrderTotal: readWooOrderTotal(orderForPayment),
+    };
+  }
+
   if (payload.payment_method !== "eway") {
     throw new Error("Invalid payment method.");
   }
- 
+
   if (postId != null && validatedEwayTotalStr) {
     const om = orderForPayment as {
       meta_data?: Array<{ id?: number; key: string; value: unknown }>;
@@ -262,7 +350,25 @@ export async function executeWooCheckoutOrder(input: {
       console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
     }
   }
- 
+
+  if (checkoutTotals) {
+    const wooStr = readWooOrderTotal(orderForPayment);
+    const wooNum = Number.parseFloat(String(wooStr ?? "0"));
+    if (
+      Number.isFinite(wooNum) &&
+      Number.isFinite(checkoutTotals.total) &&
+      Math.abs(wooNum - checkoutTotals.total) > 0.05
+    ) {
+      console.warn("[executeWooCheckout] woo_total_vs_validated_quote", {
+        requestId,
+        wooOrderTotal: wooStr,
+        validatedTotal: checkoutTotals.total,
+        coupon: payload.coupon_code ?? null,
+      });
+    }
+  }
+
+  const tPay = Date.now();
   const paymentResult = await handlePayment({
     method: "eway",
     order: orderForPayment,
@@ -270,7 +376,13 @@ export async function executeWooCheckoutOrder(input: {
     customerIp,
     actorUserId: typeof actor.userId === "number" ? actor.userId : undefined,
     validatedCheckoutTotalStr: validatedEwayTotalStr ?? undefined,
+    requestId,
   });
+
+  if (perf) {
+    perf.paymentMs = Date.now() - tPay;
+    console.log("[checkout] payment init time:", { requestId, ms: perf.paymentMs });
+  }
  
   if (paymentResult.type === "error") {
     return {

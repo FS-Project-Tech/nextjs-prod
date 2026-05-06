@@ -655,6 +655,7 @@ import {
   findBrand,
   extractProductBrands,
   extractEtaDateDisplayForProduct,
+  extractExpiryDateDisplayFromShortDescription,
   concretePackagingLabelFromVariation,
   overlayConcreteVariationAttributes,
   selectedAttributesForVariationId,
@@ -917,7 +918,7 @@ export default function ProductDetailPanel({
   const hasResolvedVariation = attributes.length === 0 || Boolean(matchedVariation || matched);
   const { addItem, open: openCart } = useCart();
   const { success, error: showError } = useToast();
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantityInput, setQuantityInput] = useState<string>("1");
   const [addingToCart, setAddingToCart] = useState(false);
   const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
   const [selectedUnitOption, setSelectedUnitOption] = useState<string>("");
@@ -971,7 +972,7 @@ export default function ProductDetailPanel({
     (async () => {
       try {
         const endpoint = `${
-          process.env.NEXT_PUBLIC_WP_URL || "https://stage.joyamedicalsupplies.com.au"
+          process.env.NEXT_PUBLIC_WP_URL || "https://live.joyamedicalsupplies.com.au"
         }/wp-json/wc-quantity-units/v1/units?sku=${encodeURIComponent(sku)}`;
         const res = await fetch(endpoint, { signal: controller.signal });
         if (!res.ok) {
@@ -1119,6 +1120,11 @@ export default function ProductDetailPanel({
     [product, matchedVariation, matched],
   );
 
+  const expiryDateDisplay = useMemo(
+    () => extractExpiryDateDisplayFromShortDescription(product.short_description),
+    [product.short_description],
+  );
+
   const shouldHideSingleValueVariationRows = useMemo(() => {
     // Hide native single-value row whenever merged unit row is active.
     // Prevents temporary duplicate "Pack of 14" on slow networks.
@@ -1128,6 +1134,11 @@ export default function ProductDetailPanel({
   const unitMultiplier = useMemo(() => {
     return selectedUnitOption ? extractUnitMultiplier(selectedUnitOption) : 1;
   }, [selectedUnitOption]);
+
+  const quantity = useMemo(() => {
+    const n = Number.parseInt(quantityInput, 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }, [quantityInput]);
 
   const displayPrice = useMemo(() => {
     const base = Number(baseDisplayPrice || 0);
@@ -1258,6 +1269,10 @@ export default function ProductDetailPanel({
     ? Math.round(((regularNum - raw) / regularNum) * 100)
     : 0;
 
+    /** Variation-level sale: hide % until a full variation match ( avoid parent/fallback prices ). */
+    const showDiscountPercent =
+      hasResolvedVariation && discountPercent > 0;
+
     if (isNaN(raw) || raw <= 0) {
       return (
         <span className="text-2xl font-semibold text-[#1f605f]">
@@ -1285,10 +1300,10 @@ export default function ProductDetailPanel({
             {priceInfo.exclPrice || priceInfo.price}
           </span>
 
-           {/* 🔥 SALE TAG */}
+           {/* 🔥 SALE TAG — no numeric % until variation selected when product is variable */}
             {isOnSale && (
               <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded">
-                {discountPercent}% Discount
+                {showDiscountPercent ? `${discountPercent}% Discount` : "Discount"}
               </span>
             )}
 
@@ -1310,6 +1325,11 @@ export default function ProductDetailPanel({
           <div className="text-sm text-gray-600 leading-tight">
             <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
             <div className="text-teal text-xl font-bold">Inc. GST : {priceInfo.price}</div>
+            {expiryDateDisplay ? (
+              <div className="mt-2 inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900 ring-1 ring-amber-300">
+                Expiry Date : <span className="ml-1 font-bold">{expiryDateDisplay}</span>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1448,8 +1468,21 @@ export default function ProductDetailPanel({
         <input
           type="number"
           min={1}
-          value={quantity}
-          onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={quantityInput}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const digits = raw.replace(/\D+/g, "");
+            // Allow temporary empty value while typing on mobile keyboards.
+            setQuantityInput(digits);
+          }}
+          onBlur={() => {
+            const normalized = Number.parseInt(quantityInput, 10);
+            setQuantityInput(
+              Number.isFinite(normalized) && normalized > 0 ? String(normalized) : "1"
+            );
+          }}
           className="w-24 rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
         />
       </div>
@@ -1558,6 +1591,7 @@ export default function ProductDetailPanel({
                   deliveryPlan: plan,
                   tax_class: variationTaxClass,
                   tax_status: variationTaxStatus,
+                  empowerEligible: hasEmpowerTag(product),
                 });
                 openCart();
                 success("Product added to cart");

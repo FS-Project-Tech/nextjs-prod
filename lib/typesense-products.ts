@@ -1,16 +1,3 @@
-/**
- * Typesense filter/sort helpers for the `products` collection.
- *
- * Env overrides (examples):
- * - TYPESENSE_FIELD_CATEGORY_SLUG — filter/facet field for category (default `category`)
- * - TYPESENSE_FIELD_BRAND_SLUG — brand filter/facet (default `brand`)
- * - TYPESENSE_FACET_BY — comma-separated facet fields (default: brand + category fields above)
- * - TYPESENSE_FIELD_ON_SALE — if unset/empty, `on_sale=true` branch is skipped (no field in schema)
- * - TYPESENSE_FIELD_SALE_PRICE — optional; default `sale_price`. Clearance uses `(on_sale:true || sale_price>0)` when both exist.
- * - TYPESENSE_FIELD_POPULARITY / DATE_CREATED / RATING — if unset, sort falls back to `price:desc`
- * - TYPESENSE_QUERY_BY — comma-separated fields for full-text search (default below)
- */
-
 /** Default `query_by` when `TYPESENSE_QUERY_BY` is unset; keep in sync with `HeaderSearch`. */
 export const TYPESENSE_DEFAULT_QUERY_BY =
   "name,sku,category,brand,tags";
@@ -23,9 +10,10 @@ export const TS_FIELDS = {
   onSale: (process.env.TYPESENSE_FIELD_ON_SALE ?? "").trim(),
   /** Numeric sale price field; used with clearance to include discounted rows even if `on_sale` is false. */
   salePrice: (process.env.TYPESENSE_FIELD_SALE_PRICE ?? "sale_price").trim(),
-  /** Empty = popularity sort uses price fallback. */
-  popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "").trim(),
-  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "").trim(),
+  /** Defaults to `popularity`; override via env when schema uses a different field name. */
+  popularity: (process.env.TYPESENSE_FIELD_POPULARITY ?? "popularity").trim(),
+  /** Defaults to `date_created`; override via env when schema uses a different field name. */
+  dateCreated: (process.env.TYPESENSE_FIELD_DATE_CREATED ?? "date_created").trim(),
   rating: (process.env.TYPESENSE_FIELD_RATING ?? "").trim(),
 } as const;
 
@@ -106,6 +94,7 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
   const dt = TS_FIELDS.dateCreated;
   const rt = TS_FIELDS.rating;
   const byPriceDesc = `${pf}:desc`;
+  const byPopularityThenNewest = pop && dt ? `${pop}:desc,${dt}:desc` : pop ? `${pop}:desc` : dt ? `${dt}:desc` : byPriceDesc;
   switch (sortBy) {
     case "relevance":
       // Typesense keyword relevance first; tie-break so UX stays stable among equal matches.
@@ -120,9 +109,9 @@ export function mapSortToTypesense(sortBy: string | null | undefined): string {
     case "rating":
       return rt ? `${rt}:desc` : byPriceDesc;
     case "popularity":
-      return pop ? `${pop}:desc` : byPriceDesc;
+      return byPopularityThenNewest;
     default:
-      return pop ? `${pop}:desc` : byPriceDesc;
+      return byPopularityThenNewest;
   }
 }
 
@@ -236,17 +225,13 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   const img = (doc.image as string) || (doc.image_url as string) || (doc.thumbnail as string) || "";
   const imgAlt = String(doc.image_alt ?? doc.name ?? name);
 
-  // Ignore sale_price 0 / "0" — truthy string "0" previously produced 100% OFF while on_sale was false.
-  const regularNum = Number(regular);
-  const saleNum = Number(sale);
   let sale_percentage: number | null = null;
-  if (
-    onSale &&
-    regularNum > 0 &&
-    saleNum > 0 &&
-    saleNum < regularNum
-  ) {
-    sale_percentage = Math.round(((regularNum - saleNum) / regularNum) * 100);
+  const regNum = Number(regular);
+  const saleNum = Number(sale);
+  // Require a real markdown: Woo/Typesense often leave sale_price as "0.00" (truthy string) when not on sale —
+  // without saleNum > 0 that would incorrectly compute 100% off.
+  if (onSale && regular && sale && regNum > 0 && saleNum > 0 && saleNum < regNum) {
+    sale_percentage = Math.round(((regNum - saleNum) / regNum) * 100);
   }
 
   const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);

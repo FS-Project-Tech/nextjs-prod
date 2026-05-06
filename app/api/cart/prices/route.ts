@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUnitPricesForCartLines } from "@/lib/woo-rest-server";
 import type { CartItem } from "@/lib/types/cart";
-import { rateLimit } from "@/lib/api-security";
+import { rateLimitMemory } from "@/lib/api-security";
 import { secureResponse } from "@/lib/security-headers";
 import { applyCorsHeaders } from "@/lib/cors";
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Apply rate limiting
-  const rateLimitCheck = await rateLimit({
+  const rateLimitCheck = await rateLimitMemory({
     windowMs: 60 * 1000, // 1 minute
     maxRequests: 20, // 20 price updates per minute per IP
     softFail: true,

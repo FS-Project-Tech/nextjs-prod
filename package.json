@@ -8,6 +8,7 @@
     "dev:debug": "NODE_OPTIONS='--inspect' next dev --turbo",
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
+    "generate:feed": "node scripts/generate-google-feed.js",
     "start": "next start",
     "lint": "eslint --cache --cache-location .next/cache/.eslintcache .",
     "lint:fix": "eslint --fix --cache --cache-location .next/cache/.eslintcache .",

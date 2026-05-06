@@ -1,7 +1,7 @@
 import PrefetchLink from "@/components/PrefetchLink";
 import { getCategoriesForNav } from "@/lib/categories-nav";
 import AllCategoriesDrawer from "@/components/AllCategoriesDrawer";
-import { ChevronDown } from "lucide-react";
+import NursingNavDropdown from "@/components/NursingNavDropdown";
 
 /** Shown from root layout `Suspense` while category tree loads (faster TTFB / streaming). */
 export function CategoriesNavSkeleton() {
@@ -158,41 +158,7 @@ async function CategoriesNavContent() {
           </li>
  
           {/* Nursing */}
-          <li className="relative shrink-0 group">
-            <PrefetchLink
-              href="/nursing"
-              className="inline-flex items-center whitespace-nowrap px-2 py-2 text-white hover:bg-nav-hover sm:px-3"
-              aria-haspopup={NURSING_SUBMENU.length > 0}
-            >
-              Nursing
-              <ChevronDown
-                size={18}
-                className="transition-transform duration-200 group-hover:rotate-180"
-              />
-            </PrefetchLink>
-            {NURSING_SUBMENU.length > 0 && (
-              <div
-                className="absolute left-0 top-full z-50 hidden w-[260px] pt-1 group-hover:block group-focus-within:block"
-                role="menu"
-                aria-label="Nursing links"
-              >
-                <div className="rounded-lg border bg-white shadow-xl">
-                  <ul className="space-y-1 p-3">
-                    {NURSING_SUBMENU.map((item) => (
-                      <li key={item.href}>
-                        <PrefetchLink
-                          href={item.href}
-                          className="block rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                        >
-                          {item.name}
-                        </PrefetchLink>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </li>
+          <NursingNavDropdown items={NURSING_SUBMENU} />
  
           {/* B2B */}
           <li className="shrink-0">
@@ -219,6 +185,14 @@ async function CategoriesNavContent() {
               className="block whitespace-nowrap px-2 py-2 text-white hover:bg-nav-hover sm:px-3"
             >
               Telehealth
+            </PrefetchLink>
+          </li>
+          <li className="shrink-0 max-md:pe-2 sm:max-md:pe-3">
+            <PrefetchLink
+              href="/empower-program/"
+              className="block whitespace-nowrap px-2 py-2 text-white hover:bg-nav-hover sm:px-3"
+            >
+              Empower
             </PrefetchLink>
           </li>
            {/* Offers — first on mobile (replaces All Categories slot); last on md+ */}

@@ -33,6 +33,8 @@ export interface CartItem {
   tax_status?: string;
   /** WooCommerce Store API cart line key (required for DELETE /cart/items/:key) */
   wc_store_item_key?: string;
+  /** Tag-based campaign line discount (Empower 10%). */
+  empowerEligible?: boolean;
 }
 
 /**

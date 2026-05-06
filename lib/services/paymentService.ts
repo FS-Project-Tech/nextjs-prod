@@ -32,6 +32,8 @@ export type HandlePaymentContext = {
   actorUserId?: number;
   /** Validated grand total (major units string); when set, eWAY uses this instead of Woo `order.total`. */
   validatedCheckoutTotalStr?: string;
+  /** Checkout correlation id from `/api/checkout` for log stitching. */
+  requestId?: string;
 };
 
 /** @deprecated use HandlePaymentContext */
@@ -60,9 +62,10 @@ async function resolvePostId(order: unknown): Promise<number | null> {
  * After Woo order exists: start eWAY hosted payment.
  */
 export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePaymentResult> {
+  const requestId = ctx.requestId;
   const postId = await resolvePostId(ctx.order);
   if (postId == null) {
-    console.error("[payment] handlePayment: missing order id");
+    console.error("[payment] handlePayment: missing order id", { requestId });
     return { type: "error", message: "Order was created but has no ID." };
   }
 
@@ -91,6 +94,7 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     latest = await getWooOrder(String(postId));
   } catch (e) {
     console.warn("[payment] getWooOrder before eWAY failed; using ctx.order", {
+      requestId,
       postId,
       message: e instanceof Error ? e.message : String(e),
     });
@@ -100,6 +104,7 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   if (shouldReuseEwayPayment(latest) && existingPayUrl) {
     console.log({
       tag: "[payment] eWAY reuse existing payment_url from Woo meta",
+      requestId,
       postId,
       reused: true,
     });
@@ -109,6 +114,7 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   if (existingPayUrl) {
     console.log({
       tag: "[payment] eWAY not reusing stored payment_url (new AccessCodesShared)",
+      requestId,
       postId,
       canonical_total: readCanonicalCheckoutPaymentTotalString(latest),
       woo_total: readCurrentWooOrderTotalString(latest),
@@ -140,13 +146,14 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   const ewayAmountCents = Math.round(wooParsed * 100);
   console.log({
     tag: "[payment] eway amounts (validated checkout total)",
+    requestId,
     postId,
     payment_total: total,
     used_validated_param: Boolean(fromValidated),
     eway_amount_cents: ewayAmountCents,
   });
 
-  console.log("[payment] eway: creating hosted payment", { postId });
+  console.log("[payment] eway: creating hosted payment", { requestId, postId });
   const eway = await createEwayHostedPayment({
     wooOrderId: postId,
     orderKey,
@@ -158,7 +165,7 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   });
 
   if (eway.ok === false) {
-    console.error("[payment] eWAY hosted payment failed", eway.error);
+    console.error("[payment] eWAY hosted payment failed", { requestId, error: eway.error });
     return { type: "error", message: eway.error, action: "resume_payment" };
   }
 
@@ -169,12 +176,13 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     });
   } catch (e) {
     console.error("[payment] failed to store payment_url / payment_initiated on order", {
+      requestId,
       postId,
       e,
     });
   }
 
-  console.log("[payment] eway: SharedPaymentUrl issued", { postId });
+  console.log("[payment] eway: SharedPaymentUrl issued", { requestId, postId });
   return { type: "redirect", url: eway.sharedPaymentUrl };
 }
 
@@ -202,11 +210,15 @@ export async function verifyEwayAndMarkWooPaid(opts: {
   error?: string;
   transactionId?: string | null;
   responseCode?: string | null;
+  /** From eWAY verify transaction when present (decline descriptions, etc.). */
+  responseMessage?: string | null;
 }> {
   const v = await verifyEwayPayment(opts.accessCode);
   if (v.ok === false) {
-    return { ok: false, paid: false, orderPostId: null, error: v.error };
+    return { ok: false, paid: false, orderPostId: null, error: v.error, responseMessage: null };
   }
+
+  const gwMsg = v.responseMessage ?? null;
 
   const hint =
     (opts.orderRef && String(opts.orderRef).trim()) ||
@@ -221,6 +233,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       orderPostId: null,
       transactionId: v.transactionId ?? null,
       responseCode: v.responseCode ?? null,
+      responseMessage: gwMsg,
     };
   }
 
@@ -231,6 +244,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       orderPostId: null,
       transactionId: v.transactionId ?? null,
       responseCode: v.responseCode ?? null,
+      responseMessage: gwMsg,
     };
   }
 
@@ -242,6 +256,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       orderPostId: null,
       transactionId: v.transactionId ?? null,
       responseCode: v.responseCode ?? null,
+      responseMessage: gwMsg,
     };
   }
 
@@ -262,6 +277,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
         orderPostId: postId,
         transactionId: existing.transaction_id ?? v.transactionId ?? null,
         responseCode: v.responseCode ?? null,
+        responseMessage: gwMsg,
       };
     }
   } catch (e) {
@@ -282,6 +298,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       paid: false,
       orderPostId: null,
       error: "Verified payment but WooCommerce update failed.",
+      responseMessage: gwMsg,
     };
   }
 
@@ -291,6 +308,7 @@ export async function verifyEwayAndMarkWooPaid(opts: {
     orderPostId: postId,
     transactionId: v.transactionId ?? null,
     responseCode: v.responseCode ?? null,
+    responseMessage: gwMsg,
   };
 }
 

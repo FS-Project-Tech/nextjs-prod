@@ -4,6 +4,7 @@ import {
   hasSubstantiveHcpRecord,
   hasSubstantiveNdisRecord,
 } from "@/lib/checkout/ndisHcpPayload";
+import { humanReadableAdditionalCheckoutMeta } from "@/lib/checkout/additionalOrderMetaHuman";
 
 function trimOrEmpty(v: unknown, max = 500): string {
   const s = String(v ?? "").trim();
@@ -64,6 +65,10 @@ export async function syncCheckoutUserMeta(
         ]
       : []),
     { key: "delivery_authority", value: trimOrEmpty(payload.delivery_authority, 120) },
+    ...humanReadableAdditionalCheckoutMeta(payload).map((m) => ({
+      key: m.key,
+      value: m.value,
+    })),
     { key: "no_paperwork", value: yesNo(payload.no_paperwork === true) },
     { key: "discreet_packaging", value: yesNo(payload.discreet_packaging === true) },
     { key: "newsletter", value: yesNo(payload.newsletter === true) },

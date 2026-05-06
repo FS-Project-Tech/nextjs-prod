@@ -36,7 +36,7 @@ const collection =
   (process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
     process.env.TYPESENSE_COLLECTION ||
     process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME ||
-    "products").trim();
+    "products_updated").trim();
 
 if (!host || !apiKey) {
   console.error(

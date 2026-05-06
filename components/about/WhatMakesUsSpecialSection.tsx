@@ -30,7 +30,7 @@ const specialPoints: SpecialPoint[] = [
     ),
     title: "Free Delivery - Gold Coast Region",
     description:
-      "Free delivery within the Gold Coast region for orders over $300. A service unmatched in the industry, making quality healthcare products more accessible.",
+      "Free delivery on Deliveable Areas. A service unmatched in the industry, making quality healthcare products more accessible.",
     highlight: true,
   },
   {

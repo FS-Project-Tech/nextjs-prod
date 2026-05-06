@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
 import type { CartItem } from "@/lib/types/cart";
+import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import type { CheckoutFormData, ShippingMethodType } from "@/lib/checkout/schema";
 import { buildCreateOrderPayload } from "@/lib/checkout/buildCreateOrderPayload";
 import {
@@ -12,15 +13,19 @@ import {
   type CheckoutOutcomeDeps,
 } from "./checkoutOutcomeHandlers";
 import { messageFromCreateOrderError } from "./createOrderHttp";
+import { submitAfterpayCheckout } from "./submitAfterpayCheckout";
+import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 
 export type SubmitCheckoutOrderArgs = {
   data: CheckoutFormData;
   cartLines: CartItem[];
   checkoutSessionId: string;
-  selectedPaymentMethod: "eway" | "cod";
+  selectedPaymentMethod: "eway" | "cod" | "afterpay";
+  /** @deprecated Token flow is always tried first for eWAY; prop kept for UI copy (PaymentSection). */
   ewayTokenFlowEnabled: boolean;
   appliedCoupon: { code: string } | null;
   couponSearchParam: string | null;
+  empowerApplied?: boolean;
   showError: (message: string) => void;
   success: (message: string) => void;
   clearLocalCart: () => void;
@@ -30,15 +35,9 @@ export type SubmitCheckoutOrderArgs = {
   redirectPendingRef: MutableRefObject<boolean>;
   replaceInternalPath: (path: string) => void;
   setPlacing: (busy: boolean) => void;
+  /** Latest signed quote from `/api/checkout/quote-totals` — required for fast eWAY create-session. */
+  signedQuote?: CheckoutQuoteSigningPayload | null;
 };
-
-function checkoutEndpoint(
-  paymentMethod: "eway" | "cod",
-  tokenFlow: boolean
-): "/api/checkout/create-session" | "/api/checkout" {
-  const useTokenHandoff = paymentMethod === "eway" && tokenFlow;
-  return useTokenHandoff ? "/api/checkout/create-session" : "/api/checkout";
-}
 
 export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promise<void> {
   const {
@@ -46,9 +45,10 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     cartLines,
     checkoutSessionId,
     selectedPaymentMethod,
-    ewayTokenFlowEnabled,
+    ewayTokenFlowEnabled: _ewayTokenFlowIgnored,
     appliedCoupon,
     couponSearchParam,
+    empowerApplied,
     showError,
     success,
     clearLocalCart,
@@ -58,6 +58,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     redirectPendingRef,
     replaceInternalPath,
     setPlacing,
+    signedQuote,
   } = args;
 
   if (submitGuardRef.current) {
@@ -71,6 +72,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
 
   if (cartLines.length === 0) {
     submitGuardRef.current = false;
+    clearCheckoutSubmitLock();
     showError("Your cart is empty");
     return;
   }
@@ -85,10 +87,30 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
     return;
   }
 
-  const useTokenHandoff = selectedPaymentMethod === "eway" && ewayTokenFlowEnabled;
-  const endpoint = checkoutEndpoint(selectedPaymentMethod, ewayTokenFlowEnabled);
+  if (selectedPaymentMethod === "afterpay") {
+    try {
+      await submitAfterpayCheckout({
+        data,
+        cartLines,
+        checkoutSessionId,
+        appliedCoupon,
+        couponSearchParam,
+        empowerApplied,
+        showError,
+        redirectPendingRef,
+        setPlacing,
+      });
+    } finally {
+      submitGuardRef.current = false;
+      if (!redirectPendingRef.current) {
+        clearCheckoutSubmitLock();
+        setPlacing(false);
+      }
+    }
+    return;
+  }
 
-  /** COD / card: `POST /api/checkout` builds the Woo order from JSON line items (no Store API cart). */
+  void _ewayTokenFlowIgnored;
 
   const outcomeDeps: CheckoutOutcomeDeps = {
     toast: { error: showError, success },
@@ -107,104 +129,128 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       appliedCouponCode: appliedCoupon?.code ?? null,
       couponFromUrl: couponSearchParam,
       checkoutSessionId,
+      empowerApplied,
+      quoteSigning: selectedPaymentMethod === "eway" ? signedQuote ?? null : null,
     });
 
     if (process.env.NODE_ENV === "development") {
-      console.log("[checkout] POST /api/checkout line_items (Zustand → Woo order):", payload.line_items);
+      console.log("[checkout] POST checkout line_items (Zustand → Woo order):", payload.line_items);
     }
 
-    const requestUrl =
-      typeof window !== "undefined" ? new URL(endpoint, window.location.origin).href : endpoint;
+    const origin =
+      typeof window !== "undefined" && typeof window.location?.origin === "string"
+        ? window.location.origin
+        : "";
 
     const idempotencyKey =
       checkoutSessionId.trim() ||
       (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "");
 
-    const res = await fetch(requestUrl, {
+    const fetchInit: RequestInit = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        /** Stable per tab — aligns with `checkout_session_id` on the Woo order. */
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
       cache: "no-store",
       credentials: "include",
-    });
+    };
 
-    const { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps);
-    if (recoveredEarly) return;
+    const applyHostedCheckoutJson = (res: Response, apiJson: Record<string, unknown>): void => {
+      if (!res.ok || apiJson.success === false || apiJson.success === "false") {
+        if (apiJson.action === "resume_payment") {
+          const oidRaw = apiJson.order_id ?? apiJson.orderId;
+          const oid = oidRaw != null && String(oidRaw).trim() !== "" ? String(oidRaw).trim() : "";
+          const key =
+            typeof apiJson.order_key === "string" && apiJson.order_key.trim()
+              ? apiJson.order_key.trim()
+              : null;
+          if (oid) {
+            outcomeDeps.toast.error(
+              messageFromCreateOrderError(apiJson) ||
+                "Payment could not start. Opening order review so you can try again.",
+            );
+            goToOrderReview(oid, "eway", outcomeDeps, key);
+            return;
+          }
+        }
+        reportCreateOrderFailure(res, apiJson, outcomeDeps.toast);
+        return;
+      }
 
-    if (useTokenHandoff) {
+      if (apiJson.success !== true && apiJson.success !== "true") {
+        showError("Checkout did not complete successfully.");
+        return;
+      }
+
+      const inner =
+        apiJson.data !== null && typeof apiJson.data === "object" && !Array.isArray(apiJson.data)
+          ? (apiJson.data as Record<string, unknown>)
+          : null;
+
+      /** Merge root-level fields so eWAY redirect works even if `data` is partial or missing. */
+      const orderPayload: Record<string, unknown> = {
+        ...(inner ?? {}),
+        ...(typeof apiJson.redirect_url === "string" && apiJson.redirect_url.trim()
+          ? { redirect_url: apiJson.redirect_url.trim() }
+          : {}),
+        ...(apiJson.order_id != null && apiJson.order_id !== ""
+          ? { order_id: apiJson.order_id }
+          : {}),
+        ...(typeof apiJson.order_key === "string" && apiJson.order_key.trim()
+          ? { order_key: apiJson.order_key.trim() }
+          : {}),
+      };
+
+      if (handleCashOnDeliveryCompleteJson(orderPayload, outcomeDeps)) return;
+
+      if (handleHostedRedirectJson(orderPayload, setPostSubmitNavigation, redirectPendingRef))
+        return;
+
+      showError("Unexpected checkout response. Please contact support.");
+    };
+
+    if (selectedPaymentMethod === "eway") {
+      let res = await fetch(`${origin}/api/checkout/create-session`, fetchInit);
+      let { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps);
+      if (recoveredEarly) return;
+
+      const useHostedFallback =
+        res.status === 503 &&
+        typeof apiJson.error === "string" &&
+        apiJson.error.includes("CHECKOUT_SESSION_SERVER_SECRET");
+
+      if (useHostedFallback) {
+        res = await fetch(`${origin}/api/checkout`, fetchInit);
+        ({ apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps));
+        if (recoveredEarly) return;
+        applyHostedCheckoutJson(res, apiJson);
+        return;
+      }
+
       handleTokenHandoffJson(
         res,
         apiJson,
         outcomeDeps.toast,
         setPostSubmitNavigation,
-        redirectPendingRef
+        redirectPendingRef,
       );
       return;
     }
 
-    if (!res.ok || apiJson.success === false || apiJson.success === "false") {
-      if (apiJson.action === "resume_payment") {
-        const oidRaw = apiJson.order_id ?? apiJson.orderId;
-        const oid = oidRaw != null && String(oidRaw).trim() !== "" ? String(oidRaw).trim() : "";
-        const key =
-          typeof apiJson.order_key === "string" && apiJson.order_key.trim()
-            ? apiJson.order_key.trim()
-            : null;
-        if (oid) {
-          outcomeDeps.toast.error(
-            messageFromCreateOrderError(apiJson) ||
-              "Payment could not start. Opening order review so you can try again.",
-          );
-          goToOrderReview(oid, "eway", outcomeDeps, key);
-          return;
-        }
-      }
-      reportCreateOrderFailure(res, apiJson, outcomeDeps.toast);
-      return;
-    }
-
-    if (apiJson.success !== true && apiJson.success !== "true") {
-      showError("Checkout did not complete successfully.");
-      return;
-    }
-
-    const inner =
-      apiJson.data !== null && typeof apiJson.data === "object" && !Array.isArray(apiJson.data)
-        ? (apiJson.data as Record<string, unknown>)
-        : null;
-
-    /** Merge root-level fields so eWAY redirect works even if `data` is partial or missing. */
-    const orderPayload: Record<string, unknown> = {
-      ...(inner ?? {}),
-      ...(typeof apiJson.redirect_url === "string" && apiJson.redirect_url.trim()
-        ? { redirect_url: apiJson.redirect_url.trim() }
-        : {}),
-      ...(apiJson.order_id != null && apiJson.order_id !== ""
-        ? { order_id: apiJson.order_id }
-        : {}),
-      ...(typeof apiJson.order_key === "string" && apiJson.order_key.trim()
-        ? { order_key: apiJson.order_key.trim() }
-        : {}),
-    };
-
-    if (handleCashOnDeliveryCompleteJson(orderPayload, outcomeDeps)) return;
-
-    if (handleHostedRedirectJson(orderPayload, setPostSubmitNavigation, redirectPendingRef))
-      return;
-
-    showError("Unexpected checkout response. Please contact support.");
+    const res = await fetch(`${origin}/api/checkout`, fetchInit);
+    const { apiJson, recoveredEarly } = await readCheckoutJsonOrRecoverHeaders(res, outcomeDeps);
+    if (recoveredEarly) return;
+    applyHostedCheckoutJson(res, apiJson);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "An error occurred while placing your order";
     showError(message);
   } finally {
-    /** Keep guard locked while redirect/navigation is pending so a second POST cannot double-place orders. */
+    submitGuardRef.current = false;
     if (!redirectPendingRef.current) {
-      submitGuardRef.current = false;
+      clearCheckoutSubmitLock();
       setPlacing(false);
     }
   }

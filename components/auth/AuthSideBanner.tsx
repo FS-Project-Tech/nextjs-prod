@@ -11,12 +11,19 @@ const FALLBACK_IMAGE =
   "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2026/04/ndis-homepage.avif?w=800&h=1200&fit=crop&q=80";
 
 /**
- * Banner bounds — embedded layout;-size with login/register right column (min 54%, max 640px).
+ * Standalone aside: fixed-height box keeps split layout predictable.
+ * Embedded (login/register card): no fixed height — image uses full column width and natural
+ * aspect ratio so promos aren’t “postage-stamped” with large empty gutters (object-contain in a
+ * short flex box caused that).
  */
 const BANNER_BOX_CLASS =
   "flex h-[min(580px,58vh)] w-full max-w-[560px] items-center justify-center sm:h-[min(620px,60vh)] sm:max-w-[580px] lg:h-[min(640px,62vh)] lg:max-w-full lg:min-w-0";
 
-const CMS_IMG_CLASS = "max-h-full max-w-full object-contain object-center drop-shadow-sm";
+const CMS_IMG_CLASS_STANDALONE = "max-h-full max-w-full object-contain object-center drop-shadow-sm";
+
+/** Full-width embedded promo: scales with column width; height follows asset (capped for tall assets). */
+const CMS_IMG_CLASS_EMBEDDED =
+  "h-auto w-full max-h-[min(640px,78vh)] object-contain object-center drop-shadow-sm";
 
 const FALLBACK_BOX_INNER =
   "relative h-full w-full min-h-[280px] max-h-[580px] sm:max-h-[620px] lg:max-h-[640px]";
@@ -74,14 +81,24 @@ export function AuthSideBanner({ variant = "login", embedded = false }: AuthSide
     <img
       src={cmsUrl}
       alt=""
-      className={`${CMS_IMG_CLASS} rounded-xl`}
+      className={`${embedded ? CMS_IMG_CLASS_EMBEDDED : CMS_IMG_CLASS_STANDALONE} rounded-xl`}
       loading="eager"
       decoding="async"
       referrerPolicy="no-referrer-when-downgrade"
     />
   );
 
-  const fallbackImg = (
+  const fallbackImg = embedded ? (
+    <Image
+      src={imageSrc}
+      alt=""
+      width={800}
+      height={1200}
+      priority
+      className="h-auto w-full max-h-[min(640px,78vh)] rounded-xl object-contain object-center"
+      sizes="(min-width: 1024px) 640px, 100vw"
+    />
+  ) : (
     <div className={FALLBACK_BOX_INNER}>
       <Image
         src={imageSrc}
@@ -96,9 +113,11 @@ export function AuthSideBanner({ variant = "login", embedded = false }: AuthSide
 
   const graphicInner = fromCms ? wrapOptionalLink(linkHref, cmsImg, true) : fallbackImg;
 
-  const graphic = (
+  const graphic = embedded ? (
+    <div className="relative w-full overflow-hidden rounded-xl">{graphicInner}</div>
+  ) : (
     <div
-      className={`relative overflow-hidden rounded-xl ${BANNER_BOX_CLASS} ${embedded ? "" : "max-w-[min(28rem,90vw)]"}`}
+      className={`relative overflow-hidden rounded-xl ${BANNER_BOX_CLASS} max-w-[min(28rem,90vw)]`}
     >
       {graphicInner}
     </div>
