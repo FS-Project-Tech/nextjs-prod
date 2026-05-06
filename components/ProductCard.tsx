@@ -7,7 +7,7 @@ import { useCart } from "@/components/CartProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
 import { hasEmpowerTag } from "@/lib/cart/empowerDiscount";
-import { formatPriceWithLabel } from "@/lib/format-utils";
+import { formatPriceWithLabel, getTaxDisplayType } from "@/lib/format-utils";
 
 // ============================================================================
 // Types
@@ -115,8 +115,8 @@ function calculatePriceData(
     isGstFree = priceInfo.taxType === "gst_free";
   } catch {}
 
-  // Enforce GST-free display when explicit tax class is set.
-  if (isGstFreeClass) {
+  // Match PDP: GST-free from full tax_class + tax_status rules, not only slug equality.
+  if (getTaxDisplayType(taxClass, taxStatus) === "gst_free" || isGstFreeClass) {
     isGstFree = true;
     label = "GST Free";
     exclPrice = null;

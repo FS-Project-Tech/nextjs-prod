@@ -5,7 +5,7 @@ import Link from "next/link";
 import { memo, useMemo, useState, useCallback } from "react";
 import type { TypesenseSearchProduct } from "@/lib/typesense-products";
 import { WishlistButton } from "@/components/WishlistButton";
-import { formatPriceWithLabel } from "@/lib/format-utils";
+import { formatPriceWithLabel, getTaxDisplayType } from "@/lib/format-utils";
 import { cleanAttributeValuesForDisplay, cleanSearchResultTitle } from "@/lib/search-display-name";
 
 const PLACEHOLDER =
@@ -100,11 +100,6 @@ function SearchProductCardComponent({
   const { priceDisplay, regularDisplay, isGstFree } = useMemo(() => {
     const taxClass = product.tax_class ?? undefined;
     const taxStatus = product.tax_status ?? undefined;
-    const normalizedTaxClass = (taxClass || "")
-      .toLowerCase()
-      .trim()
-      .replace(/[\s_]+/g, "-");
-    const isGstFreeClass = normalizedTaxClass === "gst-free" || normalizedTaxClass === "gstfree";
 
     const regular = product.regular_price ? parseFloat(String(product.regular_price)) : 0;
     const sale = product.sale_price ? parseFloat(String(product.sale_price)) : 0;
@@ -112,11 +107,12 @@ function SearchProductCardComponent({
     const current = sale > 0 ? sale : listPrice;
     const isOnSale = regular > 0 && sale > 0 && sale < regular;
 
+    /** Same rules as PDP {@link formatPriceWithLabel} / {@link getTaxDisplayType} — not only `gst_free` index flag. */
+    const gstFree =
+      product.gstFree === true || getTaxDisplayType(taxClass, taxStatus) === "gst_free";
+
     let display = formatPriceWithLabel(current, taxClass, taxStatus);
-    let gstFree =
-      product.gstFree === true || display.taxType === "gst_free" || isGstFreeClass;
-    if (product.gstFree === true || isGstFreeClass) {
-      gstFree = true;
+    if (gstFree) {
       display = {
         ...display,
         price: `$${current.toFixed(2)}`,
@@ -130,7 +126,7 @@ function SearchProductCardComponent({
     let regularFmt: ReturnType<typeof formatPriceWithLabel> | null = null;
     if (isOnSale && regular > 0) {
       let reg = formatPriceWithLabel(regular, taxClass, taxStatus);
-      if (product.gstFree === true || isGstFreeClass) {
+      if (gstFree) {
         reg = {
           ...reg,
           price: `$${regular.toFixed(2)}`,

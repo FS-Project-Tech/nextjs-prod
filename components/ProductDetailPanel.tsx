@@ -636,7 +636,11 @@
 
 "use client";
 
-import type { WooCommerceProduct, WooCommerceVariation } from "@/lib/woocommerce";
+import type {
+  CategoryTrailItem,
+  WooCommerceProduct,
+  WooCommerceVariation,
+} from "@/lib/woocommerce";
 import {
   extractProductUnitOptions,
   extractVariationUnitOptions,
@@ -777,11 +781,14 @@ export default function ProductDetailPanel({
   product,
   variations,
   initialSkuQuantityUnits,
+  categoryTrail,
 }: {
   product: WooCommerceProduct;
   variations: WooCommerceVariation[];
   /** Server-prefetched wc-quantity-units (and meta) keyed by lowercase SKU — instant unit row on variation change */
   initialSkuQuantityUnits?: Record<string, string[]>;
+  /** Root → leaf path for the primary category (from Woo REST parent chain). */
+  categoryTrail?: CategoryTrailItem[];
 }) {
   const searchParams = useSearchParams();
   const variationIdFromUrl = useMemo(() => {
@@ -1217,21 +1224,39 @@ export default function ProductDetailPanel({
               </span>
             </span>
           )}
-          {product.categories && product.categories.length > 0 && (
+          {((categoryTrail && categoryTrail.length > 0) ||
+            (product.categories && product.categories.length > 0)) && (
             <span>
               Category:{" "}
               <span className="font-medium text-gray-700">
-                {product.categories.map((c, idx) => (
-                  <span key={c.id || `${c.slug}-${idx}`}>
-                    {idx > 0 ? ", " : ""}
-                    <Link
-                      href={`/product-category/${encodeURIComponent(c.slug)}`}
-                      className="hover:text-teal-700 hover:underline"
-                    >
-                      {c.name}
-                    </Link>
-                  </span>
-                ))}
+                {categoryTrail && categoryTrail.length > 0
+                  ? categoryTrail.map((c, idx) => (
+                      <span key={c.id}>
+                        {idx > 0 ? (
+                          <span className="mx-0.5 text-gray-400" aria-hidden>
+                            {" "}
+                            ›{" "}
+                          </span>
+                        ) : null}
+                        <Link
+                          href={`/product-category/${encodeURIComponent(c.slug)}`}
+                          className="hover:text-teal-700 hover:underline"
+                        >
+                          {c.name}
+                        </Link>
+                      </span>
+                    ))
+                  : product.categories!.map((c, idx) => (
+                      <span key={c.id || `${c.slug}-${idx}`}>
+                        {idx > 0 ? ", " : ""}
+                        <Link
+                          href={`/product-category/${encodeURIComponent(c.slug)}`}
+                          className="hover:text-teal-700 hover:underline"
+                        >
+                          {c.name}
+                        </Link>
+                      </span>
+                    ))}
               </span>
             </span>
           )}

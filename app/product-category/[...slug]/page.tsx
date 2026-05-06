@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { fetchCategoryBySlug } from "@/lib/woocommerce";
+import { fetchCategoryTrailFromLeaf } from "@/lib/woocommerce/category-trail";
 import { getUnifiedCategories, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
 import CategoryPageClient from "@/components/CategoryPageClient";
 import Container from "@/components/Container";
@@ -157,6 +158,7 @@ export default async function CategoryPage(props: { params: Promise<{ slug: stri
     const decodedSlug = getLeafSlug(slug);
 
     const category = await fetchCategoryBySlug(decodedSlug).catch(() => null);
+    const initialCategoryTrail = category ? await fetchCategoryTrailFromLeaf(category.id) : [];
 
   return (
     <Suspense fallback={<CategoryPageFallback />}>
@@ -164,11 +166,19 @@ export default async function CategoryPage(props: { params: Promise<{ slug: stri
         initialSlug={decodedSlug}
         initialCategoryName={category?.name}
         initialCategoryDescription={category?.description}
+        initialCategoryTrail={initialCategoryTrail}
       />
     </Suspense>
   );
     } catch (error) {
       console.error("[product-category] render fallback", error);
-      return <CategoryPageClient initialSlug="" initialCategoryName="Category" initialCategoryDescription="" />;
+      return (
+        <CategoryPageClient
+          initialSlug=""
+          initialCategoryName="Category"
+          initialCategoryDescription=""
+          initialCategoryTrail={[]}
+        />
+      );
     }
 }

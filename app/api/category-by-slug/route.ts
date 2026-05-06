@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchCategoryBySlug } from "@/lib/woocommerce";
+import { fetchCategoryTrailFromLeaf } from "@/lib/woocommerce/category-trail";
 import { createPublicApiHandler, API_TIMEOUT } from "@/lib/api-middleware";
 import { sanitizeObject } from "@/lib/sanitize";
 
@@ -14,6 +15,7 @@ async function getCategoryBySlug(req: NextRequest) {
 
     // Fetch category directly
     const category = await fetchCategoryBySlug(slug).catch(() => null);
+    const categoryTrail = category ? await fetchCategoryTrailFromLeaf(category.id) : [];
 
     // Sanitize category data
     const sanitizedCategory = category ? sanitizeObject(category) : null;
@@ -22,7 +24,10 @@ async function getCategoryBySlug(req: NextRequest) {
     const headers = new Headers();
     headers.set("Content-Type", "application/json");
 
-    return NextResponse.json({ category: sanitizedCategory }, { headers });
+    return NextResponse.json(
+      { category: sanitizedCategory, categoryTrail },
+      { headers },
+    );
   } catch (error) {
     return NextResponse.json({ category: null }, { status: 200 });
   }

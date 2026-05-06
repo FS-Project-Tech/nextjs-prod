@@ -7,6 +7,8 @@ import type { Metadata } from "next";
 import { stripHTML } from "@/lib/xss-sanitizer";
 import Script from "next/script";
 import { getProductBySlugCached } from "@/app/product/[slug]/product-fetch-cache";
+import { categoryTrailToBreadcrumbSegments } from "@/lib/category-breadcrumb-trail";
+import { fetchCategoryTrailFromLeaf } from "@/lib/woocommerce/category-trail";
 import ProductMainColumn from "@/app/product/[slug]/ProductMainColumn";
 import ProductSidebarColumn from "@/app/product/[slug]/ProductSidebarColumn";
 import ProductAccordionOnlySection from "@/app/product/[slug]/ProductAccordionOnlySection";
@@ -137,6 +139,11 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
     notFound();
   }
 
+  const primaryCategory = product.categories?.[0];
+  const categoryTrail = primaryCategory
+    ? await fetchCategoryTrailFromLeaf(primaryCategory.id)
+    : [];
+
   const { default: ProductRelatedSections } = await import(
     "@/app/product/[slug]/ProductRelatedSections"
   );
@@ -182,14 +189,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
             items={[
               { label: "Home", href: "/" },
               { label: "Shop", href: "/shop" },
-              ...(product.categories?.[0]
-                ? [
-                    {
-                      label: product.categories[0].name,
-                      href: `/product-category/${product.categories[0].slug}`,
-                    },
-                  ]
-                : []),
+              ...categoryTrailToBreadcrumbSegments(categoryTrail, { omitHrefOnLast: false }),
               { label: product.name },
             ]}
           />
@@ -197,7 +197,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
 
         <Container className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
           <Suspense fallback={<ProductMainColumnSkeleton />}>
-            <ProductMainColumn product={product} />
+            <ProductMainColumn product={product} categoryTrail={categoryTrail} />
           </Suspense>
           <Suspense fallback={<ProductSidebarSkeleton />}>
             <ProductSidebarColumn product={product} />

@@ -262,3 +262,6 @@ export interface WooCommerceCategory {
   description?: string;
   image?: { src: string; alt?: string };
 }
+
+/** Root → leaf segments for category breadcrumbs (Woo parent chain). */
+export type CategoryTrailItem = { id: number; name: string; slug: string };

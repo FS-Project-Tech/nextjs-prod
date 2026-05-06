@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import Breadcrumbs from "@/components/Breadcrumbs";
+import { categoryTrailToBreadcrumbSegments } from "@/lib/category-breadcrumb-trail";
+import type { CategoryTrailItem } from "@/lib/woocommerce/types";
 import ProductGrid from "@/components/ProductGrid";
 import ProductGridSkeleton from "@/components/skeletons/ProductGridSkeleton";
 import FilterSidebarSkeleton from "@/components/skeletons/FilterSidebarSkeleton";
@@ -28,22 +30,26 @@ function extractSlugFromPath(pathname: string | null): string | null {
 }
 
 interface CategoryResponse {
-  category?: { name: string };
+  category?: { name: string; description?: string };
   categoryDescription?: string;
+  categoryTrail?: CategoryTrailItem[];
 }
 
 export default function CategoryPageClient({
   initialSlug,
   initialCategoryName,
   initialCategoryDescription,
+  initialCategoryTrail,
 }: {
   initialSlug: string;
   initialCategoryName?: string;
   initialCategoryDescription?: string;
+  initialCategoryTrail?: CategoryTrailItem[];
 }) {
   const pathname = usePathname();
   const [categoryName, setCategoryName] = useState(initialCategoryName || "Category");
   const [categoryDescription, setCategoryDescription] = useState(initialCategoryDescription || "");
+  const [categoryTrail, setCategoryTrail] = useState<CategoryTrailItem[]>(initialCategoryTrail ?? []);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   // Derive slug from pathname or use initial - no state needed
   const slugFromPath = extractSlugFromPath(pathname);
@@ -52,7 +58,7 @@ export default function CategoryPageClient({
   // Fetch category name when slug changes
   const fetchCategoryName = useCallback(
     async (slug: string) => {
-      if (slug === initialSlug && initialCategoryName && initialCategoryDescription) return;
+      if (slug === initialSlug && initialCategoryName) return;
 
       try {
         const res = await fetch(`/api/category-by-slug?slug=${encodeURIComponent(slug)}`);
@@ -61,14 +67,25 @@ export default function CategoryPageClient({
         const json: CategoryResponse = await res.json();
         if (json.category?.name) {
           setCategoryName(json.category.name);
-          setCategoryDescription(json.categoryDescription || "");
+          setCategoryDescription(
+            json.categoryDescription || json.category.description || "",
+          );
+        }
+        if (Array.isArray(json.categoryTrail)) {
+          setCategoryTrail(json.categoryTrail);
         }
       } catch {
         // Keep existing name on error
       }
     },
-    [initialSlug, initialCategoryName, initialCategoryDescription]
+    [initialSlug, initialCategoryName],
   );
+
+  useEffect(() => {
+    setCategoryName(initialCategoryName || "Category");
+    setCategoryDescription(initialCategoryDescription || "");
+    setCategoryTrail(initialCategoryTrail ?? []);
+  }, [initialSlug, initialCategoryName, initialCategoryDescription, initialCategoryTrail]);
 
   // Effect to fetch category name when slug changes
   useEffect(() => {
@@ -89,7 +106,9 @@ export default function CategoryPageClient({
             items={[
               { label: "Home", href: "/" },
               { label: "Shop", href: "/shop" },
-              { label: categoryName },
+              ...(categoryTrail.length > 0
+                ? categoryTrailToBreadcrumbSegments(categoryTrail, { omitHrefOnLast: true })
+                : [{ label: categoryName }]),
             ]}
           />
 

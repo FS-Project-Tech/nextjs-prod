@@ -1,3 +1,5 @@
+import { getTaxDisplayType } from "@/lib/format-utils";
+
 /** Default `query_by` when `TYPESENSE_QUERY_BY` is unset; keep in sync with `HeaderSearch`. */
 export const TYPESENSE_DEFAULT_QUERY_BY =
   "name,sku,category,brand,tags";
@@ -242,6 +244,10 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     doc.variationTaxClass,
     doc.parent_tax_class,
     doc.parentTaxClass,
+    doc.product_tax_class,
+    doc.productTaxClass,
+    doc.tax_class_slug,
+    doc.taxClassSlug,
   );
   const taxStatusFromDoc = firstNonEmptyString(
     doc.tax_status,
@@ -251,14 +257,18 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     doc.parent_tax_status,
     doc.parentTaxStatus,
   );
-  const isGstFree =
-    toBooleanLike(doc.gst_free) ??
-    toBooleanLike(doc.is_gst_free) ??
-    toBooleanLike(doc.gstFree) ??
-    null;
-  // Prefer explicit gst_free from index over tax_status when they disagree (Woo can send both).
-  const taxStatus =
-    isGstFree === true ? "none" : normalizeTaxStatus(taxStatusFromDoc) ?? undefined;
+  const explicitGstFree =
+    toBooleanLike(doc.gst_free) === true ||
+    toBooleanLike(doc.is_gst_free) === true ||
+    toBooleanLike(doc.gstFree) === true;
+
+  const normalizedTaxStatus = normalizeTaxStatus(taxStatusFromDoc);
+  /** Align listing with PDP / {@link formatPriceWithLabel}: GST-free from class or status, not only `gst_free` column. */
+  const inferredGstFreeFromTaxFields =
+    getTaxDisplayType(taxClass, normalizedTaxStatus ?? taxStatusFromDoc ?? "") === "gst_free";
+
+  const gstFreeProduct = explicitGstFree || inferredGstFreeFromTaxFields;
+  const taxStatus = gstFreeProduct ? "none" : normalizedTaxStatus ?? undefined;
 
   return {
     id,
@@ -276,8 +286,8 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     rating_count: Number(doc.rating_count ?? 0),
     tax_class: taxClass,
     tax_status: taxStatus,
-    /** Explicit index flag — use for UI when tax_class/status are missing on older documents. */
-    gstFree: isGstFree === true,
+    /** True when index marks GST-free or tax_class/status resolve to GST-free (matches PDP). */
+    gstFree: gstFreeProduct,
     brand_name: brandName,
     /** When Typesense row is a Woo variation, `id` is the variation id — use for `?variation_id=` PDP links. */
     variation_id: isVariationDoc && id > 0 ? id : undefined,
