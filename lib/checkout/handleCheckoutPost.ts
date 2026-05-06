@@ -1,7 +1,7 @@
 /**
  * Headless checkout POST: validates cart + shipping server-side, creates a Woo REST order in two
  * phases (minimal POST + extension PUT), then COD complete or eWAY redirect.
- * COD defers the extension PUT via Next `after()` so the JSON response is not blocked on meta/shipping/fees.
+ * COD uses inline extension PUT (same as card): avoids deferred PATCH + client-visible polling delays.
  */
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
@@ -349,15 +349,8 @@ export async function handleCheckoutPost(
         ? payload.checkout_session_id.trim()
         : randomUUID();
 
-    const orderExtensionTiming =
-      payload.payment_method === "cod"
-        ? ({
-            mode: "after_response" as const,
-            schedule: (task: () => Promise<void>) => {
-              after(task);
-            },
-          })
-        : ({ mode: "inline" as const });
+    /** Inline extension so shipping/fees/meta apply before the HTTP response — faster COD than deferred PATCH + retry loop in executeWooCheckoutOrder. */
+    const orderExtensionTiming = { mode: "inline" as const };
 
     const result = await withPromiseTimeout(
       restCheckoutTimeoutMs(),

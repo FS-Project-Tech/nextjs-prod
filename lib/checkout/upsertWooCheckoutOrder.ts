@@ -177,7 +177,7 @@ export async function upsertValidatedCheckoutOrder(params: {
     perf,
   });
   validateCreatedLineItems(order);
-  /** COD may defer shipping/meta via `after()`; total is validated after extension in executeWooCheckoutOrder. */
+  /** With inline timing, totals/meta/shipping are applied before returning (COD uses inline from handleCheckoutPost). */
   if (timing.mode === "inline") {
     assertWooOrderPayable(order);
   }
