@@ -106,27 +106,30 @@ export default function HeroDualSlider({
 
   const paginationStyles = (
     <style jsx global>{`
-      .hero-slider-left .swiper-pagination,
-      .hero-slider-right .swiper-pagination,
-      .hero-slider-mobile-left .swiper-pagination,
-      .hero-slider-mobile-right .swiper-pagination {
+      .hero-banner-root .hero-slider-left .swiper-pagination,
+      .hero-banner-root .hero-slider-right .swiper-pagination,
+      .hero-banner-root .hero-slider-mobile-left .swiper-pagination,
+      .hero-banner-root .hero-slider-mobile-right .swiper-pagination {
         bottom: 20px !important;
       }
-
-      .swiper-pagination-bullet {
-        width: 12px;
-        height: 12px;
-        background: rgba(255, 255, 255, 0.5);
-        border: 2px solid rgba(255, 255, 255, 0.8);
-        transition: all 0.3s ease;
+    
+      .hero-banner-root .swiper-pagination-bullet {
+        width: 10px;
+        height: 10px;
+        margin: 0 4px !important;
+        background: #5d8d88;
+        border: none;
+        opacity: 1;
+        border-radius: 50%;
+        transition: width 0.3s ease, border-radius 0.3s ease, background-color 0.3s ease,
+          box-shadow 0.3s ease;
       }
-
-      .swiper-pagination-bullet-active {
+    
+      .hero-banner-root .swiper-pagination-bullet-active {
         width: 32px;
-        border-radius: 6px;
-        background: rgb(20, 184, 166);
-        border-color: rgb(20, 184, 166);
-        box-shadow: 0 2px 8px rgba(20, 184, 166, 0.6);
+        border-radius: 9999px;
+        background: #58d2c1;
+        box-shadow: 0 2px 12px rgba(88, 210, 193, 0.65);
       }
     `}</style>
   );

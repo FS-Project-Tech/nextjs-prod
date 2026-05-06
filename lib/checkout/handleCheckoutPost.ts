@@ -230,10 +230,13 @@ export async function handleCheckoutPost(
   const perf: CheckoutRoutePerf = {};
   const correlationId = checkoutRequestId ?? randomUUID();
   perf.requestId = correlationId;
+  /** Runs in parallel with JSON parse — saves one round-trip vs sequential session + body. */
+  const actorPromise = resolveCheckoutActor({ skipNdisCustomerLookup: true });
   let rawPayload: unknown;
   try {
     rawPayload = await readJsonBody(req);
   } catch {
+    await actorPromise.catch(() => {});
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
@@ -241,6 +244,7 @@ export async function handleCheckoutPost(
   try {
     payload = parseCheckoutPayload(rawPayload);
   } catch (error: unknown) {
+    await actorPromise.catch(() => {});
     const zod = zodFail(error);
     if (zod) return NextResponse.json(zod, { status: 400 });
     return NextResponse.json(
@@ -261,11 +265,13 @@ export async function handleCheckoutPost(
   });
 
   if (payload.payment_method !== "eway" && payload.payment_method !== "cod") {
+    await actorPromise.catch(() => {});
     return NextResponse.json({ success: false, error: "Invalid payment method." }, { status: 400 });
   }
 
+  const actor = await actorPromise;
+
   try {
-    const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
     const actorRoles = Array.isArray(actor.roles)
       ? actor.roles.map((r) => String(r || "").trim().toLowerCase())
       : [];

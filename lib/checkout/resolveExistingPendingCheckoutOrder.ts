@@ -73,34 +73,34 @@ export async function findHeadlessSessionOrderDedup(opts: {
   const pm = String(opts.paymentMethod || "").toLowerCase();
 
   try {
-    const { data: pendingList } = await wcAPI.get("/orders", {
-      params: {
-        search: emailRaw,
-        status: "pending",
-        per_page: 50,
-        orderby: "date",
-        order: "desc",
-        _fields: PENDING_LIST_FIELDS,
-      },
-    });
+    const afterIso = new Date(Date.now() - dedupWindowMs()).toISOString();
+    const pendingParams = {
+      search: emailRaw,
+      status: "pending" as const,
+      per_page: 50,
+      orderby: "date" as const,
+      order: "desc" as const,
+      _fields: PENDING_LIST_FIELDS,
+    };
+    const processingParams = {
+      search: emailRaw,
+      status: "processing" as const,
+      after: afterIso,
+      per_page: 50,
+      orderby: "date" as const,
+      order: "desc" as const,
+      _fields: PENDING_LIST_FIELDS,
+    };
+    const [{ data: pendingList }, { data: procList }] = await Promise.all([
+      wcAPI.get("/orders", { params: pendingParams }),
+      wcAPI.get("/orders", { params: processingParams }),
+    ]);
     const pending = Array.isArray(pendingList) ? pendingList : [];
     for (const row of pending) {
       if (!rowMatchesSessionAndPm(row, sid, pm)) continue;
       return { state: "pending", orderId: row.id as number };
     }
 
-    const afterIso = new Date(Date.now() - dedupWindowMs()).toISOString();
-    const { data: procList } = await wcAPI.get("/orders", {
-      params: {
-        search: emailRaw,
-        status: "processing",
-        after: afterIso,
-        per_page: 50,
-        orderby: "date",
-        order: "desc",
-        _fields: PENDING_LIST_FIELDS,
-      },
-    });
     const processing = Array.isArray(procList) ? procList : [];
     for (const row of processing) {
       if (!rowMatchesSessionAndPm(row, sid, pm)) continue;

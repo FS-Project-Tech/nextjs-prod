@@ -203,7 +203,7 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
  * GET /api/dashboard/orders
  * Hybrid: legacy orders before cutoff, WooCommerce on/after; merged, sorted, paginated.
  *
- * Query: page, per_page (max 50), status, date_from, date_to (YYYY-MM-DD, inclusive, store TZ), search
+ * Query: page, per_page (max 50, default 5), status, date_from, date_to (YYYY-MM-DD, inclusive, store TZ), search
  *
  * Performance: Woo + legacy upstream lists are cached with `unstable_cache` (see
  * `lib/dashboard/orders-upstream-cache.ts`). Tune with DASHBOARD_ORDERS_CACHE_SECONDS (default 60, max 300).
@@ -222,7 +222,7 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
 
     const { searchParams } = new URL(req.url);
     const page = Math.min(500, Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1));
-    const perPageRaw = parseInt(searchParams.get("per_page") || "10", 10) || 10;
+    const perPageRaw = parseInt(searchParams.get("per_page") || "5", 10) || 5;
     const perPage = Math.min(50, Math.max(1, perPageRaw));
     const customerId = typeof user.id === "number" ? user.id : parseInt(String(user.id), 10);
     if (Number.isNaN(customerId) || customerId <= 0) {

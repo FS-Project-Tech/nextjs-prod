@@ -1,7 +1,10 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+
+/** Dashboard orders list page size (must match API `per_page`). */
+export const DASHBOARD_ORDERS_PER_PAGE = 5;
 
 export interface Order {
   id: number;
@@ -64,21 +67,32 @@ type OrdersPagePayload = {
   pagination: PaginationInfo | null;
 };
 
+/**
+ * Paginated orders (fixed page size). Resets to page 1 when filters change.
+ */
 export function useOrdersInfinite(filters: OrdersListFilters) {
-  const query = useInfiniteQuery({
+  const [page, setPage] = useState(1);
+  const perPage = DASHBOARD_ORDERS_PER_PAGE;
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.status, filters.dateFrom, filters.dateTo, filters.search]);
+
+  const query = useQuery({
     queryKey: [
       "orders",
-      "infinite",
+      "paged",
+      page,
+      perPage,
       filters.status,
       filters.dateFrom,
       filters.dateTo,
       filters.search,
     ],
-    initialPageParam: 1,
-    queryFn: async ({ pageParam }): Promise<OrdersPagePayload> => {
+    queryFn: async (): Promise<OrdersPagePayload> => {
       const usp = new URLSearchParams();
-      usp.set("page", String(pageParam));
-      usp.set("per_page", "10");
+      usp.set("page", String(page));
+      usp.set("per_page", String(perPage));
       const st = filters.status.trim().toLowerCase();
       if (st) usp.set("status", st);
       const df = filters.dateFrom.trim();
@@ -115,34 +129,40 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
         pagination: (result.pagination as PaginationInfo) || null,
       };
     },
-    getNextPageParam: (lastPage) => {
-      const p = lastPage.pagination;
-      if (!p || p.total_pages <= 0) return undefined;
-      if (p.page >= p.total_pages) return undefined;
-      return p.page + 1;
-    },
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: process.env.NODE_ENV === "production" ? 1 : 0,
+    placeholderData: (previousData) => previousData,
   });
 
-  const orders = useMemo(() => {
-    const pages = query.data?.pages;
-    if (!pages?.length) return [];
-    return pages.flatMap((p) => p.orders);
-  }, [query.data?.pages]);
+  const orders = query.data?.orders ?? [];
+  const pagination = query.data?.pagination ?? null;
+  const totalFromApi = pagination?.total ?? null;
+  const totalPages = pagination?.total_pages ?? 0;
 
-  const totalFromApi = query.data?.pages?.[0]?.pagination?.total ?? null;
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const rangeLabel = useMemo(() => {
+    if (totalFromApi == null || totalFromApi === 0) return null;
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(page * perPage, totalFromApi);
+    return { start, end };
+  }, [page, perPage, totalFromApi]);
 
   return {
     orders,
     totalFromApi,
+    page,
+    setPage,
+    totalPages,
+    rangeLabel,
     isPending: query.isPending,
     isFetching: query.isFetching,
-    isFetchingNextPage: query.isFetchingNextPage,
     error: query.error as Error | null,
     refetch: query.refetch,
-    hasNextPage: query.hasNextPage,
-    fetchNextPage: query.fetchNextPage,
   };
 }

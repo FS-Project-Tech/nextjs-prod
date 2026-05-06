@@ -364,6 +364,13 @@ export async function validateAndRecalculateCheckout(
     quantity: it.quantity,
   }));
 
+  const couponCodeTrim = payload.coupon_code?.trim();
+  const couponDataPromise: Promise<unknown[] | null> = couponCodeTrim
+    ? wcGet<unknown[]>("/coupons", { code: couponCodeTrim, per_page: 1 }, "noStore")
+        .then((r) => (Array.isArray(r.data) ? r.data : null))
+        .catch(() => null)
+    : Promise.resolve(null);
+
   let catalog = new Map<string, Record<string, unknown>>();
   try {
     catalog = await fetchCheckoutCatalogCached(validatedLineItems, {
@@ -377,6 +384,8 @@ export async function validateAndRecalculateCheckout(
       message: e instanceof Error ? e.message : String(e),
     });
   }
+
+  const couponListEarly = await couponDataPromise;
 
   const unitPrices = await Promise.all(
     validatedLineItems.map(async (li, idx) => {
@@ -430,14 +439,9 @@ export async function validateAndRecalculateCheckout(
   );
 
   let discount = 0;
-  if (payload.coupon_code) {
+  if (couponCodeTrim && Array.isArray(couponListEarly) && couponListEarly.length > 0) {
     try {
-      const couponRes = await wcGet<unknown[]>(
-        "/coupons",
-        { code: payload.coupon_code, per_page: 1 },
-        "noStore",
-      );
-      const coupon = Array.isArray(couponRes.data) ? couponRes.data[0] : null;
+      const coupon = couponListEarly[0];
       if (coupon && typeof coupon === "object" && coupon !== null) {
         const c = coupon as Record<string, unknown>;
         const pricedLines = validatedLineItems.map((li, idx) => {

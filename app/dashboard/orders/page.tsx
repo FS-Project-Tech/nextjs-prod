@@ -3,7 +3,7 @@
 import { useOrdersInfinite, type Order, type OrdersListFilters } from "@/hooks/useOrders";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import Link from "next/link";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useToast } from "@/components/ToastProvider";
 import CancelOrderModal from "@/components/dashboard/CancelOrderModal";
 import OrderStatusBadge from "@/components/dashboard/OrderStatusBadge";
@@ -42,13 +42,14 @@ export default function DashboardOrders() {
   const {
     orders,
     totalFromApi,
+    page,
+    setPage,
+    totalPages,
+    rangeLabel,
     isPending,
     isFetching,
-    isFetchingNextPage,
     error,
     refetch,
-    hasNextPage,
-    fetchNextPage,
   } = useOrdersInfinite(listFilters);
 
   const { success, error: showError } = useToast();
@@ -56,28 +57,9 @@ export default function DashboardOrders() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [payingOrderKey, setPayingOrderKey] = useState<string | null>(null);
 
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-
   const hasActiveFilters = Boolean(
     statusFilter || dateFrom || dateTo || searchInput.trim(),
   );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el || !hasNextPage) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const hit = entries.some((e) => e.isIntersecting);
-        if (!hit || isFetchingNextPage) return;
-        void fetchNextPage();
-      },
-      { root: null, rootMargin: "240px 0px", threshold: 0 },
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, orders.length]);
 
   const initiatePayment = useCallback(
     async (order: Order) => {
@@ -116,8 +98,7 @@ export default function DashboardOrders() {
     setSearchInput("");
   }, []);
 
-  const showListRefetchSpinner =
-    isFetching && !isFetchingNextPage && orders.length > 0;
+  const showListRefetchSpinner = isFetching && orders.length > 0;
 
   return (
     <div className="space-y-6">
@@ -187,11 +168,11 @@ export default function DashboardOrders() {
 
       {!error && orders.length > 0 && (
         <>
-          {totalFromApi != null && (
+          {totalFromApi != null && rangeLabel && (
             <p className="text-sm text-gray-600">
-              Showing {orders.length}
-              {totalFromApi > orders.length ? ` of ${totalFromApi}` : ""} order
+              Showing {rangeLabel.start}–{rangeLabel.end} of {totalFromApi} order
               {totalFromApi === 1 ? "" : "s"}
+              {totalPages > 1 ? ` · Page ${page} of ${totalPages}` : ""}
               {showListRefetchSpinner ? " · Updating…" : ""}
             </p>
           )}
@@ -268,24 +249,29 @@ export default function DashboardOrders() {
             })}
           </div>
 
-          <div ref={loadMoreRef} className="flex min-h-12 items-center justify-center py-4">
-            {isFetchingNextPage ? (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-teal-600" />
-                Loading more…
-              </div>
-            ) : hasNextPage ? (
+          {totalPages > 1 && (
+            <div className="flex min-h-12 flex-wrap items-center justify-center gap-3 py-6 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => void fetchNextPage()}
-                className="text-sm font-medium text-teal-800 hover:text-teal-950 underline-offset-2 hover:underline"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || isFetching}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Load more
+                Previous
               </button>
-            ) : (
-              <span className="text-xs text-gray-400">End of list</span>
-            )}
-          </div>
+              <span className="text-sm text-gray-600 tabular-nums">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || isFetching}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </>
       )}
 

@@ -313,12 +313,14 @@ export async function executeWooCheckoutOrder(input: {
         meta_data?: Array<{ id?: number; key: string; value: unknown }>;
       };
       try {
-        await updateWooOrder(postId, {
+        const patched = await updateWooOrder(postId, {
           meta_data: mergeWooOrderMetaByKey(om.meta_data, [
             { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: validatedEwayTotalStr },
           ]),
         });
-        orderForPayment = await getWooOrder(String(postId));
+        if (patched != null && typeof patched === "object") {
+          orderForPayment = patched;
+        }
       } catch (e) {
         console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
       }
@@ -340,12 +342,14 @@ export async function executeWooCheckoutOrder(input: {
       meta_data?: Array<{ id?: number; key: string; value: unknown }>;
     };
     try {
-      await updateWooOrder(postId, {
+      const patched = await updateWooOrder(postId, {
         meta_data: mergeWooOrderMetaByKey(om.meta_data, [
           { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: validatedEwayTotalStr },
         ]),
       });
-      orderForPayment = await getWooOrder(String(postId));
+      if (patched != null && typeof patched === "object") {
+        orderForPayment = patched;
+      }
     } catch (e) {
       console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
     }

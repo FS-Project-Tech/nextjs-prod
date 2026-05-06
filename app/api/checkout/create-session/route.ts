@@ -62,10 +62,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawBody = await readJsonBody(req);
-    const payload = stripEmptyNdisHcpFromInitiatePayload(parseCheckoutPayload(rawBody));
+    const actorPromise = resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    let rawBody: unknown;
+    try {
+      rawBody = await readJsonBody(req);
+    } catch {
+      await actorPromise.catch(() => {});
+      return withRequestId(
+        NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 }),
+        requestId,
+      );
+    }
+
+    let payload;
+    try {
+      payload = stripEmptyNdisHcpFromInitiatePayload(parseCheckoutPayload(rawBody));
+    } catch (parseErr) {
+      await actorPromise.catch(() => {});
+      throw parseErr;
+    }
 
     if (payload.payment_method !== "eway") {
+      await actorPromise.catch(() => {});
       return withRequestId(
         NextResponse.json(
         {
@@ -79,7 +97,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    const actor = await actorPromise;
     const userId =
       actor.userId != null && actor.userId > 0 ? actor.userId : null;
 

@@ -77,11 +77,20 @@ export async function upsertValidatedCheckoutOrder(params: {
     throw err;
   }
  
-  const dedup = await findHeadlessSessionOrderDedup({
-    checkoutSessionId,
-    billingEmail: payload.billing.email || "",
-    paymentMethod: payload.payment_method,
-  });
+  const [dedup, reuseOrderId] = await Promise.all([
+    findHeadlessSessionOrderDedup({
+      checkoutSessionId,
+      billingEmail: payload.billing.email || "",
+      paymentMethod: payload.payment_method,
+    }),
+    resolveExistingPendingCheckoutOrderId({
+      customerId: actor.userId,
+      checkoutSessionId,
+      paymentMethod: payload.payment_method,
+      billingEmail: payload.billing.email || "",
+      resume: payload.checkout_resume ?? undefined,
+    }),
+  ]);
   if (dedup.state === "processing") {
     throw new CheckoutSessionOrderExistsError(
       dedup.orderId,
@@ -91,16 +100,9 @@ export async function upsertValidatedCheckoutOrder(params: {
     );
   }
 
-  let existingId: number | null =
-    dedup.state === "pending" ? dedup.orderId : null;
+  let existingId: number | null = dedup.state === "pending" ? dedup.orderId : null;
   if (existingId == null) {
-    existingId = await resolveExistingPendingCheckoutOrderId({
-      customerId: actor.userId,
-      checkoutSessionId,
-      paymentMethod: payload.payment_method,
-      billingEmail: payload.billing.email || "",
-      resume: payload.checkout_resume ?? undefined,
-    });
+    existingId = reuseOrderId;
   }
  
   const sessionRows = [
@@ -145,7 +147,7 @@ export async function upsertValidatedCheckoutOrder(params: {
     }
  
     const tUp = Date.now();
-    await updateWooOrder(existingId, phase1);
+    const phase1Response = await updateWooOrder(existingId, phase1);
     if (perf) perf.wooCreateMs = Date.now() - tUp;
 
     const existingShippingLineId = Number(
@@ -159,15 +161,15 @@ export async function upsertValidatedCheckoutOrder(params: {
           : undefined,
     });
     const tExt = Date.now();
+    let afterWrite: unknown = phase1Response;
     if (Object.keys(extPatch).length > 0) {
-      await applyOrderExtensionWithRetry(existingId, extPatch);
+      afterWrite = await applyOrderExtensionWithRetry(existingId, extPatch);
     }
     if (perf) perf.wooPatchMs = Date.now() - tExt;
- 
-    const refreshed = await getWooOrder(String(existingId));
-    validateCreatedLineItems(refreshed);
-    assertWooOrderPayable(refreshed);
-    return refreshed;
+
+    validateCreatedLineItems(afterWrite);
+    assertWooOrderPayable(afterWrite);
+    return afterWrite;
   }
  
   const order = await createValidatedCheckoutOrder(input, timing, {
