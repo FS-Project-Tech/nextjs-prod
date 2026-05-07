@@ -13,12 +13,19 @@ import { stripEmptyNdisHcpFromInitiatePayload } from "@/lib/checkout/ndisHcpPayl
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
+import { runFullCartValidation } from "@/lib/cart/validate-cart-full";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
 import { afterpayConfigured, afterpaySiteUrl } from "@/lib/afterpay/env";
 import { parseAfterpayCheckoutBody } from "@/lib/afterpay/schema";
 import { savePendingCheckoutPayload } from "@/lib/afterpay/pendingSession";
 import { buildAfterpayCreateCheckoutBody } from "@/lib/afterpay/buildCheckoutRequest";
 import { afterpayCreateCheckout } from "@/lib/afterpay/afterpayHttp";
+import {
+  assertPayloadMatchesQuoteSnapshot,
+  isQuoteSnapshotFresh,
+  quoteSigningConstants,
+  verifyQuoteSignature,
+} from "@/lib/checkout/quoteSigning";
 
 export const dynamic = "force-dynamic";
 
@@ -106,10 +113,55 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    const pricing = await validateAndRecalculateCheckout(payload);
+    const cartItems = payload.cart_items ?? [];
+    const cartValidationPromise = runFullCartValidation(cartItems);
+
+    type PricingResult = Awaited<ReturnType<typeof validateAndRecalculateCheckout>>;
+    let pricing: Pick<PricingResult, "totals" | "wooLineItems" | "shippingLine">;
+
+    if (payload.quote_signing) {
+      const { signature, snapshot } = payload.quote_signing;
+      if (!verifyQuoteSignature(snapshot, signature)) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: "Invalid or expired quote signature. Refresh totals and try again." },
+            { status: 401 },
+          ),
+          requestId,
+        );
+      }
+      if (!isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: "Quote expired. Refresh totals and try again.", code: "QUOTE_EXPIRED" },
+            { status: 410 },
+          ),
+          requestId,
+        );
+      }
+      const match = assertPayloadMatchesQuoteSnapshot(payload, snapshot);
+      if (match.ok === false) {
+        return withRequestId(
+          NextResponse.json(
+            { success: false, error: match.message, code: "QUOTE_PAYLOAD_MISMATCH" },
+            { status: 409 },
+          ),
+          requestId,
+        );
+      }
+      pricing = {
+        totals: snapshot.totals,
+        wooLineItems: snapshot.woo_line_items,
+        shippingLine: snapshot.shipping_line,
+      };
+    } else {
+      pricing = await validateAndRecalculateCheckout(payload);
+    }
+
     const cartCheck = await validateCartForEwayCheckout({
-      cart_items: payload.cart_items!,
+      cart_items: cartItems,
       totals: pricing.totals,
+      validationResult: await cartValidationPromise,
     });
     if (cartCheck.ok === false) {
       return withRequestId(

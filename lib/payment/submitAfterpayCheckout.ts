@@ -1,6 +1,7 @@
 import type { CartItem } from "@/lib/types/cart";
 import type { CheckoutFormData } from "@/lib/checkout/schema";
 import { buildCreateOrderPayload } from "@/lib/checkout/buildCreateOrderPayload";
+import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import type { MutableRefObject } from "react";
 import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 
@@ -11,6 +12,7 @@ export async function submitAfterpayCheckout(args: {
   appliedCoupon: { code: string } | null;
   couponSearchParam: string | null;
   empowerApplied?: boolean;
+  signedQuote?: CheckoutQuoteSigningPayload | null;
   showError: (message: string) => void;
   redirectPendingRef: MutableRefObject<boolean>;
   setPlacing: (busy: boolean) => void;
@@ -22,6 +24,7 @@ export async function submitAfterpayCheckout(args: {
     appliedCoupon,
     couponSearchParam,
     empowerApplied,
+    signedQuote,
     showError,
     redirectPendingRef,
     setPlacing,
@@ -35,6 +38,7 @@ export async function submitAfterpayCheckout(args: {
     couponFromUrl: couponSearchParam,
     checkoutSessionId,
     empowerApplied,
+    quoteSigning: signedQuote ?? null,
   });
 
   const requestUrl =

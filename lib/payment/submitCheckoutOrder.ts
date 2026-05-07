@@ -96,6 +96,7 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
         appliedCoupon,
         couponSearchParam,
         empowerApplied,
+        signedQuote,
         showError,
         redirectPendingRef,
         setPlacing,
