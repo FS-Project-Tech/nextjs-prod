@@ -129,6 +129,40 @@ export function extractEtaDateDisplayForProduct(
   return null;
 }
 
+function extractEtaAvailabilityFromMeta(
+  meta: Array<{ key?: string; value?: unknown }> | undefined,
+): string | null {
+  if (!Array.isArray(meta) || meta.length === 0) return null;
+  for (const row of meta) {
+    const k = String(row?.key || "").toLowerCase().trim();
+    if (k !== "_eta_availability" && k !== "eta_availability") continue;
+    const v = String(row?.value ?? "").trim();
+    if (v) return v;
+  }
+  return null;
+}
+
+/**
+ * ETA availability text resolution order:
+ * 1) selected variation meta (`_eta_availability` / `eta_availability`)
+ * 2) parent product meta with same keys
+ * 3) fallback to legacy ETA date extraction
+ */
+export function extractEtaAvailabilityDisplayForProduct(
+  product: WooCommerceProduct,
+  variation: WooCommerceVariation | null,
+): string | null {
+  const fromVariation = extractEtaAvailabilityFromMeta(variation?.meta_data);
+  if (fromVariation) return fromVariation;
+
+  const fromProductMeta = extractEtaAvailabilityFromMeta(
+    product.meta_data as Array<{ key?: string; value?: unknown }> | undefined,
+  );
+  if (fromProductMeta) return fromProductMeta;
+
+  return extractEtaDateDisplayForProduct(product, variation);
+}
+
 /**
  * Extract expiry date from Woo short_description.
  * Expected admin content is date-only, but this safely handles wrapped HTML.
@@ -152,6 +186,41 @@ export function extractExpiryDateDisplayFromShortDescription(
   if (isoDate?.[1]) return isoDate[1];
 
   return null;
+}
+
+function extractExpiryDateFromMeta(
+  meta: Array<{ key?: string; value?: unknown }> | undefined,
+): string | null {
+  if (!Array.isArray(meta) || meta.length === 0) return null;
+  for (const row of meta) {
+    const k = String(row?.key || "").toLowerCase().trim();
+    if (k !== "_expiry_date" && k !== "expiry_date") continue;
+    const raw = String(row?.value ?? "").trim();
+    if (!raw) continue;
+    return formatEtaDateForDisplay(raw) || raw;
+  }
+  return null;
+}
+
+/**
+ * Expiry date resolution order:
+ * 1) selected variation meta (`_expiry_date` / `expiry_date`)
+ * 2) parent product meta (`_expiry_date` / `expiry_date`)
+ * 3) parent short_description date fallback
+ */
+export function extractExpiryDateDisplayForProduct(
+  product: WooCommerceProduct,
+  variation: WooCommerceVariation | null,
+): string | null {
+  const fromVariation = extractExpiryDateFromMeta(variation?.meta_data);
+  if (fromVariation) return fromVariation;
+
+  const fromProductMeta = extractExpiryDateFromMeta(
+    product.meta_data as Array<{ key?: string; value?: unknown }> | undefined,
+  );
+  if (fromProductMeta) return fromProductMeta;
+
+  return extractExpiryDateDisplayFromShortDescription(product.short_description);
 }
 
 /**

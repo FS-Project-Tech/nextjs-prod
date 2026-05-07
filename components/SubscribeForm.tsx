@@ -15,6 +15,7 @@ export default function SubscribeForm() {
     try {
       const res = await fetch("/api/subscribe", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
 
@@ -24,7 +25,13 @@ export default function SubscribeForm() {
         setMessage("Subscribed successfully 🎉");
         setEmail("");
       } else {
-        setMessage(data.message || "Something went wrong");
+        const err =
+          typeof data.error === "string"
+            ? data.error
+            : typeof data.message === "string"
+              ? data.message
+              : "Something went wrong";
+        setMessage(err);
       }
     } catch {
       setMessage("Error subscribing");

@@ -658,8 +658,8 @@ import {
   matchVariation,
   findBrand,
   extractProductBrands,
-  extractEtaDateDisplayForProduct,
-  extractExpiryDateDisplayFromShortDescription,
+  extractEtaAvailabilityDisplayForProduct,
+  extractExpiryDateDisplayForProduct,
   concretePackagingLabelFromVariation,
   overlayConcreteVariationAttributes,
   selectedAttributesForVariationId,
@@ -1122,14 +1122,14 @@ export default function ProductDetailPanel({
     return plainTextFromVariationDescription(String(raw));
   }, [matchedVariation, matched]);
 
-  const etaDateDisplay = useMemo(
-    () => extractEtaDateDisplayForProduct(product, matchedVariation ?? matched),
+  const etaAvailabilityDisplay = useMemo(
+    () => extractEtaAvailabilityDisplayForProduct(product, matchedVariation ?? matched),
     [product, matchedVariation, matched],
   );
 
   const expiryDateDisplay = useMemo(
-    () => extractExpiryDateDisplayFromShortDescription(product.short_description),
-    [product.short_description],
+    () => extractExpiryDateDisplayForProduct(product, matchedVariation ?? matched),
+    [product, matchedVariation, matched],
   );
 
   const shouldHideSingleValueVariationRows = useMemo(() => {
@@ -1350,11 +1350,6 @@ export default function ProductDetailPanel({
           <div className="text-sm text-gray-600 leading-tight">
             <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
             <div className="text-teal text-xl font-bold">Inc. GST : {priceInfo.price}</div>
-            {expiryDateDisplay ? (
-              <div className="mt-2 inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900 ring-1 ring-amber-300">
-                Expiry Date : <span className="ml-1 font-bold">{expiryDateDisplay}</span>
-              </div>
-            ) : null}
           </div>
         )}
 
@@ -1364,6 +1359,14 @@ export default function ProductDetailPanel({
             GST FREE
           </span>
         )}
+
+        {expiryDateDisplay ? (
+          <div className="mt-2 block">
+            <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-900 ring-1 ring-amber-300">
+              Expiry Date : <span className="ml-1 font-bold">{expiryDateDisplay}</span>
+            </span>
+          </div>
+        ) : null}
       </div>
     );
   })()}
@@ -1476,10 +1479,12 @@ export default function ProductDetailPanel({
       <div>
         {/* <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery</p> */}
         <RecurringSelect onChange={setPlan} value={plan} />
-        {etaDateDisplay ? (
-          <p className="mt-2 text-sm font-bold leading-snug text-[#1f605f]" role="status">
-            ETA Date: {etaDateDisplay}
-          </p>
+        {etaAvailabilityDisplay ? (
+          <div className="mt-2" role="status">
+            <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">
+              ETA Availability: <span className="ml-1 font-bold">{etaAvailabilityDisplay}</span>
+            </span>
+          </div>
         ) : null}
       </div>
 
