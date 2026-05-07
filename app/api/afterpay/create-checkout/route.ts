@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       NextResponse.json(
         {
           success: false,
-          error: "NEXT_PUBLIC_SITE_URL is required for Afterpay redirects.",
+          error: "AFTERPAY_REDIRECT_BASE_URL (or NEXT_PUBLIC_SITE_URL) is required for Afterpay redirects.",
         },
         { status: 503 },
       ),

@@ -1,9 +1,9 @@
 import "server-only";
 
-import { afterpayApiBase } from "@/lib/afterpay/env";
+import { afterpayApiBase, afterpayPublicKey } from "@/lib/afterpay/env";
 
 function basicAuthHeader(): string {
-  const user = process.env.AFTERPAY_PUBLIC_KEY!.trim();
+  const user = afterpayPublicKey();
   const pass = process.env.AFTERPAY_SECRET_KEY!.trim();
   const raw = `${user}:${pass}`;
   const b64 =
