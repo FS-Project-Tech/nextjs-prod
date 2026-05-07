@@ -77,8 +77,8 @@ export default async function Home() {
           <ProductSection
             title="Continence care products"
             viewAllHref={`/product-category/${encodeURIComponent(continenceSlug)}`}
-            query={{ categorySlug: continenceSlug , orderby: "popularity", order: "random" }}
-            // shuffle={true}
+            query={{ categorySlug: continenceSlug, orderby: "popularity", order: "desc" }}
+            shuffle
           />
         </Suspense> 
         {/* CTA */}
@@ -94,6 +94,7 @@ export default async function Home() {
             subtitle="Fresh arrivals from our catalog."
             viewAllHref="/shop?sortBy=newest"
             query={{ orderby: "date", order: "desc" }}
+            shuffle
           />
         </Suspense>
         {/* Newsletter */}

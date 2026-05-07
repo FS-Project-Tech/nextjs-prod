@@ -1,18 +1,22 @@
 // D:\nextjs\components\CategoriesSection.tsx
+import { unstable_noStore } from "next/cache";
 import { getFeaturedCategories } from "@/lib/api";
 import { mapWpToFrontendUrl } from "@/lib/urlMapper";
 import CategoriesSectionDisplay, {
   type CategorySectionItem,
 } from "@/components/CategoriesSectionDisplay";
+import { shuffleAndTake } from "@/lib/utils/shuffle-take";
 
 export default async function CategoriesSection() {
+  unstable_noStore();
+
   const data = await getFeaturedCategories();
   const raw = data?.acf?.featured_category;
   const updates = Array.isArray(raw) ? raw : [];
 
   if (updates.length === 0) return null;
 
-  const items: CategorySectionItem[] = updates
+  const parsedItems: CategorySectionItem[] = updates
     .map((item: Record<string, unknown>) => {
       const category_link = item.category_link as { url?: string; target?: string } | undefined;
       const category_image = item.category_image as { url?: string; alt?: string } | undefined;
@@ -26,6 +30,8 @@ export default async function CategoriesSection() {
       };
     })
     .filter((x): x is CategorySectionItem => x !== null);
+
+  const items = shuffleAndTake(parsedItems, parsedItems.length);
 
   if (!items.length) return null;
 

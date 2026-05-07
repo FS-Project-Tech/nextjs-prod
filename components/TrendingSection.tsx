@@ -1,7 +1,9 @@
+import { unstable_noStore } from "next/cache";
 import { fetchProducts, type WooCommerceProduct } from "@/lib/woocommerce";
 import TrendingSectionClient from "@/components/TrendingSectionClient";
 import { ProductCardProduct } from "@/lib/types/product";
 import { enrichWcListProductPricesForCard } from "@/lib/utils/product";
+import { shuffleAndTake } from "@/lib/utils/shuffle-take";
 
 export const revalidate = 60; // ISR – 1 minute so sale data stays fresh
 
@@ -25,19 +27,21 @@ function toProductCardProduct(p: WooCommerceProduct): ProductCardProduct {
 }
 
 export default async function TrendingSection() {
+  unstable_noStore();
+
   let products: ProductCardProduct[] = [];
 
   try {
     const result = await fetchProducts({
-      per_page: 5,
+      per_page: 24,
       orderby: "popularity",
       on_sale: true,
       context: "edit",
     });
 
     const raw = result?.products || [];
-    products = raw.map((p: WooCommerceProduct) =>
-      toProductCardProduct(enrichWcListProductPricesForCard(p))
+    products = shuffleAndTake(raw, 5).map((p: WooCommerceProduct) =>
+      toProductCardProduct(enrichWcListProductPricesForCard(p)),
     );
   } catch {
     products = [];
