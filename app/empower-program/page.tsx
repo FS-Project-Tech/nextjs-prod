@@ -31,10 +31,10 @@ const EMPOWER_FORM_URL =
 const ACCENT = "#008542";
 
 const benefits: { title: string; Icon: typeof Sprout }[] = [
-  { title: "Immediate 10% discount on eligible products", Icon: Sprout },
+  { title: "Immediate 10% discount on eligible products", Icon: Percent },
   { title: "Priority delivery service", Icon: Handshake },
   { title: "First access to new product innovations", Icon: Truck },
-  { title: "Contribution towards environmentally responsible initiatives", Icon: Percent },
+  { title: "Contribution towards environmentally responsible initiatives", Icon: Sprout},
   { title: "Access to community support programs", Icon: Lightbulb },
   { title: "Dedicated customer support hotline", Icon: Headset },
 ];
@@ -192,7 +192,7 @@ export default async function EmpowerProgramPage() {
 
               <div className="grid grid-cols-1 gap-3 rounded-2xl bg-white/80 p-4 ring-1 ring-[#008542]/15">
                 <div className="flex items-center gap-3 rounded-xl bg-[#f6fcf9] p-3">
-                  <Sprout className="h-5 w-5 text-[#008542]" />
+                  <Percent className="h-5 w-5 text-[#008542]" />
                   <span className="text-sm font-medium text-gray-800">10% off eligible items</span>
                 </div>
                 <div className="flex items-center gap-3 rounded-xl bg-[#f6fcf9] p-3">
