@@ -95,8 +95,8 @@ function rejectBlockedBot(req: NextRequest): NextResponse | null {
 /** GET search proxy only — excluded from api-standard + global caps. Sync/delete stay limited. */
 function isTypesenseSearchReadPath(path: string): boolean {
   if (!path.startsWith("/api/typesense/search")) return false;
-  if (path.startsWith("/api/typesense/search/sync")) return false;
-  if (path.startsWith("/api/typesense/search/delete")) return false;
+  // if (path.startsWith("/api/typesense/search/sync")) return false;
+  // if (path.startsWith("/api/typesense/search/delete")) return false;
   return true;
 }
 

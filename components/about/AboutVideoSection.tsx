@@ -20,29 +20,27 @@ export default function AboutVideoSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           {/* Left: About Us Text */}
           <div className="order-2 lg:order-1">
-            <h2 className="text-3xl md:text-3xl font-bold text-gray-900 mb-6">About Us</h2>
+            <h2 className="text-3xl md:text-3xl font-bold text-gray-900 mb-6">The JOYA Promise</h2>
             <div className="space-y-4 text-gray-700 leading-relaxed">
-                <p className="text-lg">
-                  Here at Joya Medical Supplies, we are a trusted and reliable supplier of a wide
-                  range of medical products to professionals and the general public. We are proud to
-                  be an Australian family-owned and operated company. Our comprehensive inventory
-                  allows you to choose from a huge range and presents you with the most suitable
-                  medical supplies at modest rates.
+                <p>
+                  At Joya Medical Supplies, we provide trusted products to healthcare professionals, families and individuals across Australia.
                 </p>
                 <p>
-                  Not only that, but we also provide a store pick-up option, and with that motive,
-                  Joya Medical Supplies wanted to give our customers the freedom of availability.
+                  As a proudly Australian, family-owned business, JOYA was born from firsthand experience supporting our daughter, Joya, through her healthcare journey. That experience shapes everything we do - from the products we select to the way we support you.
                 </p>
                 <p>
-                  We want to stay in touch with our customers and make them believe that we are
-                  always here for them. That&apos;s why whenever you ring us, you won&apos;t hear an
-                  automated voice but our experts helping you.
+                  Our carefully curated range of over 10,000 products makes it easier to find what you need in one place. We focus on quality, reliability, and fair pricing - because accessing essential care shouldn’t be complicated.
                 </p>
-                <p className="font-medium text-gray-900">
-                  We aim to fulfil your medical needs by providing the right consumables to you at
-                  the right time. With more than 12,000 skus now, we aim to be
-                  your one-stop-shop solution for your medical requirements.
+                <p>
+                  Choose Australia-wide delivery or convenient store pick-up. 
                 </p>
+                <p>
+                  Most importantly, when you contact us, you’ll speak to a real person who genuinely wants to help - no automated systems, just knowledgeable support when you need it. 
+                </p>
+                <p>
+                  We’re here to make accessing medical supplies simpler, more supportive, and stress-free - so you can focus on what matters most.
+                </p>
+                <p>The JOYA Care Team</p>
               </div>
           </div>
  

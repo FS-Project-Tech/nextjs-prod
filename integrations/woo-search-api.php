@@ -34,6 +34,24 @@ add_action('rest_api_init', function () {
                     }
                 }
                 $product_query['include'] = array_values(array_unique(array_map('absint', $target_ids)));
+                // Typesense incremental sync must see the same prices as the storefront — flush cached
+                // product / variation pricing before wc_get_products() (stale transients are a common
+                // cause of "I updated Woo but search still shows the old price").
+                if ($target_product instanceof \WC_Product) {
+                    $clear_id = $target_product->is_type('variation')
+                        ? (int) $target_product->get_parent_id()
+                        : (int) $target_product->get_id();
+                    if ($clear_id > 0 && function_exists('wc_delete_product_transients')) {
+                        wc_delete_product_transients($clear_id);
+                    }
+                }
+                // Drop persistent object cache for these rows so wc_get_products() does not reuse stale price meta.
+                foreach ($product_query['include'] as $cid) {
+                    $cid = (int) $cid;
+                    if ($cid > 0) {
+                        clean_post_cache($cid);
+                    }
+                }
             }
 
             $products = wc_get_products($product_query);
@@ -624,9 +642,11 @@ function joya_ts_call_sync_endpoint($product_id) {
         return;
     }
 
+    // Always block until Next.js finishes the Typesense import. Non-blocking calls were often cut short
+    // when the PHP worker exited (especially under WP-Cron / pseudo-cron), leaving stale prices in search.
     $res = wp_remote_post($base . '/api/typesense/search/sync', [
-        'timeout' => 5,
-        'blocking' => false,
+        'timeout' => 45,
+        'blocking' => true,
         'headers' => [
             'Content-Type' => 'application/json',
             'Accept' => 'application/json',
@@ -640,7 +660,17 @@ function joya_ts_call_sync_endpoint($product_id) {
             'error' => $res->get_error_message(),
         ]);
     } else {
-        joya_ts_log_with_activity('info', 'sync request dispatched', ['product_id' => $product_id]);
+        $code = (int) wp_remote_retrieve_response_code($res);
+        if ($code < 200 || $code >= 300) {
+            $body = (string) wp_remote_retrieve_body($res);
+            joya_ts_log_with_activity('error', 'sync HTTP error', [
+                'product_id' => $product_id,
+                'status' => $code,
+                'body_preview' => substr($body, 0, 500),
+            ]);
+        } else {
+            joya_ts_log_with_activity('info', 'sync request completed', ['product_id' => $product_id]);
+        }
     }
 }
 
@@ -682,6 +712,9 @@ function joya_ts_call_delete_endpoint($id) {
 }
 
 function joya_ts_schedule_sync($product_id) {
+    if (defined('WP_IMPORTING') && WP_IMPORTING) {
+        return;
+    }
     $normalized_id = joya_ts_normalize_sync_id($product_id);
     if ($normalized_id <= 0) {
         joya_ts_log_with_activity('debug', 'schedule skipped: invalid normalized id', [
@@ -690,23 +723,30 @@ function joya_ts_schedule_sync($product_id) {
         ]);
         return;
     }
-    $cooldown_key = 'joya_ts_sync_cooldown_' . $normalized_id;
-    $cooldown_secs = 30;
-    if (get_transient($cooldown_key)) {
-        joya_ts_log_with_activity('debug', 'schedule skipped: cooldown active', [
+    static $ran_in_request = [];
+    if (isset($ran_in_request[$normalized_id])) {
+        joya_ts_log_with_activity('debug', 'immediate sync skipped: already run in this request', [
             'product_id' => $normalized_id,
-            'cooldown_secs' => $cooldown_secs,
         ]);
         return;
     }
-    $hook = 'joya_ts_deferred_sync_single';
-    if (!wp_next_scheduled($hook, [$normalized_id])) {
-        wp_schedule_single_event(time() + 2, $hook, [$normalized_id]);
-        set_transient($cooldown_key, 1, $cooldown_secs);
-        joya_ts_log_with_activity('debug', 'scheduled deferred sync', ['product_id' => $normalized_id]);
-    } else {
-        joya_ts_log_with_activity('debug', 'schedule skipped: already queued', ['product_id' => $normalized_id]);
+
+    // Multiple hooks can fire during one product/variation save; use a short lock to avoid duplicate
+    // sync posts while still keeping updates effectively instant.
+    $lock_key = 'joya_ts_sync_lock_' . $normalized_id;
+    if (get_transient($lock_key)) {
+        joya_ts_log_with_activity('debug', 'immediate sync skipped: lock active', [
+            'product_id' => $normalized_id,
+        ]);
+        return;
     }
+    set_transient($lock_key, 1, 8);
+    $ran_in_request[$normalized_id] = true;
+
+    joya_ts_log_with_activity('debug', 'running immediate sync', [
+        'product_id' => $normalized_id,
+    ]);
+    joya_ts_call_sync_endpoint($normalized_id);
 }
 
 /**
@@ -737,9 +777,9 @@ add_action('joya_ts_deferred_sync_single', function ($product_id) {
     $pid = (int) $product_id;
     joya_ts_log_with_activity('debug', 'running deferred sync', ['product_id' => $pid]);
     joya_ts_call_sync_endpoint($pid);
-    delete_transient('joya_ts_sync_cooldown_' . $pid);
 }, 10, 1);
 
+// Priority 999: run after WooCommerce has written variation / product meta (earlier save_post runs can see stale prices).
 add_action('save_post', function ($post_id, $post, $update) {
     if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
         return;
@@ -753,7 +793,30 @@ add_action('save_post', function ($post_id, $post, $update) {
         'update' => (bool) $update,
     ]);
     joya_ts_schedule_sync((int) $post_id);
-}, 20, 3);
+}, 999, 3);
+
+/**
+ * Price meta can change without a full save_post in some import / API paths — always reindex.
+ */
+function joya_ts_meta_change_maybe_sync($meta_id, $object_id, $meta_key, $_meta_value) {
+    if (defined('WP_IMPORTING') && WP_IMPORTING) {
+        return;
+    }
+    if (!in_array((string) $meta_key, ['_regular_price', '_sale_price', '_price'], true)) {
+        return;
+    }
+    $object_id = (int) $object_id;
+    if ($object_id <= 0) {
+        return;
+    }
+    $pt = get_post_type($object_id);
+    if ($pt === 'product_variation' || $pt === 'product') {
+        joya_ts_schedule_sync($object_id);
+    }
+}
+
+add_action('updated_post_meta', 'joya_ts_meta_change_maybe_sync', 99, 4);
+add_action('added_post_meta', 'joya_ts_meta_change_maybe_sync', 99, 4);
 
 add_action('woocommerce_update_product', function ($product_id) {
     joya_ts_schedule_sync((int) $product_id);
@@ -770,6 +833,11 @@ add_action('woocommerce_product_set_stock_status', function ($product_id) {
 add_action('woocommerce_variation_set_stock_status', function ($variation_id) {
     joya_ts_schedule_sync((int) $variation_id);
 }, 20, 1);
+
+/** Variation bulk / quick-edit paths sometimes skip generic save_post ordering; ensure reindex after price changes. */
+add_action('woocommerce_save_product_variation', function ($variation_id) {
+    joya_ts_schedule_sync((int) $variation_id);
+}, 25, 1);
 
 /**
  * Explicit status transitions (publish <-> non-publish) for products + variations.
