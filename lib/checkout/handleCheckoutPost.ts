@@ -16,6 +16,12 @@ import {
 import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate";
 import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
 import {
+  assertPayloadMatchesQuoteSnapshot,
+  isQuoteSnapshotFresh,
+  quoteSigningConstants,
+  verifyQuoteSignature,
+} from "@/lib/checkout/quoteSigning";
+import {
   countNdisDigitsInCheckoutPayload,
   stripEmptyNdisHcpFromInitiatePayload,
 } from "@/lib/checkout/ndisHcpPayload";
@@ -36,6 +42,7 @@ function clientIpFromRequest(req: NextRequest): string {
 }
 
 type CheckoutResultHint = "cod" | "redirect";
+type PricingSuccess = Extract<Awaited<ReturnType<typeof pricingWithEwayCartGate>>, { ok: true }>["pricing"];
 
 function orderResponseHeaders(
   orderIdRaw: string | number | bigint,
@@ -319,31 +326,74 @@ export async function handleCheckoutPost(
         });
       }
     });
-    const tValidate0 = Date.now();
-    const gate = await pricingWithEwayCartGate(payload, {
-      requestId: correlationId,
-      currency: wooStoreCurrency(),
-      customerType: deriveCustomerPricingKey(actor),
-    });
-    validateMs = Date.now() - tValidate0;
-    console.log("[checkout] validate time:", { requestId: correlationId, ms: validateMs });
+    let wooLineItems: PricingSuccess["wooLineItems"] | null = null;
+    let shippingLine: PricingSuccess["shippingLine"] | null = null;
+    let totals: PricingSuccess["totals"] | null = null;
+    let usedSignedQuoteFastPath = false;
 
-    if (gate.ok === false) {
-      const cartCheck = gate.cartCheck;
-      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
-      return NextResponse.json(
-        {
-          success: false,
-          error: cartCheck.errors[0]?.message ?? "Cart validation failed",
-          valid: cartCheck.valid,
-          errors: cartCheck.errors,
-          code: cartCheck.code,
-        },
-        { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
-      );
+    const tValidate0 = Date.now();
+    if (payload.payment_method === "eway" && payload.quote_signing) {
+      const { signature, snapshot } = payload.quote_signing;
+      const signatureOk = verifyQuoteSignature(snapshot, signature);
+      const fresh = signatureOk
+        ? isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)
+        : false;
+      const match = signatureOk && fresh ? assertPayloadMatchesQuoteSnapshot(payload, snapshot) : null;
+      if (signatureOk && fresh && match?.ok) {
+        wooLineItems = snapshot.woo_line_items;
+        shippingLine = snapshot.shipping_line;
+        totals = snapshot.totals;
+        usedSignedQuoteFastPath = true;
+      } else {
+        console.warn("[checkout] quote_signing_fast_path_skipped", {
+          requestId: correlationId,
+          signatureOk,
+          fresh,
+          mismatch: match && !match.ok && "message" in match ? match.message : null,
+        });
+      }
     }
 
-    const { wooLineItems, shippingLine, totals } = gate.pricing;
+    if (!usedSignedQuoteFastPath) {
+      const gate = await pricingWithEwayCartGate(payload, {
+        requestId: correlationId,
+        currency: wooStoreCurrency(),
+        customerType: deriveCustomerPricingKey(actor),
+      });
+
+      if (gate.ok === false) {
+        validateMs = Date.now() - tValidate0;
+        const cartCheck = gate.cartCheck;
+        logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+        return NextResponse.json(
+          {
+            success: false,
+            error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+            valid: cartCheck.valid,
+            errors: cartCheck.errors,
+            code: cartCheck.code,
+          },
+          { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+        );
+      }
+
+      ({ wooLineItems, shippingLine, totals } = gate.pricing);
+    }
+
+    validateMs = Date.now() - tValidate0;
+    console.log("[checkout] validate time:", {
+      requestId: correlationId,
+      ms: validateMs,
+      source: usedSignedQuoteFastPath ? "signed_quote" : "woo_pricing_gate",
+    });
+
+    if (!wooLineItems || !shippingLine || !totals) {
+      logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+      return NextResponse.json(
+        { success: false, error: "Unable to resolve checkout pricing. Please refresh totals and try again." },
+        { status: 400 },
+      );
+    }
     const checkoutSessionId =
       typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
         ? payload.checkout_session_id.trim()
