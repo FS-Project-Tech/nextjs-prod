@@ -77,27 +77,6 @@ async function loadCategorySlugToName(): Promise<Record<string, string>> {
   return categoryNameBySlugPromise;
 }
 
-/**
- * Routes where a debounced Typesense response should not auto-open the suggestion
- * panel (e.g. after landing on PDP with the query still in the header field).
- * The user can still open suggestions by focusing the input.
- */
-function allowAutoOpenPanelForPath(pathname: string): boolean {
-  if (pathname.startsWith("/product/")) return false;
-  if (pathname.startsWith("/dashboard")) return false;
-  if (pathname.startsWith("/checkout")) return false;
-  if (pathname.startsWith("/cart")) return false;
-  if (pathname.startsWith("/order")) return false;
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/register") ||
-    pathname.startsWith("/forgot-password")
-  ) {
-    return false;
-  }
-  return true;
-}
-
 function SearchSpinner() {
   return (
     <svg
@@ -353,6 +332,8 @@ export default function HeaderSearch() {
   const searchGenerationRef = useRef(0);
   /** After redirecting to search/product from this box, skip reopening when the in-flight Typesense response returns. */
   const suppressAutoOpenAfterNavigationRef = useRef(false);
+  /** Track real route changes vs query-string-only updates (same pathname). */
+  const prevPathnameForNavRef = useRef<string | null>(null);
 
   const closePanel = useCallback(() => {
     setShow(false);
@@ -409,13 +390,23 @@ export default function HeaderSearch() {
     }
   }, [pathname, urlSearchQ]);
 
-  /** Always close suggestions after any navigation/redirect. */
+  /**
+   * Invalidate in-flight Typesense work whenever the URL changes.
+   * Only treat **pathname** changes like a full navigation for closing the panel and
+   * suppressing auto-open (same-pathname query updates — e.g. `variation_id` — should not
+   * re-lock the dropdown site-wide).
+   */
   useEffect(() => {
-    // Cancel stale responses from previous page and keep panel closed after redirects.
     searchGenerationRef.current += 1;
-    closePanel();
     setIsSearching(false);
-    suppressAutoOpenAfterNavigationRef.current = true;
+
+    const pathChanged = prevPathnameForNavRef.current !== pathname;
+    prevPathnameForNavRef.current = pathname;
+
+    if (pathChanged) {
+      closePanel();
+      suppressAutoOpenAfterNavigationRef.current = true;
+    }
   }, [pathname, searchParams, closePanel]);
 
   const categoryLabel = useCallback(
@@ -513,15 +504,10 @@ export default function HeaderSearch() {
         const brandFacet = res.facet_counts?.find((f) => f.field_name === "brand");
         setBrands(brandFacet?.counts || []);
 
-        if (suppressAutoOpenAfterNavigationRef.current) {
-          // Keep suppress until the user focuses the input or edits the query.
-          // Clearing here allowed a second fetch completion to reopen on PDP.
-        } else if (
-          !pathname.startsWith("/search") &&
-          allowAutoOpenPanelForPath(pathname)
-        ) {
-          // On /search route, keep the suggestion panel closed on URL load.
-          // Users can still open it intentionally by focusing the input.
+        // Open whenever debounced results arrive and we are not suppressing post-route-change
+        // (suppress is cleared by onChange / onFocus). Applies on every route including
+        // `/search` — landing with `?q=` still has suppress=true until the user edits/focuses.
+        if (!suppressAutoOpenAfterNavigationRef.current) {
           setShow(true);
         }
         setActiveIndex(-1);
