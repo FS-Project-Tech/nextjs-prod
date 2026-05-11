@@ -4,7 +4,7 @@ import {
   getAxiosErrorDetails,
   isTimeoutError,
 } from "@/lib/utils/errors";
-import { WC_REST_INSTOCK } from "./constants";
+import { WC_REST_CATALOG } from "./constants";
 import type { WooCommerceProduct, WooCommerceVariation } from "./types";
 import { wcGet } from "./wc-fetch";
 
@@ -57,7 +57,7 @@ export const fetchProductsByCategory = async (categoryId: number): Promise<WooCo
   try {
     const { data } = await wcGet<WooCommerceProduct[]>(
       "/products",
-      { category: categoryId, ...WC_REST_INSTOCK },
+      { category: categoryId, ...WC_REST_CATALOG },
       "products",
     );
     return data;

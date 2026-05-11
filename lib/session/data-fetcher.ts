@@ -312,6 +312,7 @@ export async function fetchProductsWithSession(
     per_page: params.perPage || 24,
     page: params.page || 1,
     stock_status: "instock",
+    status: "publish",
   };
 
   if (params.category) {
@@ -393,7 +394,7 @@ export async function fetchProductWithSession(
   // Fetch by slug
   const result = await wcFetch<WCProduct[]>(
     "/products",
-    { slug: idOrSlug },
+    { slug: idOrSlug, status: "publish" },
     {
       session,
       ttl: CACHE_TTL.PRODUCT,

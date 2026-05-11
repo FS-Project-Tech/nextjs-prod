@@ -6,7 +6,6 @@ import { useCart } from "@/components/CartProvider";
 import { useSession } from "next-auth/react";
 import { parseCartTotal } from "@/lib/cart/pricing";
 import { formatPrice } from "@/lib/format-utils";
-import type { QuoteTemplate } from "@/lib/types/quote-template";
 
 interface RequestQuoteModalProps {
   isOpen: boolean;
@@ -27,10 +26,6 @@ export default function RequestQuoteModal({
 }: RequestQuoteModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notes, setNotes] = useState("");
-  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [templateDescription, setTemplateDescription] = useState("");
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const { success, error: showError } = useToast();
   const { items, total } = useCart();
   const { data: session } = useSession();
@@ -84,9 +79,6 @@ export default function RequestQuoteModal({
       const quoteNumber = data.quote_number || data.quote_id || "your quote";
       success(`Quote request ${quoteNumber} submitted successfully! Check your email for details.`);
       setNotes(""); // Reset notes
-      setShowSaveTemplate(false);
-      setTemplateName("");
-      setTemplateDescription("");
       onClose();
     } catch (err: any) {
       console.error("Quote request error:", err);
@@ -96,69 +88,24 @@ export default function RequestQuoteModal({
     }
   };
 
-  const handleSaveTemplate = async () => {
-    if (!templateName.trim()) {
-      showError("Template name is required");
-      return;
-    }
-
-    if (!user || !user.email) {
-      showError("Please log in to save templates");
-      return;
-    }
-
-    setIsSavingTemplate(true);
-    try {
-      const response = await fetch("/api/dashboard/quote-templates", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          name: templateName.trim(),
-          description: templateDescription.trim() || undefined,
-          items: items.map((item) => ({
-            name: item.name,
-            sku: item.sku || null,
-            price: item.price,
-            qty: item.qty,
-            attributes: item.attributes || {},
-            product_id: item.id ? parseInt(item.id) : undefined,
-          })),
-          shipping_method: shippingMethod || undefined,
-          notes: notes.trim() || undefined,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save template");
-      }
-
-      success(`Template "${templateName}" saved successfully!`);
-      setShowSaveTemplate(false);
-      setTemplateName("");
-      setTemplateDescription("");
-    } catch (err: any) {
-      showError(err.message || "Failed to save template");
-    } finally {
-      setIsSavingTemplate(false);
-    }
-  };
-
   const itemCount = items.length;
   const subtotal = parseFloat(total || "0");
   const finalTotal = grandTotal !== undefined ? grandTotal : subtotal + shippingAmount - discount;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="request-quote-modal-title"
+    >
+      <div className="relative z-[1] max-h-[min(90vh,40rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl mx-4">
         {/* Header */}
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Request a Quote</h2>
+            <h2 id="request-quote-modal-title" className="text-xl font-bold text-white">
+              Request a Quote
+            </h2>
             <button
               onClick={onClose}
               disabled={isSubmitting}
@@ -260,118 +207,6 @@ export default function RequestQuoteModal({
                 Help us provide you with the best quote by sharing any specific requirements.
               </p>
             </div>
-
-            {/* Save as Template */}
-            {!showSaveTemplate ? (
-              <div className="mb-6">
-                <button
-                  type="button"
-                  onClick={() => setShowSaveTemplate(true)}
-                  disabled={isSubmitting}
-                  className="w-full px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                    />
-                  </svg>
-                  Save as Template
-                </button>
-              </div>
-            ) : (
-              <div className="mb-6 p-4 bg-teal-50 rounded-lg border border-teal-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-semibold text-teal-900">Save as Template</h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSaveTemplate(false);
-                      setTemplateName("");
-                      setTemplateDescription("");
-                    }}
-                    className="text-teal-600 hover:text-teal-700"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label
-                      htmlFor="template-name"
-                      className="block text-xs font-medium text-gray-700 mb-1"
-                    >
-                      Template Name *
-                    </label>
-                    <input
-                      id="template-name"
-                      type="text"
-                      value={templateName}
-                      onChange={(e) => setTemplateName(e.target.value)}
-                      placeholder="e.g., Monthly Order Template"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                      disabled={isSavingTemplate}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="template-description"
-                      className="block text-xs font-medium text-gray-700 mb-1"
-                    >
-                      Description (Optional)
-                    </label>
-                    <textarea
-                      id="template-description"
-                      value={templateDescription}
-                      onChange={(e) => setTemplateDescription(e.target.value)}
-                      rows={2}
-                      placeholder="Brief description of this template..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
-                      disabled={isSavingTemplate}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSaveTemplate}
-                    disabled={isSavingTemplate || !templateName.trim()}
-                    className="w-full px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isSavingTemplate ? (
-                      <>
-                        <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-r-transparent"></div>
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                        Save Template
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Actions */}

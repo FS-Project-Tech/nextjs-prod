@@ -114,28 +114,30 @@ function CartPageContent() {
   }
  
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
-      <h1 className="mb-6 text-2xl font-semibold pt-4">Shopping Cart</h1>
- 
-      <div className="grid gap-6 lg:grid-cols-3">
+    <div className="mx-auto max-w-7xl px-4 pb-10 pt-2 sm:px-6 lg:px-8">
+      <h1 className="mb-4 pt-2 text-2xl font-semibold text-[#000] sm:mb-6 sm:pt-4 sm:text-3xl">
+        Shopping Cart
+      </h1>
+
+      <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
         {/* Cart Items Section */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-xl bg-white p-6">
-            <h2 className="mb-4 text-lg font-semibold">Cart Items</h2>
+        <div className="space-y-4 lg:col-span-2">
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+            <h2 className="mb-4 text-lg font-semibold text-[#000] sm:text-xl">Cart Items</h2>
             {items.length === 0 ? (
               <div className="py-8 text-center text-gray-600">Your cart is empty.</div>
             ) : (
-              <ul className="space-y-4 divide-y">
+              <ul className="divide-y divide-gray-100">
                 {items.map((i) => (
-                  <li key={i.id} className="pt-4 first:pt-0">
-                    <div className="flex gap-4">
-                      <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                  <li key={i.id} className="py-5 first:pt-0 sm:py-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
+                      <div className="relative mx-auto h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:mx-0 sm:h-24 sm:w-24 sm:rounded-lg">
                         {i.imageUrl ? (
                           <Image
                             src={i.imageUrl}
                             alt={i.name}
                             fill
-                            sizes="96px"
+                            sizes="(max-width: 640px) 112px, 96px"
                             className="object-cover"
                           />
                         ) : (
@@ -144,12 +146,14 @@ function CartPageContent() {
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900">{i.name}</h3>
- 
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-semibold leading-snug text-gray-900 sm:text-[17px]">
+                          {i.name}
+                        </h3>
+
                         {i.attributes && Object.keys(i.attributes).length > 0 && (
-                          <div className="mt-1 text-sm text-gray-600">
-                            <span className="font-medium">Variations: </span>
+                          <div className="mt-2 text-sm leading-relaxed text-gray-600">
+                            <span className="font-medium text-gray-700">Variations: </span>
                             {Object.entries(i.attributes).map(([key, value], idx) => (
                               <span key={key}>
                                 {key}: <span className="font-medium text-gray-900">{value}</span>
@@ -158,80 +162,94 @@ function CartPageContent() {
                             ))}
                           </div>
                         )}
- 
+
                         {i.sku && (
-                          <div className="mt-1 text-sm text-gray-600">
-                            <span className="font-medium">SKU: </span>
+                          <div className="mt-1.5 text-sm text-gray-600">
+                            <span className="font-medium text-gray-700">SKU: </span>
                             <span className="text-gray-900">{i.sku}</span>
                           </div>
                         )}
- 
+
                         {i.deliveryPlan && i.deliveryPlan !== "none" && (
-                          <div className="mt-1 text-sm text-gray-600">
-                            <span className="font-medium">Delivery: </span>
+                          <div className="mt-1.5 text-sm text-gray-600">
+                            <span className="font-medium text-gray-700">Delivery: </span>
                             <span className="text-gray-900">
                               {getDeliveryFrequencyLabel(i.deliveryPlan)}
                             </span>
                           </div>
                         )}
                         {i.empowerEligible && (
-                          <div className="mt-1 text-xs font-medium text-emerald-700">
+                          <div className="mt-2 text-xs font-medium text-emerald-700">
                             Empower discount available at checkout
                           </div>
                         )}
- 
-                        <div className="mt-2 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <label className="text-sm text-gray-600">Qty:</label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={i.qty}
-                              onChange={(e) =>
-                                updateItemQty(i.id, Math.max(1, Number(e.target.value)))
-                              }
-                              className="w-20 rounded border px-2 py-1 text-sm"
-                            />
-                          </div>
-                          <div className="text-right">
-                            {(() => {
-                              const priceInfo = formatPriceWithLabel(
-                                i.price,
-                                i.tax_class,
-                                i.tax_status
-                              );
-                              const totalPrice = Number(i.price || 0) * i.qty;
-                              const totalInfo = formatPriceWithLabel(
-                                totalPrice.toString(),
-                                i.tax_class,
-                                i.tax_status
-                              );
-                              return (
-                                <div className="space-y-0.5">
-                                  <div className="font-semibold text-gray-900">
-                                    {totalInfo.label
-                                      ? `${totalInfo.label}: ${totalInfo.price}`
-                                      : totalInfo.price}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
+
+                        {(() => {
+                          const priceInfo = formatPriceWithLabel(
+                            i.price,
+                            i.tax_class,
+                            i.tax_status
+                          );
+                          const totalPrice = Number(i.price || 0) * i.qty;
+                          const totalInfo = formatPriceWithLabel(
+                            totalPrice.toString(),
+                            i.tax_class,
+                            i.tax_status
+                          );
+                          const showEachRow =
+                            i.qty > 1 ||
+                            (priceInfo.label &&
+                              totalInfo.label &&
+                              `${priceInfo.label}: ${priceInfo.price}` !==
+                                `${totalInfo.label}: ${totalInfo.price}`);
+                          return (
+                            <div className="mt-4 flex flex-col gap-4 border-t border-gray-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+                              <div className="flex items-center justify-between gap-3 sm:justify-start">
+                                <label
+                                  htmlFor={`cart-qty-${i.id}`}
+                                  className="text-sm font-medium text-gray-700"
+                                >
+                                  Qty
+                                </label>
+                                <input
+                                  id={`cart-qty-${i.id}`}
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  value={i.qty}
+                                  onChange={(e) =>
+                                    updateItemQty(i.id, Math.max(1, Number(e.target.value)))
+                                  }
+                                  className="min-h-11 w-[5.5rem] rounded-lg border border-gray-300 px-3 py-2 text-center text-base tabular-nums shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 sm:min-h-10 sm:text-sm"
+                                />
+                              </div>
+                              <div className="text-left sm:text-right">
+                                <div className="text-lg font-bold tabular-nums text-gray-900 sm:text-base">
+                                  {totalInfo.label
+                                    ? `${totalInfo.label}: ${totalInfo.price}`
+                                    : totalInfo.price}
+                                </div>
+                                {showEachRow && (
+                                  <div className="mt-0.5 text-sm text-gray-600 tabular-nums">
                                     {priceInfo.label
                                       ? `${priceInfo.label}: ${priceInfo.price}`
                                       : priceInfo.price}{" "}
                                     each
                                   </div>
-                                  {totalInfo.exclPrice && (
-                                    <div className="text-xs text-gray-600">
-                                      Excl. GST: {totalInfo.exclPrice} total
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
+                                )}
+                                {totalInfo.exclPrice && (
+                                  <div className="mt-1 text-xs text-gray-600">
+                                    Excl. GST: {totalInfo.exclPrice} total
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <button
+                          type="button"
                           onClick={() => removeItem(i.id)}
-                          className="mt-2 text-sm text-rose-600 hover:text-rose-700"
+                          className="mt-4 flex w-full min-h-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50/80 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 sm:mt-3 sm:inline-flex sm:w-auto sm:min-h-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:text-rose-600 sm:hover:bg-transparent sm:hover:text-rose-800 sm:hover:underline"
                         >
                           Remove
                         </button>
@@ -242,23 +260,23 @@ function CartPageContent() {
               </ul>
             )}
           </div>
- 
-          <div className="rounded-xl bg-white p-6">
+
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
             <h2 className="mb-2 text-sm font-medium text-gray-700">Have any discount code?</h2>
             {!appliedCoupon ? (
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value)}
                   placeholder="Enter coupon code"
                   disabled={couponLoading}
-                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                  className="min-h-11 w-full flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base disabled:bg-gray-100 sm:min-h-10 sm:text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => void applyCoupon()}
                   disabled={couponLoading || !couponInput.trim()}
-                  className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:bg-gray-400"
+                  className="min-h-11 shrink-0 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:bg-gray-400 sm:min-h-10"
                 >
                   {couponLoading ? "…" : "Apply"}
                 </button>
@@ -293,8 +311,8 @@ function CartPageContent() {
         </div>
  
         <div className="lg:col-span-1">
-          <div className="rounded-xl bg-white p-6 sticky top-4">
-            <h2 className="mb-4 text-lg font-semibold">Order Summary</h2>
+          <div className="sticky top-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Order Summary</h2>
  
             <div className="mb-4 border-b pb-4">
               <ShippingOptions

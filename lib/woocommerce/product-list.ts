@@ -1,5 +1,5 @@
 import { normalizeError, isTimeoutError } from "@/lib/utils/errors";
-import { WC_REST_INSTOCK } from "./constants";
+import { WC_REST_CATALOG } from "./constants";
 import type { PaginatedProductResponse, WooCommerceCategory, WooCommerceProduct } from "./types";
 import { wcGet } from "./wc-fetch";
 import {
@@ -266,9 +266,6 @@ export const fetchProducts = async (params?: {
     if (params?.on_sale === true) {
       cleanParams.on_sale = true;
     }
-    if (params?.status) {
-      cleanParams.status = params.status;
-    }
 
     if (params?.context === "edit" || params?.context === "view") {
       cleanParams.context = params.context;
@@ -279,7 +276,10 @@ export const fetchProducts = async (params?: {
       cleanParams.per_page = Math.max((cleanParams.per_page as number) || 24, params.include.length);
     }
 
-    Object.assign(cleanParams, WC_REST_INSTOCK);
+    Object.assign(cleanParams, WC_REST_CATALOG);
+    if (params?.status) {
+      cleanParams.status = params.status;
+    }
 
     console.log("🛒 WooCommerce Request:", {
       endpoint: "/products",

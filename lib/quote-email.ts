@@ -1,6 +1,10 @@
 /**
  * Quote Email Notifications
  * Handles sending emails for various quote events
+ *
+ * Staff copy (same HTML/details) — set `QUOTE_STAFF_NOTIFY_EMAIL` to a comma-separated list, or leave
+ * unset to default to info@joyamedicalsupplies.com.au. Set to empty string `QUOTE_STAFF_NOTIFY_EMAIL=`
+ * or `false` / `0` to disable.
  */
 
 import { getWpBaseUrl } from "./auth";
@@ -23,14 +27,62 @@ interface EmailOptions {
   type: QuoteEmailEvent;
 }
 
+const DEFAULT_STAFF_NOTIFY = "info@joyamedicalsupplies.com.au";
+
+function escapeHtmlForEmail(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
- * Send email via WordPress or webhook
- * Exported for use in other modules
+ * Inboxes that receive an internal copy of every quote email (customer email unchanged).
  */
-export async function sendEmail(options: EmailOptions): Promise<boolean> {
+export function getQuoteStaffNotifyEmails(): string[] {
+  const rawEnv = process.env.QUOTE_STAFF_NOTIFY_EMAIL;
+  if (rawEnv === "false" || rawEnv === "0") {
+    return [];
+  }
+  if (rawEnv === undefined || rawEnv === null) {
+    return [DEFAULT_STAFF_NOTIFY];
+  }
+  const trimmed = String(rawEnv).trim();
+  if (trimmed === "") {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      trimmed
+        .split(/[,;]+/)
+        .map((a) => a.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function prependStaffCopyBannerHtml(html: string, customerEmail: string): string {
+  const safe = escapeHtmlForEmail(customerEmail);
+  const banner = `<div style="background:#fef3c7;padding:12px 16px;margin:0 0 16px;border-radius:8px;border:1px solid #f59e0b;font-size:14px;line-height:1.5;color:#78350f;"><strong>Staff copy</strong> — original recipient: ${safe}</div>`;
+  if (/<body[^>]*>/i.test(html)) {
+    return html.replace(/<body[^>]*>/i, (open) => `${open}${banner}`);
+  }
+  return `${banner}${html}`;
+}
+
+/**
+ * One delivery attempt: WordPress send-email, then QUOTE_EMAIL_WEBHOOK_URL.
+ */
+async function deliverQuoteEmailOnce(
+  to: string,
+  subject: string,
+  body: string,
+  html: string | undefined,
+  type: QuoteEmailEvent
+): Promise<boolean> {
   const wpBase = getWpBaseUrl();
 
-  // Try WordPress email endpoint first
   if (wpBase) {
     try {
       const wpResponse = await fetch(`${wpBase}/wp-json/wp/v2/send-email`, {
@@ -39,11 +91,11 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: options.to,
-          subject: options.subject,
-          message: options.html || options.body,
+          to,
+          subject,
+          message: html || body,
           headers: {
-            "Content-Type": options.html ? "text/html; charset=UTF-8" : "text/plain; charset=UTF-8",
+            "Content-Type": html ? "text/html; charset=UTF-8" : "text/plain; charset=UTF-8",
           },
         }),
         cache: "no-store",
@@ -52,12 +104,11 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
       if (wpResponse.ok) {
         return true;
       }
-    } catch (wpError) {
+    } catch {
       console.log("WordPress email endpoint not available, trying webhook");
     }
   }
 
-  // Try email webhook if available
   const emailWebhook = process.env.QUOTE_EMAIL_WEBHOOK_URL;
   if (emailWebhook) {
     try {
@@ -67,11 +118,11 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: options.to,
-          subject: options.subject,
-          body: options.body,
-          html: options.html,
-          type: options.type,
+          to,
+          subject,
+          body,
+          html,
+          type,
         }),
       });
 
@@ -83,16 +134,51 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     }
   }
 
-  // Log email in development
   if (process.env.NODE_ENV === "development") {
     console.log("Quote Email:", {
-      to: options.to,
-      subject: options.subject,
-      type: options.type,
+      to,
+      subject,
+      type,
     });
   }
 
   return false;
+}
+
+/**
+ * Send email via WordPress or webhook
+ * Exported for use in other modules
+ */
+export async function sendEmail(options: EmailOptions): Promise<boolean> {
+  const primaryOk = await deliverQuoteEmailOnce(
+    options.to,
+    options.subject,
+    options.body,
+    options.html,
+    options.type
+  );
+
+  const customer = options.to.trim().toLowerCase();
+  const staffList = getQuoteStaffNotifyEmails();
+
+  for (const staffRaw of staffList) {
+    const staffTo = staffRaw.trim();
+    if (!staffTo || staffTo.toLowerCase() === customer) {
+      continue;
+    }
+    const staffSubject = `[Joya — staff copy] ${options.subject}`;
+    const staffBody = `${options.body}\n\n---\nInternal copy — original recipient: ${options.to}`;
+    const staffHtml = options.html
+      ? prependStaffCopyBannerHtml(options.html, options.to)
+      : undefined;
+    try {
+      await deliverQuoteEmailOnce(staffTo, staffSubject, staffBody, staffHtml, options.type);
+    } catch (e) {
+      console.error("[quote-email] staff notify failed", { staffTo, error: e });
+    }
+  }
+
+  return primaryOk;
 }
 
 /**

@@ -68,7 +68,7 @@ export async function fetchProductsByIdsForServer(productIds: number[]): Promise
 export async function getProductsByBrandForServer(brandId: number): Promise<unknown> {
   const { data } = await wcGet<unknown[]>(
     "/products",
-    { product_brand: brandId, per_page: 20 },
+    { product_brand: brandId, per_page: 20, status: "publish" },
     "products",
   );
   return data;
@@ -77,7 +77,7 @@ export async function getProductsByBrandForServer(brandId: number): Promise<unkn
 export async function getFeaturedProductsSampleForServer(): Promise<unknown> {
   const { data } = await wcGet<unknown[]>(
     "/products",
-    { per_page: 5, _fields: "id,name,slug,price,images" },
+    { per_page: 5, status: "publish", _fields: "id,name,slug,price,images" },
     "products",
   );
   return data;

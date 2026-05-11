@@ -1,6 +1,6 @@
 import { getWpBaseUrl } from "@/lib/wp-utils";
 import { extractProductBrands } from "@/lib/utils/product";
-import { WC_REST_INSTOCK } from "./constants";
+import { WC_REST_CATALOG } from "./constants";
 import { wcGet } from "./wc-fetch";
 import type { PaginatedProductResponse, WooCommerceProduct } from "./types";
 import { applySortBy } from "./sort-products";
@@ -21,7 +21,7 @@ async function filterIdsToInStockProductIds(ids: number[]): Promise<number[]> {
         {
           include: slice.join(","),
           per_page: slice.length,
-          ...WC_REST_INSTOCK,
+          ...WC_REST_CATALOG,
         },
         "products",
       )
@@ -116,7 +116,7 @@ export async function fetchProductsByBrandTaxonomy(
           category: categoryId,
           per_page: wcPerPage,
           page: wcPage,
-          ...WC_REST_INSTOCK,
+          ...WC_REST_CATALOG,
         },
         "products",
       );
@@ -146,7 +146,7 @@ export async function fetchProductsByBrandTaxonomy(
     {
       include: pageIds.join(","),
       per_page: pageIds.length,
-      ...WC_REST_INSTOCK,
+      ...WC_REST_CATALOG,
     },
     "products",
   );
@@ -202,7 +202,7 @@ export async function fetchProductsByBrandTaxonomyMulti(
           category: categoryId,
           per_page: wcPerPage,
           page: wcPage,
-          ...WC_REST_INSTOCK,
+          ...WC_REST_CATALOG,
         },
         "products",
       );
@@ -231,7 +231,7 @@ export async function fetchProductsByBrandTaxonomyMulti(
     {
       include: pageIds.join(","),
       per_page: pageIds.length,
-      ...WC_REST_INSTOCK,
+      ...WC_REST_CATALOG,
     },
     "products",
   );
@@ -270,7 +270,7 @@ export async function filterCategoryProductsByBrandSlugs(
         category: categoryId,
         per_page: rescuePerPage,
         page: rescuePage,
-        ...WC_REST_INSTOCK,
+        ...WC_REST_CATALOG,
       },
       "products",
     );
