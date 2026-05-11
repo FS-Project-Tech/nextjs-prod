@@ -149,6 +149,89 @@ export async function sendPlainEmailViaBrevo(opts: {
     return { ok: false, status: res.status, detail };
   }
 
+/**
+ * Transactional email with explicit HTML (e.g. quote notifications). Same sender rules as
+ * {@link sendPlainEmailViaBrevo}.
+ */
+export async function sendHtmlEmailViaBrevo(opts: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+  senderName?: string;
+  senderEmail?: string;
+}): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, status: 500, detail: "BREVO_API_KEY not set" };
+  }
+
+  const senderEmail = (opts.senderEmail || resolveBrevoSenderEmail(opts.to)).trim();
+
+  const senderName =
+    opts.senderName ||
+    process.env.CONTACT_FORM_BREVO_SENDER_NAME?.trim() ||
+    process.env.NEXT_PUBLIC_SITE_NAME?.trim() ||
+    "Website";
+
+  const body: Record<string, unknown> = {
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: opts.to }],
+    subject: opts.subject,
+    textContent: opts.text,
+    htmlContent: opts.html,
+  };
+
+  if (opts.replyTo) {
+    body.replyTo = { email: opts.replyTo };
+  }
+
+  let res: Response;
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 25_000);
+    try {
+      res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": apiKey,
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(t);
+    }
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.name === "AbortError"
+          ? "Brevo request timed out"
+          : e.message
+        : "network error";
+    return { ok: false, status: 502, detail: msg };
+  }
+
+  if (res.ok) {
+    return { ok: true };
+  }
+
+  const detail = await brevoFailureDetail(res);
+  if (process.env.NODE_ENV !== "production") {
+    console.error("[Brevo] sendHtmlEmailViaBrevo failed", {
+      senderEmail,
+      to: opts.to,
+      status: res.status,
+      detail,
+    });
+  }
+  return { ok: false, status: res.status, detail };
+}
+
 export type BrevoAttachment = { name: string; contentBase64: string };
 
 /**

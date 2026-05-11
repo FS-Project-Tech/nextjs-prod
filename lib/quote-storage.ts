@@ -35,22 +35,9 @@ export async function storeQuote(
   payload: QuoteRequestPayload,
   quoteNumber: string
 ): Promise<Quote | null> {
-  const wpBase = getWpBaseUrl();
-  if (!wpBase) {
-    console.error("WordPress URL not configured");
-    return null;
-  }
-
-  const token = await getAuthToken();
-  if (!token) {
-    console.error("No auth token available for storing quote");
-    return null;
-  }
-
   const now = new Date().toISOString();
   const expiresAt = calculateExpiryDate(30);
 
-  // Initialize status history with pending status
   const initialStatusHistory: QuoteStatusHistory = {
     status: "pending",
     changed_at: now,
@@ -62,7 +49,7 @@ export async function storeQuote(
     id: quoteNumber,
     quote_number: quoteNumber,
     user_email: payload.email,
-    user_name: payload.userName,
+    user_name: payload.userName || "Customer",
     items: payload.items,
     subtotal: payload.subtotal,
     shipping: payload.shipping,
@@ -76,6 +63,22 @@ export async function storeQuote(
     expires_at: expiresAt,
     status_history: [initialStatusHistory],
   };
+
+  const wpBase = getWpBaseUrl();
+  if (!wpBase) {
+    console.warn(
+      "[quote-storage] WordPress URL not configured — quote not saved; confirmation email can still send.",
+    );
+    return quote;
+  }
+
+  const token = await getAuthToken();
+  if (!token) {
+    console.warn(
+      "[quote-storage] No auth token — quote not saved to WordPress; confirmation email can still send.",
+    );
+    return quote;
+  }
 
   try {
     // Try to store as WordPress custom post type first

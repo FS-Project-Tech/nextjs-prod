@@ -7,6 +7,7 @@
  * or `false` / `0` to disable.
  */
 
+import { sendHtmlEmailViaBrevo, sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
 import { getWpBaseUrl } from "./auth";
 import type { Quote } from "./types/quote";
 import { formatPrice } from "./format-utils";
@@ -72,7 +73,8 @@ function prependStaffCopyBannerHtml(html: string, customerEmail: string): string
 }
 
 /**
- * One delivery attempt: WordPress send-email, then QUOTE_EMAIL_WEBHOOK_URL.
+ * One delivery attempt: Brevo (same as contact form), then WordPress send-email, then
+ * QUOTE_EMAIL_WEBHOOK_URL.
  */
 async function deliverQuoteEmailOnce(
   to: string,
@@ -81,35 +83,79 @@ async function deliverQuoteEmailOnce(
   html: string | undefined,
   type: QuoteEmailEvent
 ): Promise<boolean> {
+  const siteName = process.env.NEXT_PUBLIC_SITE_NAME?.trim() || "Joya Medical Supplies";
+
+  if (process.env.BREVO_API_KEY?.trim()) {
+    const br = html?.trim()
+      ? await sendHtmlEmailViaBrevo({
+          to,
+          subject,
+          text: body,
+          html: html.trim(),
+          senderName: siteName,
+        })
+      : await sendPlainEmailViaBrevo({
+          to,
+          subject,
+          text: body,
+          senderName: siteName,
+        });
+    if (br.ok === true) {
+      return true;
+    }
+    console.warn("[quote-email] Brevo failed, trying WordPress / webhook", {
+      type,
+      to,
+      detail: br.ok === false ? br.detail : "",
+      status: br.ok === false ? br.status : undefined,
+    });
+  }
+
   const wpBase = getWpBaseUrl();
 
   if (wpBase) {
     try {
-      const wpResponse = await fetch(`${wpBase}/wp-json/wp/v2/send-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to,
-          subject,
-          message: html || body,
+      const wpCtrl = new AbortController();
+      const wpT = setTimeout(() => wpCtrl.abort(), 20_000);
+      let wpResponse: Response;
+      try {
+        wpResponse = await fetch(`${wpBase}/wp-json/wp/v2/send-email`, {
+          method: "POST",
           headers: {
-            "Content-Type": html ? "text/html; charset=UTF-8" : "text/plain; charset=UTF-8",
+            "Content-Type": "application/json",
           },
-        }),
-        cache: "no-store",
-      });
+          body: JSON.stringify({
+            to,
+            subject,
+            message: html || body,
+            headers: {
+              "Content-Type": html ? "text/html; charset=UTF-8" : "text/plain; charset=UTF-8",
+            },
+          }),
+          cache: "no-store",
+          signal: wpCtrl.signal,
+        });
+      } finally {
+        clearTimeout(wpT);
+      }
 
       if (wpResponse.ok) {
         return true;
       }
-    } catch {
-      console.log("WordPress email endpoint not available, trying webhook");
+      const errText = await wpResponse.text().catch(() => "");
+      console.warn("[quote-email] WordPress send-email not OK", {
+        type,
+        to,
+        status: wpResponse.status,
+        body: errText.slice(0, 300),
+      });
+    } catch (e) {
+      const msg = e instanceof Error && e.name === "AbortError" ? "timeout" : String(e);
+      console.warn("[quote-email] WordPress send-email failed", { type, to, msg });
     }
   }
 
-  const emailWebhook = process.env.QUOTE_EMAIL_WEBHOOK_URL;
+  const emailWebhook = process.env.QUOTE_EMAIL_WEBHOOK_URL?.trim();
   if (emailWebhook) {
     try {
       const webhookResponse = await fetch(emailWebhook, {
@@ -124,21 +170,32 @@ async function deliverQuoteEmailOnce(
           html,
           type,
         }),
+        cache: "no-store",
       });
 
       if (webhookResponse.ok) {
         return true;
       }
+      const whText = await webhookResponse.text().catch(() => "");
+      console.warn("[quote-email] Webhook not OK", {
+        type,
+        to,
+        status: webhookResponse.status,
+        body: whText.slice(0, 300),
+      });
     } catch (webhookError) {
-      console.error("Email webhook error:", webhookError);
+      console.error("[quote-email] Email webhook error:", webhookError);
     }
   }
 
   if (process.env.NODE_ENV === "development") {
-    console.log("Quote Email:", {
+    console.warn("[quote-email] No channel delivered email (set BREVO_API_KEY, fix WP send-email, or QUOTE_EMAIL_WEBHOOK_URL)", {
       to,
       subject,
       type,
+      hasBrevo: Boolean(process.env.BREVO_API_KEY?.trim()),
+      hasWp: Boolean(wpBase),
+      hasWebhook: Boolean(process.env.QUOTE_EMAIL_WEBHOOK_URL?.trim()),
     });
   }
 
@@ -334,8 +391,7 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
   const html = generateHTMLEmail(
     `Quote Request ${quote.quote_number} Received`,
     `Hello ${quote.user_name || "Customer"},`,
-    content,
-    { text: "View Quote in Dashboard", url: quoteUrl }
+    content
   );
 
   const subject = `Quote Request ${quote.quote_number} - ${quote.items.length} ${quote.items.length === 1 ? "Item" : "Items"}`;
