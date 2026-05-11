@@ -186,15 +186,15 @@ export default function Header({
           </button>
         </div>
 
-        {/* Desktop Search — wide bar (~2/3 row); overflow-visible for dropdown */}
-        <div className="hidden min-w-0 overflow-visible lg:flex lg:col-span-8 justify-center px-1">
+        {/* Desktop Search — below 1480px use 7 cols so bar + ring do not crowd phone; 8 cols from 1480px up */}
+        <div className="hidden min-w-0 w-full overflow-visible lg:flex lg:col-span-7 min-[1480px]:lg:col-span-8 justify-center px-1">
           <Suspense fallback={<HeaderSearchFallback />}>
             <HeaderSearch />
           </Suspense>
         </div>
 
-        {/* Right Icons */}
-        <div className="hidden lg:flex lg:col-span-2 items-center justify-end gap-2 xl:gap-3">
+        {/* Right Icons — extra column below 1480px for phone + icons; stay above search if subpixel overlap */}
+        <div className="relative z-10 hidden min-w-0 shrink-0 lg:flex lg:col-span-3 min-[1480px]:lg:col-span-2 items-center justify-end gap-2 xl:gap-3">
           <div className="hidden md:flex items-center gap-2">
             <svg
               viewBox="0 0 24 24"

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
-import { extractWooOrderKey, getWooOrder, resolveOrderPostId } from "@/lib/services/wooService";
+import {
+  extractWooOrderKey,
+  extractWooOrderNumber,
+  getWooOrder,
+  resolveOrderPostId,
+} from "@/lib/services/wooService";
 import { createEwayHostedPayment, isEwayConfigured } from "@/lib/services/ewayService";
 import { updateWooOrder } from "@/services/woocommerce";
 import { API_RATE_LIMITS, rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
@@ -121,8 +126,11 @@ export async function POST(req: NextRequest) {
     eway_amount: ewayAmountCents,
   });
 
+  const invoiceRef = extractWooOrderNumber(order) ?? String(postIdNum);
+
   const eway = await createEwayHostedPayment({
     wooOrderId: orderIdStr,
+    invoiceReference: invoiceRef,
     orderKey: key,
     orderTotal: totalStr,
     currencyCode: typeof o.currency === "string" ? o.currency : "AUD",

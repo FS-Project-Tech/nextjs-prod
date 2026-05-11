@@ -108,7 +108,28 @@ export function extractWooOrderKey(order: unknown): string | null {
   if (typeof k === "string" && k.trim()) return k.trim();
   return null;
 }
- 
+
+/**
+ * WooCommerce REST `number` — display order number for receipts/gateways.
+ * May match `id` on vanilla stores; sequential-order plugins often make it differ from the internal id.
+ */
+export function extractWooOrderNumber(order: unknown): string | null {
+  if (order == null || typeof order !== "object") return null;
+  const root = order as Record<string, unknown>;
+  const nested =
+    root.data != null && typeof root.data === "object" && !Array.isArray(root.data)
+      ? (root.data as Record<string, unknown>)
+      : null;
+  const o = nested ?? root;
+  const n = o.number;
+  if (typeof n === "string") {
+    const t = n.trim();
+    if (t) return t;
+  }
+  if (typeof n === "number" && Number.isFinite(n) && n >= 0) return String(n);
+  return null;
+}
+
 export function extractWooOrderId(order: unknown): number | string | null {
   if (order == null || typeof order !== "object") return null;
   const root = order as Record<string, unknown>;

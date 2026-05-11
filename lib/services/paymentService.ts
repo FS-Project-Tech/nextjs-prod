@@ -11,6 +11,7 @@ import {
 import {
   extractWooOrderId,
   extractWooOrderKey,
+  extractWooOrderNumber,
   getWooOrder,
   resolveOrderPostId,
   updateWooOrder,
@@ -153,9 +154,13 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     eway_amount_cents: ewayAmountCents,
   });
 
+  const invoiceRef =
+    extractWooOrderNumber(latest) ?? String(postId);
+
   console.log("[payment] eway: creating hosted payment", { requestId, postId });
   const eway = await createEwayHostedPayment({
     wooOrderId: postId,
+    invoiceReference: invoiceRef,
     orderKey,
     orderTotal: total,
     currencyCode: currency,
@@ -212,10 +217,32 @@ export async function verifyEwayAndMarkWooPaid(opts: {
   responseCode?: string | null;
   /** From eWAY verify transaction when present (decline descriptions, etc.). */
   responseMessage?: string | null;
+  /**
+   * True when eWAY confirmed payment but {@link updateWooOrder} failed (timeouts, REST errors).
+   * Used so deferred order notes are not mislabeled as “eWAY verify failed”.
+   */
+  paymentVerifiedButWooUpdateFailed?: boolean;
 }> {
   const v = await verifyEwayPayment(opts.accessCode);
   if (v.ok === false) {
-    return { ok: false, paid: false, orderPostId: null, error: v.error, responseMessage: null };
+    const transactionId = v.transactionId ?? null;
+    const responseCode = v.responseCode ?? null;
+    console.warn("[payment] verifyEwayPayment failed (no Woo update attempted)", {
+      error: v.error,
+      transactionId,
+      responseCode,
+      accessCodeLength: opts.accessCode.length,
+      hasOrderRef: Boolean(opts.orderRef?.trim()),
+    });
+    return {
+      ok: false,
+      paid: false,
+      orderPostId: null,
+      error: v.error,
+      responseMessage: null,
+      transactionId,
+      responseCode,
+    };
   }
 
   const gwMsg = v.responseMessage ?? null;
@@ -290,14 +317,26 @@ export async function verifyEwayAndMarkWooPaid(opts: {
       set_paid: true,
       ...(v.transactionId ? { transaction_id: v.transactionId } : {}),
     });
-    console.log("[payment] Woo order marked paid (eWAY verified)", { postId });
+    console.log("[payment] Woo order marked paid (eWAY verified)", {
+      postId,
+      transactionId: v.transactionId ?? null,
+      responseCode: v.responseCode ?? null,
+    });
   } catch (e) {
-    console.error("[payment] Woo update after eWAY verify failed", e);
+    console.error("[payment] Woo update after eWAY verify failed", {
+      postId,
+      transactionId: v.transactionId ?? null,
+      responseCode: v.responseCode ?? null,
+      message: e instanceof Error ? e.message : String(e),
+    });
     return {
       ok: false,
       paid: false,
       orderPostId: null,
       error: "Verified payment but WooCommerce update failed.",
+      paymentVerifiedButWooUpdateFailed: true,
+      transactionId: v.transactionId ?? null,
+      responseCode: v.responseCode ?? null,
       responseMessage: gwMsg,
     };
   }

@@ -2,29 +2,12 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import Typesense from "typesense";
-import { TYPESENSE_DEFAULT_QUERY_BY } from "@/lib/typesense-products";
 import {
   cleanAttributeValuesForDisplay,
   cleanSearchResultTitle,
   cleanVariationOptionLine,
 } from "@/lib/search-display-name";
-import {
-  isLikelySkuToken,
-  parseSkuTokens,
-  toTypesenseExactArray,
-} from "@/lib/sku-search-tokens";
-
-const client = new Typesense.Client({
-  nodes: [
-    {
-      host: process.env.NEXT_PUBLIC_TYPESENSE_HOST,
-      port: 443,
-      protocol: "https",
-    },
-  ],
-  apiKey: process.env.NEXT_PUBLIC_TYPESENSE_API_KEY,
-});
+import { fetchHeaderSearchSuggestions } from "@/lib/header-search-api";
 
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -327,6 +310,7 @@ export default function HeaderSearch() {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [categorySlugToName, setCategorySlugToName] = useState<Record<string, string>>({});
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const searchGenerationRef = useRef(0);
@@ -347,6 +331,7 @@ export default function HeaderSearch() {
     setResults([]);
     setCategories([]);
     setBrands([]);
+    setSearchError(null);
     setIsSearching(false);
     closePanel();
     inputRef.current?.focus();
@@ -387,6 +372,7 @@ export default function HeaderSearch() {
       setBrands([]);
       setShow(false);
       setIsSearching(false);
+      setSearchError(null);
     }
   }, [pathname, urlSearchQ]);
 
@@ -455,68 +441,45 @@ export default function HeaderSearch() {
       setBrands([]);
       setShow(false);
       setIsSearching(false);
+      setSearchError(null);
       return;
     }
 
     setIsSearching(true);
+    setSearchError(null);
     const gen = ++searchGenerationRef.current;
+    const ac = new AbortController();
 
     const delay = setTimeout(async () => {
       try {
-        const formattedQuery = query
-          .split(/[,\/&\s]+/)
-          .map((q) => q.trim())
-          .filter(Boolean)
-          .join(" || ");
-
-        const skuTokens = parseSkuTokens(query);
-        const useSkuFilterSearch =
-          skuTokens.length > 1 &&
-          (/[,&;\n\r\t]/.test(query) || skuTokens.every((t) => isLikelySkuToken(t)));
-
-        const searchRequest: Record<string, unknown> = {
-          q: formattedQuery,
-          query_by: TYPESENSE_DEFAULT_QUERY_BY,
-          per_page: 10,
-          facet_by: "category,brand",
-          sort_by: "_text_match:desc",
-          split_join_tokens: "always",
-        };
-
-        if (useSkuFilterSearch) {
-          searchRequest.q = "*";
-          searchRequest.query_by = "name,sku";
-          searchRequest.filter_by = `sku:=${toTypesenseExactArray(skuTokens)}`;
-        }
-
-        const res = await client
-          .collections(process.env.NEXT_PUBLIC_TYPESENSE_INDEX_NAME)
-          .documents()
-          .search(searchRequest);
+        const { hits, categories: catCounts, brands: brandCounts } =
+          await fetchHeaderSearchSuggestions(query.trim(), ac.signal);
 
         if (searchGenerationRef.current !== gen) return;
 
-        setResults(res.hits || []);
+        setResults(hits as TypesenseHitLite[]);
+        setCategories(catCounts);
+        setBrands(brandCounts);
+        setSearchError(null);
 
-        const catFacet = res.facet_counts?.find((f) => f.field_name === "category");
-        setCategories(catFacet?.counts || []);
-
-        const brandFacet = res.facet_counts?.find((f) => f.field_name === "brand");
-        setBrands(brandFacet?.counts || []);
-
-        // Open whenever debounced results arrive and we are not suppressing post-route-change
-        // (suppress is cleared by onChange / onFocus). Applies on every route including
-        // `/search` — landing with `?q=` still has suppress=true until the user edits/focuses.
         if (!suppressAutoOpenAfterNavigationRef.current) {
           setShow(true);
         }
         setActiveIndex(-1);
       } catch (err) {
-        console.error(err);
+        const aborted = err instanceof Error && err.name === "AbortError";
+        if (aborted) return;
+        console.error("[HeaderSearch] fetchHeaderSearchSuggestions failed", err);
         if (searchGenerationRef.current === gen) {
           setResults([]);
           setCategories([]);
           setBrands([]);
+          setSearchError(
+            err instanceof Error ? err.message : "Search temporarily unavailable. Try again."
+          );
+          if (!suppressAutoOpenAfterNavigationRef.current) {
+            setShow(true);
+          }
         }
       } finally {
         if (searchGenerationRef.current === gen) {
@@ -525,7 +488,10 @@ export default function HeaderSearch() {
       }
     }, 300);
 
-    return () => clearTimeout(delay);
+    return () => {
+      clearTimeout(delay);
+      ac.abort();
+    };
   }, [query, pathname]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -569,7 +535,7 @@ export default function HeaderSearch() {
   const productListId = "header-search-product-list";
 
   return (
-    <div className="relative z-[60] w-full max-w-full lg:max-w-[min(100%,42rem)] xl:max-w-[min(100%,48rem)] 2xl:max-w-[52rem]">
+    <div className="relative z-10 w-full max-w-full lg:max-w-[min(100%,42rem)] xl:max-w-[min(100%,48rem)] 2xl:max-w-[52rem] max-[1479px]:lg:max-w-[min(100%,36rem)] max-[1479px]:xl:max-w-[min(100%,40rem)]">
       <div className="flex w-full min-w-0 rounded-md border border-gray-800 bg-white shadow-sm transition-shadow focus-within:border-teal-600 focus-within:shadow-md focus-within:ring-2 focus-within:ring-teal-600 focus-within:ring-offset-2">
         <input
           ref={inputRef}
@@ -588,6 +554,7 @@ export default function HeaderSearch() {
           onKeyDown={handleKeyDown}
           onChange={(e) => {
             suppressAutoOpenAfterNavigationRef.current = false;
+            setSearchError(null);
             setQuery(e.target.value);
           }}
           onFocus={() => {
@@ -649,8 +616,16 @@ export default function HeaderSearch() {
           id={panelId}
           role="region"
           aria-label="Search suggestions"
-          className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(40rem,85vh)] w-full overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
+          className="absolute left-0 right-0 top-full z-[60] mt-2 max-h-[min(40rem,85vh)] w-full overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
         >
+          {searchError ? (
+            <div
+              role="alert"
+              className="border-b border-red-100 bg-red-50 px-3 py-2 text-sm text-red-900"
+            >
+              {searchError}
+            </div>
+          ) : null}
           {categories.length > 0 && (
             <div className="border-b border-gray-100 px-3 py-2">
               <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Categories</p>
@@ -698,7 +673,7 @@ export default function HeaderSearch() {
                       suppressAutoOpenAfterNavigationRef.current = true;
                       closePanel();
                       router.push(
-                        `/search?q=${encodeURIComponent(query)}&brand=${encodeURIComponent(brand.value)}`
+                        `/search?q=${encodeURIComponent(query)}&brands=${encodeURIComponent(brand.value)}`
                       );
                     }}
                     className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"

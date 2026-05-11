@@ -54,6 +54,7 @@ function SearchInputComponent({
     input,
     setInput,
     loading,
+    error,
     previewItems,
     previewActiveIndex,
     setPreviewActiveIndex,
@@ -68,7 +69,25 @@ function SearchInputComponent({
   const showPreview =
     focused &&
     debouncedQuery.trim().length >= MIN_SEARCH_LEN &&
-    (loading || previewItems.length > 0);
+    (loading || previewItems.length > 0 || Boolean(error));
+
+  const urlQ = (searchParams.get("q") || "").trim();
+
+  /** Keep the address bar `q` aligned with what the user typed (same debounce as preview). */
+  useEffect(() => {
+    if (!pathname.startsWith("/search")) return;
+    const d = debouncedQuery.trim();
+    if (d.length < MIN_SEARCH_LEN) return;
+    if (d === urlQ) return;
+    const t = window.setTimeout(() => {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set("q", d);
+      p.delete("page");
+      const qs = p.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [debouncedQuery, urlQ, pathname, router, searchParams]);
 
   const applyQuery = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -190,7 +209,12 @@ function SearchInputComponent({
           role="listbox"
           className="absolute z-50 mt-1 max-h-[min(24rem,70vh)] w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
         >
-          {loading && previewItems.length === 0 ? (
+          {error ? (
+            <div role="alert" className="border-b border-red-100 px-4 py-3 text-sm text-red-900">
+              {error}
+            </div>
+          ) : null}
+          {loading && previewItems.length === 0 && !error ? (
             <div className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-gray-500">
               <SearchSpinner />
               Searching…

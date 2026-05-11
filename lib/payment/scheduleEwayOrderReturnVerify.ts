@@ -13,9 +13,25 @@ function buildDeferredEwayOrderNote(payResult: Awaited<ReturnType<typeof verifyE
     return lines.join(" ");
   }
 
+  if (!payResult.ok && payResult.paymentVerifiedButWooUpdateFailed) {
+    lines.push(
+      "eWAY payment was verified, but this app could not update the order in WooCommerce (REST timeout or server error). Check order status in WooCommerce; if it is already Processing/Completed, no action is needed. Retry from the customer order-pay link if still Pending."
+    );
+    if (payResult.error) lines.push(`Details: ${payResult.error}`);
+    if (payResult.transactionId) lines.push(`TransactionID: ${payResult.transactionId}.`);
+    if (payResult.responseCode != null && String(payResult.responseCode).trim() !== "") {
+      lines.push(`ResponseCode: ${payResult.responseCode}.`);
+    }
+    return lines.join(" ");
+  }
+
   if (!payResult.ok) {
     lines.push("eWAY verify API call failed (deferred — order may still be pending).");
     if (payResult.error) lines.push(`Details: ${payResult.error}`);
+    if (payResult.transactionId) lines.push(`TransactionID: ${payResult.transactionId}.`);
+    if (payResult.responseCode != null && String(payResult.responseCode).trim() !== "") {
+      lines.push(`ResponseCode: ${payResult.responseCode}.`);
+    }
     return lines.join(" ");
   }
 
@@ -55,10 +71,23 @@ export function scheduleEwayOrderReturnVerify(params: {
   const code = accessCode;
 
   after(async () => {
+    const logBase = { logTag, orderId: id, accessCodeLength: code.length };
     try {
+      console.log("[eway-deferred] start verify + Woo order note", logBase);
+
       const payResult = await verifyEwayAndMarkWooPaid({
         accessCode: code,
         orderRef: String(id),
+      });
+
+      console.log("[eway-deferred] verifyEwayAndMarkWooPaid result", {
+        ...logBase,
+        ok: payResult.ok,
+        paid: payResult.paid,
+        transactionId: payResult.transactionId ?? null,
+        responseCode: payResult.responseCode ?? null,
+        wooUpdateFailed: payResult.paymentVerifiedButWooUpdateFailed ?? false,
+        error: payResult.error ?? null,
       });
 
       const note = buildDeferredEwayOrderNote(payResult);
@@ -68,8 +97,14 @@ export function scheduleEwayOrderReturnVerify(params: {
         { note, customer_note: false },
         { timeout: mutationTimeoutMs },
       );
+
+      console.log("[eway-deferred] Woo order note created", {
+        ...logBase,
+        noteLength: note.length,
+        transactionIdInNote: /\bTransactionID:/i.test(note),
+      });
     } catch (e) {
-      console.warn(`${logTag} deferred eWAY verify or note failed`, e);
+      console.warn(`${logTag} deferred eWAY verify or note failed`, logBase, e);
     }
   });
 }

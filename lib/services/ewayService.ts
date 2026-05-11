@@ -52,6 +52,12 @@ export const isEwayRapidConfigured = isEwayConfigured;
 
 export type EwayHostedPaymentInput = {
   wooOrderId: string | number;
+  /**
+   * WooCommerce order **number** (`number` in REST) for eWAY InvoiceReference / InvoiceNumber —
+   * shows in eWAY as “Your Reference Number”. Defaults to `wooOrderId` when omitted.
+   * Redirect URLs and vp_sig still use `wooOrderId` (internal REST id).
+   */
+  invoiceReference?: string;
   /** WooCommerce REST `order_key` — required for secure return to order review. */
   orderKey: string;
   orderTotal: string;
@@ -107,11 +113,18 @@ export async function createEwayHostedPayment(
     return { ok: false, error: "Invalid payment total for eWAY." };
   }
   const totalAmount = Math.round(total * 100);
-  const oid = String(input.wooOrderId);
+  const routingOrderId = String(input.wooOrderId);
+  const invoiceLabelRaw =
+    typeof input.invoiceReference === "string" && input.invoiceReference.trim()
+      ? input.invoiceReference.trim()
+      : routingOrderId;
+  const invoiceNumber = invoiceLabelRaw.slice(0, 64);
+  const invoiceReference = invoiceLabelRaw.slice(0, 50);
+
   const keyEnc = encodeURIComponent(input.orderKey.trim());
-  const vpSig = paymentReturnVpSig(oid);
+  const vpSig = paymentReturnVpSig(routingOrderId);
   const redirectUrl =
-    `${base}/checkout/order-review?orderId=${encodeURIComponent(oid)}&key=${keyEnc}` +
+    `${base}/checkout/order-review?orderId=${encodeURIComponent(routingOrderId)}&key=${keyEnc}` +
     (vpSig ? `&vp_sig=${encodeURIComponent(vpSig)}` : "");
   const cancelUrl = `${base}/checkout`;
 
@@ -142,9 +155,9 @@ export async function createEwayHostedPayment(
     },
     Payment: {
       TotalAmount: totalAmount,
-      InvoiceNumber: oid.slice(0, 64),
+      InvoiceNumber: invoiceNumber,
       InvoiceDescription: "Order payment",
-      InvoiceReference: oid.slice(0, 50),
+      InvoiceReference: invoiceReference,
       CurrencyCode: (input.currencyCode || "AUD").toUpperCase(),
     },
     RedirectUrl: redirectUrl,
@@ -159,6 +172,7 @@ export async function createEwayHostedPayment(
     woo_total: String(input.orderTotal),
     eway_amount: totalAmount,
     wooOrderId: input.wooOrderId,
+    eway_invoice_reference: invoiceReference,
     currency: body.Payment.CurrencyCode,
   });
 
@@ -249,6 +263,46 @@ function extractInvoiceReferenceFromEwayJson(
   return undefined;
 }
 
+/** Same transaction resolution as AccessCode verify — used for TransactionID / logging on errors too. */
+function resolveTransactionBlockFromVerifyJson(
+  json: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (Array.isArray(json.Transactions) && json.Transactions.length > 0) {
+    return json.Transactions[0] as Record<string, unknown>;
+  }
+  if (json.Transaction && typeof json.Transaction === "object") {
+    return json.Transaction as Record<string, unknown>;
+  }
+  if ("TransactionStatus" in json || "TransactionID" in json || "ResponseCode" in json) {
+    return json;
+  }
+  return undefined;
+}
+
+function formatEwayTransactionIdField(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "number" && Number.isFinite(v)) return String(Math.trunc(v));
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return undefined;
+}
+
+function normalizeEwayResponseCode(v: unknown): string | undefined {
+  if (v == null || v === "") return undefined;
+  const s = String(v).trim();
+  if (!s) return undefined;
+  return /^\d+$/.test(s) ? s.padStart(2, "0") : s;
+}
+
+/** Best-effort Transaction ID from eWAY AccessCode JSON (success or error body). */
+export function extractTransactionIdFromVerifyJson(json: Record<string, unknown>): string | undefined {
+  const tx = resolveTransactionBlockFromVerifyJson(json);
+  if (tx) {
+    const id = formatEwayTransactionIdField(tx.TransactionID ?? tx.transaction_id);
+    if (id) return id;
+  }
+  return formatEwayTransactionIdField(json.TransactionID ?? json.transaction_id);
+}
+
 export type EwayVerifyResult =
   | {
       ok: true;
@@ -259,7 +313,13 @@ export type EwayVerifyResult =
       responseMessage?: string;
       invoiceReference?: string;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** Present when eWAY returned a body with transaction details despite failure (e.g. HTTP 40x). */
+      transactionId?: string;
+      responseCode?: string;
+    };
 
 function readEwayTransactionResponseMessage(tx: Record<string, unknown> | undefined): string | undefined {
   if (!tx) return undefined;
@@ -308,22 +368,26 @@ export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyR
 
   if (!res.ok) {
     const err = typeof json.Errors === "string" ? json.Errors : `eWAY verify HTTP ${res.status}`;
-    console.warn("[eway] verify HTTP", res.status, err);
-    return { ok: false, error: String(err) };
+    const partialTxId = extractTransactionIdFromVerifyJson(json);
+    const txErr = resolveTransactionBlockFromVerifyJson(json);
+    const partialRc = normalizeEwayResponseCode(
+      txErr?.ResponseCode ?? json.ResponseCode
+    );
+    console.warn("[eway] verify AccessCode HTTP error", {
+      httpStatus: res.status,
+      errors: String(err),
+      transactionId: partialTxId ?? null,
+      responseCode: partialRc ?? null,
+    });
+    return {
+      ok: false,
+      error: String(err),
+      ...(partialTxId ? { transactionId: partialTxId } : {}),
+      ...(partialRc ? { responseCode: partialRc } : {}),
+    };
   }
 
-  const txRaw: Record<string, unknown> | undefined = (() => {
-    if (Array.isArray(json.Transactions) && json.Transactions.length > 0) {
-      return json.Transactions[0] as Record<string, unknown>;
-    }
-    if (json.Transaction && typeof json.Transaction === "object") {
-      return json.Transaction as Record<string, unknown>;
-    }
-    if ("TransactionStatus" in json || "TransactionID" in json || "ResponseCode" in json) {
-      return json;
-    }
-    return undefined;
-  })();
+  const txRaw: Record<string, unknown> | undefined = resolveTransactionBlockFromVerifyJson(json);
 
   const parseTransactionStatus = (v: unknown): boolean => {
     if (v === true) return true;
@@ -336,16 +400,9 @@ export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyR
     return false;
   };
 
-  const normalizeResponseCode = (v: unknown): string | undefined => {
-    if (v == null || v === "") return undefined;
-    const s = String(v).trim();
-    if (!s) return undefined;
-    return /^\d+$/.test(s) ? s.padStart(2, "0") : s;
-  };
-
   const txStatus = parseTransactionStatus(txRaw?.TransactionStatus);
-  const responseCode = normalizeResponseCode(txRaw?.ResponseCode);
-  const transactionId = txRaw?.TransactionID ? String(txRaw.TransactionID) : undefined;
+  const responseCode = normalizeEwayResponseCode(txRaw?.ResponseCode);
+  const transactionId = formatEwayTransactionIdField(txRaw?.TransactionID ?? txRaw?.transaction_id);
 
   const approved = responseCode === undefined ? txStatus : responseCode === "00";
 
@@ -355,6 +412,7 @@ export async function verifyEwayPayment(accessCode: string): Promise<EwayVerifyR
   console.log("[eway] verify AccessCode result", {
     transactionStatus: txStatus,
     responseCode: responseCode ?? null,
+    transactionId: transactionId ?? null,
     approved,
     hasInvoiceRef: Boolean(invoiceReference),
     responseMessage: responseMessage ?? null,

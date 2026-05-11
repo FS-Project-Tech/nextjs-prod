@@ -61,7 +61,7 @@ async function createCollection() {
         { name: "name", type: "string" },
         { name: "slug", type: "string" },
         { name: "custom_badge", type: "string", facet: true, optional: true },
-        /** Parent: multiple SKUs; variation: single SKU — always string[] (see woo-search-api.php). */
+        /** Parent: multiple SKUs; variation: single SKU — always string[] (see integrations/wordpress/plugins/joya-typesense-woo/). */
         { name: "sku", type: "string[]", optional: true },
 
         { name: "type", type: "string", facet: true },
