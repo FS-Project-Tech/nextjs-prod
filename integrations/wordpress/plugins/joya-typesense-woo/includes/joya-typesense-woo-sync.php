@@ -542,6 +542,8 @@ add_action('rest_api_init', function () {
  * - TYPESENSE_SYNC_BASE_URL or JOYA_NEXT_API_BASE — Next.js origin, e.g. https://shop.example.com
  * - TYPESENSE_SYNC_SECRET (or SYNC_SECRET) — Bearer token; must match Next.js env TYPESENSE_SYNC_SECRET
  * - TYPESENSE_DELETE_SECRET — optional; Bearer for deletes (falls back to SYNC_SECRET)
+ * - VERCEL_PROTECTION_BYPASS_SECRET (optional) — same secret as Vercel → Project → Deployment Protection →
+ *   "Protection Bypass for Automation". Required when Vercel returns 429 + HTML "Security Checkpoint" for wp_remote_post.
  *
  * This plugin calls Next.js, not Typesense directly. JOYA_TYPESENSE_HOST / admin keys are for a different integration.
  */
@@ -582,6 +584,36 @@ function joya_ts_delete_secret(): string {
         return trim((string) SYNC_SECRET);
     }
     return trim((string) getenv('SYNC_SECRET'));
+}
+
+/**
+ * Vercel Deployment Protection / checkpoint bypass (server-to-server only).
+ *
+ * @see https://vercel.com/docs/security/deployment-protection#protection-bypass-for-automation
+ */
+function joya_ts_vercel_protection_bypass_secret(): string {
+    if (defined('VERCEL_PROTECTION_BYPASS_SECRET') && (string) VERCEL_PROTECTION_BYPASS_SECRET !== '') {
+        return trim((string) VERCEL_PROTECTION_BYPASS_SECRET);
+    }
+    foreach (['VERCEL_PROTECTION_BYPASS_SECRET', 'VERCEL_AUTOMATION_BYPASS_SECRET', 'TYPESENSE_SYNC_VERCEL_BYPASS'] as $env_key) {
+        $v = trim((string) getenv($env_key));
+        if ($v !== '') {
+            return $v;
+        }
+    }
+    return '';
+}
+
+/**
+ * @param array<string,string> $headers
+ * @return array<string,string>
+ */
+function joya_ts_merge_next_api_headers(array $headers): array {
+    $bypass = joya_ts_vercel_protection_bypass_secret();
+    if ($bypass !== '') {
+        $headers['x-vercel-protection-bypass'] = $bypass;
+    }
+    return $headers;
 }
 
 function joya_ts_logging_enabled() {
@@ -673,11 +705,11 @@ function joya_ts_call_sync_endpoint($product_id): bool {
     $res = wp_remote_post($base . '/api/typesense/search/sync', [
         'timeout' => 45,
         'blocking' => true,
-        'headers' => [
+        'headers' => joya_ts_merge_next_api_headers([
             'Content-Type' => 'application/json',
             'Accept' => 'application/json',
             'Authorization' => 'Bearer ' . $secret,
-        ],
+        ]),
         'body' => wp_json_encode(['product_id' => $product_id]),
     ]);
     if (is_wp_error($res)) {
@@ -690,11 +722,18 @@ function joya_ts_call_sync_endpoint($product_id): bool {
     $code = (int) wp_remote_retrieve_response_code($res);
     if ($code < 200 || $code >= 300) {
         $body = (string) wp_remote_retrieve_body($res);
-        joya_ts_log_with_activity('error', 'sync HTTP error', [
+        $ctx = [
             'product_id' => $product_id,
             'status' => $code,
             'body_preview' => substr($body, 0, 500),
-        ]);
+        ];
+        if (
+            stripos($body, 'Security Checkpoint') !== false
+            || stripos($body, 'vercel security checkpoint') !== false
+        ) {
+            $ctx['hint'] = 'Vercel returned a browser checkpoint, not your API. Enable Protection Bypass for Automation in the Vercel project and set the same value as VERCEL_PROTECTION_BYPASS_SECRET (or env VERCEL_AUTOMATION_BYPASS_SECRET) in wp-config.php.';
+        }
+        joya_ts_log_with_activity('error', 'sync HTTP error', $ctx);
         return false;
     }
     joya_ts_log_with_activity('info', 'sync request completed', ['product_id' => $product_id]);
@@ -723,10 +762,10 @@ function joya_ts_call_delete_endpoint($id) {
         'method' => 'DELETE',
         'timeout' => 5,
         'blocking' => false,
-        'headers' => [
+        'headers' => joya_ts_merge_next_api_headers([
             'Accept' => 'application/json',
             'Authorization' => 'Bearer ' . $secret,
-        ],
+        ]),
     ]);
     if (is_wp_error($res)) {
         joya_ts_log_with_activity('error', 'delete request failed', [
@@ -838,10 +877,16 @@ function joya_ts_schedule_sync($product_id) {
         return;
     }
     static $ran_in_request = [];
+    static $logged_dedupe_skip = [];
+    static $logged_lock_skip = [];
     if (isset($ran_in_request[$normalized_id])) {
-        joya_ts_log_with_activity('debug', 'immediate sync skipped: already run in this request', [
-            'product_id' => $normalized_id,
-        ]);
+        // Many variation save_post calls share one parent sync; log at most once per product per request.
+        if (!isset($logged_dedupe_skip[$normalized_id])) {
+            $logged_dedupe_skip[$normalized_id] = true;
+            joya_ts_log_with_activity('debug', 'immediate sync skipped: already run in this request', [
+                'product_id' => $normalized_id,
+            ]);
+        }
         return;
     }
 
@@ -849,9 +894,12 @@ function joya_ts_schedule_sync($product_id) {
     // sync posts while still keeping updates effectively instant.
     $lock_key = 'joya_ts_sync_lock_' . $normalized_id;
     if (get_transient($lock_key)) {
-        joya_ts_log_with_activity('debug', 'immediate sync skipped: lock active', [
-            'product_id' => $normalized_id,
-        ]);
+        if (!isset($logged_lock_skip[$normalized_id])) {
+            $logged_lock_skip[$normalized_id] = true;
+            joya_ts_log_with_activity('debug', 'immediate sync skipped: lock active', [
+                'product_id' => $normalized_id,
+            ]);
+        }
         return;
     }
     set_transient($lock_key, 1, 8);
@@ -1236,6 +1284,15 @@ function joya_ts_render_activity_page() {
     echo '</p>';
     echo '</form>';
     echo '</div>';
+
+    if (joya_ts_vercel_protection_bypass_secret() === '') {
+        echo '<p class="description" style="max-width:48rem;margin:0 0 1rem;">';
+        echo esc_html__(
+            'If sync fails with HTTP 429 and the activity log shows HTML mentioning “Vercel Security Checkpoint”, your Next deployment is blocking server requests. In Vercel: Project → Settings → Deployment Protection → enable “Protection Bypass for Automation”, copy the secret, then add define( \'VERCEL_PROTECTION_BYPASS_SECRET\', \'…that secret…\' ); to wp-config.php (or set the same value in the PHP environment as VERCEL_AUTOMATION_BYPASS_SECRET).',
+            'joya-typesense-woo'
+        );
+        echo '</p>';
+    }
 
     echo '<h2>' . esc_html__('Activity log', 'joya-typesense-woo') . '</h2>';
     echo '<p class="description">' . esc_html__('Recent automatic sync/delete events.', 'joya-typesense-woo') . '</p>';

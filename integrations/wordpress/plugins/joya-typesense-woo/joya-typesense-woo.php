@@ -17,6 +17,7 @@
  * - TYPESENSE_SYNC_SECRET or SYNC_SECRET — Bearer token; must match Next.js TYPESENSE_SYNC_SECRET / SYNC_SECRET
  * - TYPESENSE_DELETE_SECRET — optional; Bearer for deletes (else SYNC_SECRET)
  * - TYPESENSE_FEED_SECRET — optional; locks GET /wp-json/custom/v1/typesense-products
+ * - VERCEL_PROTECTION_BYPASS_SECRET — optional; same as Vercel “Protection Bypass for Automation” if POSTs get HTTP 429 + Security Checkpoint HTML
  * - JOYA_TYPESENSE_SYNC_LOG — optional true/1 to mirror debug lines to error_log
  *
  * WordPress does not load .env from Next — define these on the PHP host. Constants in wp-config.php are supported.
