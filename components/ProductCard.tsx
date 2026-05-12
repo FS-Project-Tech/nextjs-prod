@@ -430,7 +430,7 @@ function ProductCardComponent({
             {name}
           </Link>
 
-          <p className="mt-1 min-h-[18px] text-sm text-grey py-2">
+          <p className="mt-1 min-h-[18px] text-sm text-gray-700 py-2">
             {sku ? `SKU: ${sku}` : "\u00A0"}
           </p>
 

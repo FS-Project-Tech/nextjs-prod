@@ -4,6 +4,8 @@
 
 html {
   overflow-x: hidden;
+  /* Light UI only: keep text/UI colors stable when the OS/browser prefers dark mode */
+  color-scheme: light;
 }
 
 /* Homepage hero slider: full viewport width (breaks out of .app-shell max-width). */
@@ -80,17 +82,11 @@ html {
   --color-ndis-secondary: var(--ndis-secondary);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 /* Base typography: font family comes from next/font on <body> (Grift + fallbacks) */
 body {
   background: #eeeeee;
-  color: var(--foreground);
+  /* Fixed light-theme text; avoids inheriting a “dark mode” --foreground on white surfaces */
+  color: #171717;
   font-size: 1rem; /* 16px — WCAG body minimum */
   line-height: 1.5;
   font-weight: 400;
@@ -98,6 +94,33 @@ body {
 
 main {
   background-color: #fff;
+}
+
+/*
+ * Light UI everywhere: when the OS/browser prefers dark mode, still use dark text
+ * on light surfaces. Locks theme tokens and re-states default ink on main shells
+ * so inheritance never drifts to washed-out greys (UA heuristics, extensions, etc.).
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #ffffff;
+    --foreground: #171717;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body,
+  .app-shell,
+  main {
+    color: #171717;
+  }
+}
+
+/* layout.tsx — keep in sync with html { color-scheme: light } */
+.color-scheme-light {
+  color-scheme: light;
 }
 
 .text-teal{color:#1f4551;}

@@ -12,7 +12,7 @@ import DeferredTawkToWidget from "@/components/DeferredTawkToWidget";
 import { ClientCartNavPWA, ClientNavigationProgress } from "@/components/ClientOnlyShellChunks";
 import CategoriesNav, { CategoriesNavSkeleton } from "@/components/CategoriesNav";
 import { getPublicHeaderData } from "@/lib/cms/public-header-data";
-import ScrollToFooterButton from "@/components/ScrollToFooterButton";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import AccessiBe from "@/components/AccessiBe";
 
 // Validate environment variables at startup (server-side only)
@@ -135,7 +135,7 @@ export default async function RootLayout({
                 </main>
 
                 <Footer />
-                <ScrollToFooterButton />
+                <ScrollToTopButton />
                 <ClientCartNavPWA />
                 <DeferredTawkToWidget />
               </div>

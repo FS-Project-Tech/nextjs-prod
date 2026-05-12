@@ -65,6 +65,8 @@ export default function Header({
 
   const cartCount = items.reduce((sum, item) => sum + item.qty, 0);
 
+  const closeMobileMenu = () => setOpen(false);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -325,23 +327,39 @@ export default function Header({
       {/* Mobile Menu */}
       <div
         ref={mobileMenuRef}
-        className={`lg:hidden overflow-hidden border-t bg-white transition-all duration-300 ease-out ${
+        className={`[color-scheme:light] lg:hidden overflow-hidden border-t bg-white transition-all duration-300 ease-out ${
           open ? "max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
         }`}
         aria-hidden={!open}
       >
-        <div className="px-4 py-4 space-y-3">
-          <a href="tel:07 2146 3568" className="block text-sm text-gray-700">
+        <div className="px-4 py-4 space-y-3 text-gray-900">
+          <a
+            href="tel:07 2146 3568"
+            className="block text-sm text-gray-800 hover:text-gray-900"
+            onClick={closeMobileMenu}
+          >
              07 2146 3568
           </a>
 
-          <PrefetchLink href="/" className="block rounded-lg px-2 py-2 hover:bg-gray-50">
+          <PrefetchLink
+            href="/"
+            className="block rounded-lg px-2 py-2 text-gray-900 visited:text-gray-900 hover:bg-gray-50"
+            onClick={closeMobileMenu}
+          >
             Home
           </PrefetchLink>
-          <PrefetchLink href="/shop" className="block rounded-lg px-2 py-2 hover:bg-gray-50">
+          <PrefetchLink
+            href="/shop"
+            className="block rounded-lg px-2 py-2 text-gray-900 visited:text-gray-900 hover:bg-gray-50"
+            onClick={closeMobileMenu}
+          >
             Shop
           </PrefetchLink>
-          <PrefetchLink href="/catalogue" className="block rounded-lg px-2 py-2 hover:bg-gray-50">
+          <PrefetchLink
+            href="/catalogue"
+            className="block rounded-lg px-2 py-2 text-gray-900 visited:text-gray-900 hover:bg-gray-50"
+            onClick={closeMobileMenu}
+          >
             Catalogue
           </PrefetchLink>
 
@@ -351,22 +369,29 @@ export default function Header({
             <>
               <PrefetchLink
                 href="/dashboard"
-                className="block rounded-lg px-2 py-2 hover:bg-gray-50"
+                className="block rounded-lg px-2 py-2 text-gray-900 visited:text-gray-900 hover:bg-gray-50"
+                onClick={closeMobileMenu}
               >
                 Dashboard
               </PrefetchLink>
 
               <button
+                type="button"
                 onClick={async () => {
+                  closeMobileMenu();
                   await signOut({ callbackUrl: "/login" });
                 }}
-                className="rounded-lg px-2 py-2 text-red-600 hover:bg-red-50"
+                className="block w-full rounded-lg px-2 py-2 text-left text-red-600 hover:bg-red-50"
               >
                 Sign Out
               </button>
             </>
           ) : (
-            <PrefetchLink href="/login" className="block rounded-lg px-2 py-2 hover:bg-gray-50">
+            <PrefetchLink
+              href="/login"
+              className="block rounded-lg px-2 py-2 text-gray-900 visited:text-gray-900 hover:bg-gray-50"
+              onClick={closeMobileMenu}
+            >
               Login
             </PrefetchLink>
           )}
