@@ -509,7 +509,7 @@ export default function NDISWizard() {
               For Agency Manage / Plan Manage Participant
             </p>
             <a
-              href="/ndisform/NDIS-Service-Agreement-Editable-form.docx"
+              href="/ndisform/NDIS-Service-Agreement-Editable-updated.pdf"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-medium underline mb-6 block"
