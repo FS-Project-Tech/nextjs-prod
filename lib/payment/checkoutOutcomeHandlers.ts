@@ -1,6 +1,7 @@
 import type { MutableRefObject } from "react";
 import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
+import { clearCheckoutFormDraft } from "@/lib/checkout/checkoutFormPersistence";
 import {
   readResponseBodyText,
   pickCreateOrderIdFromHeaders,
@@ -190,6 +191,7 @@ export function recoverPlacedCodOrderFromHeaders(res: Response, deps: CheckoutOu
     /* ignore */
   }
   deps.toast.success("Order placed successfully.");
+  clearCheckoutFormDraft();
   try {
     sessionStorage.removeItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
   } catch {
@@ -227,6 +229,7 @@ export function handleCashOnDeliveryCompleteJson(
     /* ignore */
   }
   deps.toast.success("Order placed successfully.");
+  clearCheckoutFormDraft();
   try {
     sessionStorage.removeItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
   } catch {

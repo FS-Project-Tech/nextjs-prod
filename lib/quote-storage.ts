@@ -58,6 +58,8 @@ export async function storeQuote(
     total: payload.total,
     status: "pending",
     notes: payload.notes,
+    billing_address: payload.billing_address ?? null,
+    shipping_address: payload.shipping_address ?? null,
     created_at: now,
     updated_at: now,
     expires_at: expiresAt,

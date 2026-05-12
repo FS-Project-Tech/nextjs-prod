@@ -141,6 +141,30 @@ async function resolveOneWooLineItem(
     };
   }
 
+  /** Woo may return a variation as `/products/{id}`; treat as parent + variation_id for line items. */
+  if (type === "variation") {
+    const parentFromWoo = check.product.parent_id;
+    if (parentFromWoo != null && parentFromWoo > 0) {
+      return {
+        kind: "resolved",
+        line: {
+          product_id: parentFromWoo,
+          variation_id: check.product.id,
+          quantity,
+        },
+      };
+    }
+    return {
+      kind: "unavailable",
+      row: {
+        product_id: productId,
+        variation_id: requestedVariationId || null,
+        sku: skuTrim || null,
+        reason: "Variation product is missing parent_id in Woo; cannot build checkout line.",
+      },
+    };
+  }
+
   if (type !== "variable") {
     return {
       kind: "resolved",

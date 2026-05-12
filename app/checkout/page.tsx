@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getCartUrl } from "@/lib/access-token";
 import { useCheckoutPageState } from "@/lib/checkout/useCheckoutPageState";
@@ -8,6 +9,10 @@ import { FOCUS_RING_BTN } from "@/lib/checkout/uiConstants";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
 import OrderSummary from "@/components/checkout/OrderSummary";
 import PaymentSection from "@/components/checkout/PaymentSection";
+import type { CheckoutFormData } from "@/lib/checkout/schema";
+import { checkoutValuesToQuoteContactPayload } from "@/lib/checkout/checkoutQuoteContact";
+
+const RequestQuoteModal = dynamic(() => import("@/components/RequestQuoteModal"), { ssr: false });
 
 function Spinner({ label }: { label: string }) {
   return (
@@ -25,13 +30,34 @@ function Spinner({ label }: { label: string }) {
 
 function CheckoutPageInner() {
   const checkout = useCheckoutPageState();
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
 
-  if (!checkout.isMounted || !checkout.cartReady) {
+  const { getValues, isMounted, cartReady, cartLines } = checkout;
+
+  const resolveQuoteContact = useCallback(
+    () => checkoutValuesToQuoteContactPayload(getValues() as CheckoutFormData),
+    [getValues]
+  );
+
+  useEffect(() => {
+    if (!isMounted || cartLines.length === 0) return;
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#request-quote") return;
+    const t = window.setTimeout(() => {
+      document.getElementById("request-quote-section")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [isMounted, cartLines.length]);
+
+  if (!isMounted || !cartReady) {
     return <Spinner label="Loading checkout…" />;
   }
 
   const {
-    cartLines,
+    cartLines: lines,
     postSubmitNavigation,
     subtotal,
     cartSubtotal,
@@ -47,7 +73,7 @@ function CheckoutPageInner() {
     totalsQuoteLoading,
     placing,
     selectedPaymentMethod,
-    setSelectedPaymentMethod,
+    onUserPaymentMethodChange,
     user,
     billingAddresses,
     shippingAddresses,
@@ -70,9 +96,10 @@ function CheckoutPageInner() {
     recoveryChecking,
     placingSlow,
     placingSubmitPhase,
+    selectedShippingMethodLabel,
   } = checkout;
 
-  if (cartLines.length === 0) {
+  if (lines.length === 0) {
     if (postSubmitNavigation === "order_confirmation") {
       return <Spinner label="Redirecting to order confirmation…" />;
     }
@@ -177,7 +204,7 @@ function CheckoutPageInner() {
           <aside className="lg:col-span-1" aria-labelledby="checkout-order-summary-heading">
             <div className="sticky top-[12.5rem] rounded-xl bg-white p-6">
               <OrderSummary
-                items={cartLines}
+                items={lines}
                 subtotal={subtotal}
                 couponDiscount={couponDiscount}
                 empowerDiscount={empowerDiscount}
@@ -190,22 +217,48 @@ function CheckoutPageInner() {
                 orderTotal={orderTotal}
                 totalsSyncing={totalsQuoteLoading}
               />
+
               <PaymentSection
-                items={cartLines}
+                items={lines}
                 cartSubtotal={cartSubtotal}
                 control={control}
                 errors={errors}
                 selectedPaymentMethod={selectedPaymentMethod}
-                onPaymentMethodChange={setSelectedPaymentMethod}
+                onPaymentMethodChange={onUserPaymentMethodChange}
                 placing={placing}
                 placingSubmitPhase={placingSubmitPhase}
                 ewayTokenFlowEnabled={ewayTokenFlowEnabled}
                 canUseOnAccount={canUseOnAccount}
+                afterPaymentButton={
+                  <div
+                    id="request-quote-section"
+                    className="mt-6 border-t border-gray-200 pt-6"
+                  >
+                    <button
+                      type="button"
+                      title="Request a quote for your cart"
+                      onClick={() => setQuoteModalOpen(true)}
+                      className={`mt-3 w-full rounded-lg border-2 border-teal-600 bg-white px-4 py-3 text-sm font-semibold text-teal-700 transition-colors hover:bg-teal-50 ${FOCUS_RING_BTN}`}
+                    >
+                      Request a quote
+                    </button>
+                  </div>
+                }
               />
             </div>
           </aside>
         </form>
         </div>
+
+        <RequestQuoteModal
+          isOpen={quoteModalOpen}
+          onClose={() => setQuoteModalOpen(false)}
+          shippingAmount={shippingCost}
+          shippingMethod={selectedShippingMethodLabel}
+          discount={couponDiscount}
+          grandTotal={orderTotal}
+          resolveCheckoutContact={resolveQuoteContact}
+        />
       </div>
     </>
   );

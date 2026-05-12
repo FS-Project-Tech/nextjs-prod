@@ -8,40 +8,21 @@ import type { OrderReviewOrder } from "@/components/checkout/order-review/types"
 import OrderReviewSummary from "@/components/checkout/order-review/OrderReviewSummary";
 import OrderItems from "@/components/checkout/order-review/OrderItems";
 import PaymentStatus from "@/components/checkout/order-review/PaymentStatus";
-import { downloadOrderInvoicePdf } from "@/lib/order-review-pdf";
 import { trackPurchase } from "@/lib/analytics";
 import { getOrderPaymentMethodDisplay } from "@/lib/checkout/paymentDisplay";
 import { hcpDisplayFromOrderMeta } from "@/lib/checkout/ndisHcpPayload";
- 
+import { clearCheckoutFormDraft } from "@/lib/checkout/checkoutFormPersistence";
+
 function OrderReviewContent() {
   const searchParams = useSearchParams();
   const { clear } = useCart();
   const [order, setOrder] = useState<OrderReviewOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingPDF, setDownloadingPDF] = useState(false);
   const purchaseTrackedForOrderRef = useRef<string | null>(null);
   const orderIdFromUrl = searchParams.get("order_id") || searchParams.get("orderId");
   const orderKeyFromUrl = searchParams.get("key");
   const accessCodeFromUrl = searchParams.get("AccessCode") || searchParams.get("accessCode");
-  useEffect(() => {
-    // Suppress "lab" color function parsing errors from html2canvas/css parsing
-    const originalError = console.error;
-    console.error = (...args: any[]) => {
-      // Filter out "lab" color function errors
-      const errorMessage = args[0]?.toString() || "";
-      if (errorMessage.includes("lab") && errorMessage.includes("color function")) {
-        return; // Suppress this specific error
-      }
-      originalError.apply(console, args);
-    };
- 
-    return () => {
-      // Restore original console.error on unmount
-      console.error = originalError;
-    };
-  }, []);
- 
   useEffect(() => {
     let cancelled = false;
  
@@ -180,6 +161,7 @@ function OrderReviewContent() {
               }
               if (shouldClear) {
                 clear();
+                clearCheckoutFormDraft();
                 fetch("/api/dashboard/cart/save", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -244,14 +226,10 @@ function OrderReviewContent() {
   useEffect(() => {
     if (!order || typeof window === "undefined") return;
     const currentOrderRef = orderIdFromUrl ? String(orderIdFromUrl).trim() : "";
-    const canonicalOrderRef =
-      (typeof order.number === "string" && order.number.trim()
-        ? order.number.trim()
-        : typeof order.order_number === "string" && order.order_number.trim()
-          ? order.order_number.trim()
-          : "");
+    /** Always use Woo post `id` in the URL — `order_number` / `number` can differ and breaks GET /orders/{id}. */
+    const canonicalOrderRef = String(order.id ?? "").trim();
     if (!canonicalOrderRef || !currentOrderRef || canonicalOrderRef === currentOrderRef) return;
- 
+
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("orderId") != null) {
       sp.set("orderId", canonicalOrderRef);
@@ -264,28 +242,19 @@ function OrderReviewContent() {
     window.history.replaceState(null, "", next);
   }, [order, orderIdFromUrl]);
  
-  const handleDownloadPDF = useCallback(async () => {
-    if (!order || typeof window === "undefined") return;
- 
-    setDownloadingPDF(true);
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => {
-      const s = String(args[0] ?? "");
-      if (s.includes("lab") || s.includes("color function")) return;
-      originalError(...args);
+  const handleDownloadPDF = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    root.classList.add("invoice-print-mode");
+    let timeoutId: number | undefined;
+    const done = () => {
+      root.classList.remove("invoice-print-mode");
+      if (timeoutId != null) window.clearTimeout(timeoutId);
     };
-    try {
-      await downloadOrderInvoicePdf(
-        `Invoice-${order.number ?? order.order_number ?? orderIdFromUrl ?? order.id}.pdf`
-      );
-    } catch (error) {
-      console.error("PDF generation error:", error);
-      window.print();
-    } finally {
-      console.error = originalError;
-      setDownloadingPDF(false);
-    }
-  }, [order, orderIdFromUrl]);
+    window.addEventListener("afterprint", done, { once: true });
+    timeoutId = window.setTimeout(done, 120_000);
+    window.print();
+  }, []);
  
   if (loading) {
     return (
@@ -473,47 +442,19 @@ function OrderReviewContent() {
         {/* Action Buttons */}
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
           <button
+            type="button"
             onClick={handleDownloadPDF}
-            disabled={downloadingPDF}
-            className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            {downloadingPDF ? (
-              <>
-                <svg
-                  className="animate-spin h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span>Generating PDF...</span>
-              </>
-            ) : (
-              <>
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <span>Download PDF</span>
-              </>
-            )}
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            <span>Download PDF</span>
           </button>
           <Link
             href="/shop"

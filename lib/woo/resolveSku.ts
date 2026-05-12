@@ -40,10 +40,20 @@ export async function resolveProductRefBySku(
     }
 
     if (exact.length === 1) {
-      const p = exact[0] as { id?: number; type?: string };
+      const p = exact[0] as { id?: number; type?: string; parent_id?: number };
       const id = Number(p.id || 0);
       if (id <= 0) {
         return { ok: false, message: `Invalid product row for SKU "${s}".` };
+      }
+      const pType = String(p.type || "").toLowerCase();
+      const parentId = Number(p.parent_id || 0);
+      if (pType === "variation" && Number.isFinite(parentId) && parentId > 0) {
+        return {
+          ok: true,
+          product_id: parentId,
+          variation_id: id,
+          source: "product_by_sku",
+        };
       }
       return {
         ok: true,

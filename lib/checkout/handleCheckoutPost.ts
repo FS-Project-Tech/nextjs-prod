@@ -1,7 +1,8 @@
 /**
  * Headless checkout POST: validates cart + shipping server-side, creates a Woo REST order in two
  * phases (minimal POST + extension PUT), then COD complete or eWAY redirect.
- * COD uses inline extension PUT (same as card): avoids deferred PATCH + client-visible polling delays.
+ * COD defers the extension PUT (shipping/coupon/meta) via setImmediate so the JSON response can
+ * return sooner; executeWooCheckoutOrder briefly polls until the order is payable or caps out.
  */
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
@@ -13,6 +14,7 @@ import {
   executeWooCheckoutOrder,
   type CheckoutRoutePerf,
 } from "@/lib/checkout/executeWooCheckoutOrder";
+import type { OrderExtensionTiming } from "@/lib/services/wooService";
 import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate";
 import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
 import {
@@ -332,7 +334,10 @@ export async function handleCheckoutPost(
     let usedSignedQuoteFastPath = false;
 
     const tValidate0 = Date.now();
-    if (payload.payment_method === "eway" && payload.quote_signing) {
+    if (
+      (payload.payment_method === "eway" || payload.payment_method === "cod") &&
+      payload.quote_signing
+    ) {
       const { signature, snapshot } = payload.quote_signing;
       const signatureOk = verifyQuoteSignature(snapshot, signature);
       const fresh = signatureOk
@@ -347,6 +352,7 @@ export async function handleCheckoutPost(
       } else {
         console.warn("[checkout] quote_signing_fast_path_skipped", {
           requestId: correlationId,
+          payment_method: payload.payment_method,
           signatureOk,
           fresh,
           mismatch: match && !match.ok && "message" in match ? match.message : null,
@@ -399,8 +405,20 @@ export async function handleCheckoutPost(
         ? payload.checkout_session_id.trim()
         : randomUUID();
 
-    /** Inline extension so shipping/fees/meta apply before the HTTP response — faster COD than deferred PATCH + retry loop in executeWooCheckoutOrder. */
-    const orderExtensionTiming = { mode: "inline" as const };
+    const orderExtensionTiming: OrderExtensionTiming =
+      payload.payment_method === "cod"
+        ? {
+            mode: "after_response",
+            schedule: (task) => {
+              const run = () => void task();
+              if (typeof globalThis.setImmediate === "function") {
+                globalThis.setImmediate(run);
+              } else {
+                setTimeout(run, 0);
+              }
+            },
+          }
+        : { mode: "inline" };
 
     const result = await withPromiseTimeout(
       restCheckoutTimeoutMs(),
@@ -412,7 +430,7 @@ export async function handleCheckoutPost(
         customerIp: clientIpFromRequest(req) || undefined,
         orderExtensionTiming,
         checkoutSessionId,
-        totals: payload.payment_method === "eway" ? totals : undefined,
+        totals,
         perf,
       }),
     );

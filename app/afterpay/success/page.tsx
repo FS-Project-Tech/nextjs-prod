@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
 import { HEADLESS_CHECKOUT_SESSION_STORAGE_KEY } from "@/lib/checkout/checkoutSessionConstants";
+import { clearCheckoutFormDraft } from "@/lib/checkout/checkoutFormPersistence";
 
 function AfterpaySuccessInner() {
   const router = useRouter();
@@ -55,6 +56,7 @@ function AfterpaySuccessInner() {
 
         try {
           clear();
+          clearCheckoutFormDraft();
           sessionStorage.removeItem(HEADLESS_CHECKOUT_SESSION_STORAGE_KEY);
           sessionStorage.setItem(`headless_clear_cart_for_order_${String(payload.order_id)}`, "1");
           fetch("/api/dashboard/cart/save", {

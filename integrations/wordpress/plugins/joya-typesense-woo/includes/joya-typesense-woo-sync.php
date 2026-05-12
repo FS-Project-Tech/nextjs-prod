@@ -739,14 +739,64 @@ function joya_ts_call_delete_endpoint($id) {
 }
 
 /**
+ * Resolve manual sync input to a product or variation post ID.
+ * Accepts a numeric string (post ID) or a WooCommerce SKU (simple, variable parent, or variation).
+ *
+ * @param mixed $raw Raw POST value or CLI input.
+ * @return int Post ID or 0.
+ */
+function joya_ts_resolve_manual_sync_post_id($raw) {
+    if (is_int($raw) || is_float($raw)) {
+        $raw = (string) (int) $raw;
+    } elseif (!is_string($raw)) {
+        return 0;
+    }
+    $raw = trim($raw);
+    if ($raw === '') {
+        return 0;
+    }
+    if (preg_match('/^\d+$/', $raw)) {
+        return absint($raw);
+    }
+    if (!class_exists('\WC_Data_Store')) {
+        return 0;
+    }
+    try {
+        $store = \WC_Data_Store::load('product');
+        if (!is_object($store) || !method_exists($store, 'get_product_id_by_sku')) {
+            return 0;
+        }
+        $found = (int) $store->get_product_id_by_sku($raw);
+
+        return $found > 0 ? $found : 0;
+    } catch (\Exception $e) {
+        return 0;
+    }
+}
+
+/**
  * Admin / CLI: run sync immediately, bypassing per-request dedupe and short transient lock.
  *
+ * @param int|string $raw_input Product/variation ID (digits only) or SKU.
  * @return array{ok:bool,message:string,normalized_id:int}
  */
-function joya_ts_manual_sync_product(int $raw_id): array {
-    $raw_id = absint($raw_id);
+function joya_ts_manual_sync_product($raw_input): array {
+    $raw_id = joya_ts_resolve_manual_sync_post_id($raw_input);
     if ($raw_id <= 0) {
-        return ['ok' => false, 'message' => __('Enter a valid numeric product or variation ID.', 'joya-typesense-woo'), 'normalized_id' => 0];
+        $hint = is_string($raw_input) ? trim($raw_input) : '';
+        if ($hint !== '' && !preg_match('/^\d+$/', $hint)) {
+            return [
+                'ok' => false,
+                'message' => sprintf(
+                    /* translators: %s: SKU entered by admin */
+                    __('No product or variation found with SKU "%s".', 'joya-typesense-woo'),
+                    $hint
+                ),
+                'normalized_id' => 0,
+            ];
+        }
+
+        return ['ok' => false, 'message' => __('Enter a valid product or variation ID, or a SKU that exists in WooCommerce.', 'joya-typesense-woo'), 'normalized_id' => 0];
     }
     $pt = get_post_type($raw_id);
     if (!joya_ts_is_supported_post_type((string) $pt)) {
@@ -1142,8 +1192,9 @@ function joya_ts_render_activity_page() {
 
     if (isset($_POST['joya_ts_manual_sync']) && isset($_POST['joya_ts_manual_product_id'])) {
         check_admin_referer('joya_ts_manual_sync_action', 'joya_ts_manual_sync_nonce');
-        $pid = absint(wp_unslash($_POST['joya_ts_manual_product_id']));
-        $result = joya_ts_manual_sync_product($pid);
+        $pid_raw = isset($_POST['joya_ts_manual_product_id']) ? wp_unslash($_POST['joya_ts_manual_product_id']) : '';
+        $pid_raw = is_string($pid_raw) ? trim($pid_raw) : '';
+        $result = joya_ts_manual_sync_product($pid_raw);
         if ($result['ok']) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($result['message']) . '</p></div>';
         } else {
@@ -1170,15 +1221,15 @@ function joya_ts_render_activity_page() {
     echo '<h2 style="margin-top:0;">' . esc_html__('Manual sync', 'joya-typesense-woo') . '</h2>';
     echo '<p class="description" style="margin-top:0;">';
     echo esc_html__(
-        'Push one product to Next.js now (blocking request, up to ~45 seconds). Use the WooCommerce product ID, or a variation ID — the index always refreshes the parent product family.',
+        'Push one product to Next.js now (blocking request, up to ~45 seconds). Enter the WooCommerce product ID, a variation ID, or a product/variation SKU — the index always refreshes the parent product family.',
         'joya-typesense-woo'
     );
     echo '</p>';
     echo '<form method="post" action="" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:0.75rem;">';
     wp_nonce_field('joya_ts_manual_sync_action', 'joya_ts_manual_sync_nonce');
     echo '<p style="margin:0;">';
-    echo '<label for="joya_ts_manual_product_id" class="screen-reader-text">' . esc_html__('Product or variation ID', 'joya-typesense-woo') . '</label>';
-    echo '<input type="number" min="1" step="1" required name="joya_ts_manual_product_id" id="joya_ts_manual_product_id" class="regular-text" placeholder="' . esc_attr__('e.g. 12345', 'joya-typesense-woo') . '" /> ';
+    echo '<label for="joya_ts_manual_product_id" class="screen-reader-text">' . esc_html__('Product ID, variation ID, or SKU', 'joya-typesense-woo') . '</label>';
+    echo '<input type="text" inputmode="text" autocomplete="off" required name="joya_ts_manual_product_id" id="joya_ts_manual_product_id" class="regular-text" style="min-width:14rem;" placeholder="' . esc_attr__('e.g. 12345 or SKU-ABC', 'joya-typesense-woo') . '" /> ';
     echo '</p>';
     echo '<p style="margin:0;">';
     echo '<button type="submit" class="button button-primary" name="joya_ts_manual_sync" value="1">' . esc_html__('Sync now', 'joya-typesense-woo') . '</button>';

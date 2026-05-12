@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
+import { clearCheckoutFormDraft } from "@/lib/checkout/checkoutFormPersistence";
 
 type VerifyState = "idle" | "loading" | "paid" | "pending" | "error";
 
@@ -26,6 +27,7 @@ function OrderSuccessInner() {
         clearedRef.current = true;
         try {
           clear();
+          clearCheckoutFormDraft();
           if (typeof window !== "undefined") {
             if (orderRef) {
               try {

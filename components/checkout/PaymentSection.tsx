@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Controller, useWatch, type Control, type FieldErrors } from "react-hook-form";
 import type { CartItem } from "@/lib/types/cart";
 import ShippingOptions from "@/components/ShippingOptions";
@@ -26,6 +26,8 @@ export type PaymentSectionProps = {
   placingSubmitPhase: CheckoutPlacingPhase;
   ewayTokenFlowEnabled: boolean;
   canUseOnAccount: boolean;
+  /** Rendered directly under the primary payment / place-order button */
+  afterPaymentButton?: ReactNode;
 };
 
 function useShipToForRates(control: Control<CheckoutFormData>) {
@@ -127,6 +129,7 @@ function PaymentSectionInner({
   placingSubmitPhase,
   ewayTokenFlowEnabled,
   canUseOnAccount,
+  afterPaymentButton,
 }: PaymentSectionProps) {
   const afterpayEnabled = isAfterpayCheckoutUiEnabled();
 
@@ -287,6 +290,7 @@ function PaymentSectionInner({
         ) : null}
         <span>{submitButtonLabel}</span>
       </button>
+      {afterPaymentButton}
     </>
   );
 }

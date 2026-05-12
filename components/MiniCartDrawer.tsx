@@ -1,7 +1,6 @@
 "use client";
 
 import { useCart } from "@/components/CartProvider";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useMemo, useState, useCallback, memo } from "react";
 import Image from "next/image";
@@ -19,13 +18,6 @@ import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 import { sanitizeString } from "@/lib/sanitize";
 import { getCartUrl } from "@/lib/access-token";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
-
-// Dynamically import RequestQuoteModal - only needed when quote button is clicked
-// Using a function to ensure stable module resolution during HMR
-const RequestQuoteModal = dynamic(() => import("@/components/RequestQuoteModal"), {
-  ssr: false, // Client-side only modal
-  loading: () => null, // No loading state needed for modal
-});
 
 const ShippingOptionsSkeleton = () => (
   <div className="space-y-2" aria-hidden="true">
@@ -216,8 +208,6 @@ CartItem.displayName = "CartItem";
 
 export default function MiniCartDrawer() {
   const { isOpen, close, items, removeItem, updateItemQty, clear } = useCart();
-  const { data: session } = useSession();
-  const user = session?.user ?? null;
   const { discount, appliedCoupon } = useCoupon();
 
   const [selectedRateId, setSelectedRateId] = useState<string>("");
@@ -225,7 +215,6 @@ export default function MiniCartDrawer() {
     cost: number;
     label: string;
   } | null>(null);
-  const [showQuoteModal, setShowQuoteModal] = useState(false);
   const { country: shippingCountry, zone: shippingZone } = useShippingAddress();
 
   const subtotal = useMemo(() => calculateSubtotal(items), [items]);
@@ -445,14 +434,13 @@ export default function MiniCartDrawer() {
                   >
                     Clear cart
                   </button>
-                  {user && (
-                    <button
-                      onClick={() => setShowQuoteModal(true)}
-                      className="flex-1 rounded-xl border-2 border-teal-600 bg-white px-3 py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
-                    >
-                      Request quote
-                    </button>
-                  )}
+                  <Link
+                    href="/checkout#request-quote"
+                    onClick={close}
+                    className="flex flex-1 items-center justify-center rounded-xl border-2 border-teal-600 bg-white px-3 py-2.5 text-center text-sm font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
+                  >
+                    Request a quote
+                  </Link>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
                   <Link
@@ -475,16 +463,6 @@ export default function MiniCartDrawer() {
           </div>
         </aside>
       </div>
-
-      {/* Request Quote Modal */}
-      <RequestQuoteModal
-        isOpen={showQuoteModal}
-        onClose={() => setShowQuoteModal(false)}
-        shippingAmount={shippingAmount}
-        shippingMethod={selectedShippingRate?.label || ""}
-        discount={couponDiscount}
-        grandTotal={grandTotal}
-      />
     </>
   );
 }

@@ -150,10 +150,10 @@ export async function executeWooCheckoutOrder(input: {
   };
   actor: CheckoutActor;
   customerIp?: string;
-  /** COD: defer shipping/meta/fees PUT until after the HTTP response (Next `after`). eWAY: inline before payment URL. */
+  /** COD: extension PATCH can be deferred (see handleCheckoutPost); eWAY: always inline before payment URL. */
   orderExtensionTiming: OrderExtensionTiming;
   checkoutSessionId: string;
-  /** Required for eWAY: server quote used for the gateway amount (not Woo session / stale `order.total`). */
+  /** Validated quote totals: required for eWAY; used for COD response when Woo `total` is not yet populated. */
   totals?: CheckoutTotals;
   perf?: CheckoutRoutePerf;
 }): Promise<WooCheckoutExecuteResult> {
@@ -244,26 +244,44 @@ export async function executeWooCheckoutOrder(input: {
     });
   }
  
+  /** COD: extension runs off the hot path; wait briefly for Woo to show a payable total after the deferred PATCH. */
   if (orderExtensionTiming.mode === "after_response" && payload.payment_method === "cod") {
     const postIdRaw = extractWooOrderId(order);
     const postIdNum =
       typeof postIdRaw === "number" ? postIdRaw : Number.parseInt(String(postIdRaw), 10);
     if (Number.isFinite(postIdNum) && postIdNum > 0) {
-      let validatedDeferred = false;
       let lastErr: unknown = null;
-      for (let attempt = 0; attempt < 8; attempt++) {
-        try {
-          const refreshed = await getWooOrder(String(postIdNum));
-          assertWooOrderPayable(refreshed);
-          order = refreshed;
-          validatedDeferred = true;
-          break;
-        } catch (e) {
-          lastErr = e;
-          await new Promise((r) => setTimeout(r, 350 + attempt * 150));
+      try {
+        assertWooOrderPayable(order);
+        lastErr = null;
+      } catch (e) {
+        lastErr = e;
+      }
+      if (lastErr != null) {
+        await new Promise<void>((resolve) => {
+          if (typeof globalThis.setImmediate === "function") {
+            globalThis.setImmediate(() => resolve());
+          } else {
+            setTimeout(() => resolve(), 0);
+          }
+        });
+        const gapsMs = [0, 35, 50, 70, 90, 120, 160, 200];
+        for (let i = 0; i < gapsMs.length; i++) {
+          if (i > 0) {
+            await new Promise<void>((r) => setTimeout(r, gapsMs[i]!));
+          }
+          try {
+            const refreshed = await getWooOrder(String(postIdNum));
+            assertWooOrderPayable(refreshed);
+            order = refreshed;
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
         }
       }
-      if (!validatedDeferred && lastErr != null) throw lastErr;
+      if (lastErr != null) throw lastErr;
     }
   }
  
@@ -304,7 +322,17 @@ export async function executeWooCheckoutOrder(input: {
     validatedEwayTotalStr ?? readWooOrderTotal(orderForPayment);
  
   if (isCod) {
-    return { kind: "cod", orderIdRaw, orderKey, wooOrderTotal: readWooOrderTotal(orderForPayment) };
+    let wooTotal = readWooOrderTotal(orderForPayment);
+    const parsed = wooTotal != null ? Number.parseFloat(wooTotal) : NaN;
+    if (
+      (wooTotal == null || !Number.isFinite(parsed) || parsed <= 0) &&
+      checkoutTotals &&
+      Number.isFinite(checkoutTotals.total) &&
+      checkoutTotals.total > 0
+    ) {
+      wooTotal = checkoutTotals.total.toFixed(2);
+    }
+    return { kind: "cod", orderIdRaw, orderKey, wooOrderTotal: wooTotal };
   }
 
   if (isAfterpay) {

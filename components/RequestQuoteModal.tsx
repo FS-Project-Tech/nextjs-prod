@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { useCart } from "@/components/CartProvider";
 import { useSession } from "next-auth/react";
 import { parseCartTotal } from "@/lib/cart/pricing";
 import { formatPrice } from "@/lib/format-utils";
+import { pickPrimaryQuoteAddresses } from "@/lib/quote-request-addresses";
+import type { CheckoutQuoteContactPayload } from "@/lib/checkout/checkoutQuoteContact";
 
 interface RequestQuoteModalProps {
   isOpen: boolean;
@@ -14,6 +16,11 @@ interface RequestQuoteModalProps {
   shippingMethod?: string;
   discount?: number;
   grandTotal?: number;
+  /**
+   * Checkout flow: resolve contact + addresses from the form at submit time (guests and logged-in).
+   * When set, login is not required.
+   */
+  resolveCheckoutContact?: () => CheckoutQuoteContactPayload | null;
 }
 
 export default function RequestQuoteModal({
@@ -23,6 +30,7 @@ export default function RequestQuoteModal({
   shippingMethod = "",
   discount = 0,
   grandTotal,
+  resolveCheckoutContact,
 }: RequestQuoteModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notes, setNotes] = useState("");
@@ -34,8 +42,16 @@ export default function RequestQuoteModal({
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
-    if (!user || !user.email) {
-      showError("Please log in to request a quote");
+    const hasCheckoutResolver = Boolean(resolveCheckoutContact);
+    const checkoutContact = resolveCheckoutContact?.() ?? null;
+
+    if (hasCheckoutResolver) {
+      if (!checkoutContact) {
+        showError("Could not read your checkout details. Refresh the page and try again.");
+        return;
+      }
+    } else if (!user || !user.email) {
+      showError("Please log in to request a quote, or use Request a quote on the checkout page.");
       return;
     }
 
@@ -45,14 +61,52 @@ export default function RequestQuoteModal({
       const finalTotal =
         grandTotal !== undefined ? grandTotal : subtotal + shippingAmount - discount;
 
+      let email: string;
+      let userName: string;
+      let billing_address: Record<string, string> | undefined;
+      let shipping_address: Record<string, string> | undefined;
+
+      if (checkoutContact) {
+        email = checkoutContact.email;
+        userName = checkoutContact.userName;
+        if (Object.keys(checkoutContact.billing_address).length > 0) {
+          billing_address = checkoutContact.billing_address as Record<string, string>;
+        }
+        if (Object.keys(checkoutContact.shipping_address).length > 0) {
+          shipping_address = checkoutContact.shipping_address as Record<string, string>;
+        }
+      } else {
+        email = user!.email!;
+        userName = user!.name || user!.email?.split("@")[0] || "Customer";
+        try {
+          const addrRes = await fetch("/api/dashboard/addresses", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (addrRes.ok) {
+            const addrData = (await addrRes.json()) as { addresses?: Record<string, unknown>[] };
+            const list = Array.isArray(addrData.addresses) ? addrData.addresses : [];
+            const picked = pickPrimaryQuoteAddresses(list);
+            if (picked.billing && Object.keys(picked.billing).length > 0) {
+              billing_address = picked.billing as Record<string, string>;
+            }
+            if (picked.shipping && Object.keys(picked.shipping).length > 0) {
+              shipping_address = picked.shipping as Record<string, string>;
+            }
+          }
+        } catch {
+          /* addresses optional for confirmation email */
+        }
+      }
+
       const response = await fetch("/api/quote/request", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: user.email,
-          userName: user.name || user.email?.split("@")[0] || "Customer",
+          email,
+          userName,
           items: items.map((item) => ({
             name: item.name,
             sku: item.sku || null,
@@ -67,6 +121,8 @@ export default function RequestQuoteModal({
           discount: discount,
           total: finalTotal,
           notes: notes.trim() || undefined,
+          ...(billing_address ? { billing_address } : {}),
+          ...(shipping_address ? { shipping_address } : {}),
         }),
       });
 

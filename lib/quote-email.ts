@@ -9,7 +9,7 @@
 
 import { sendHtmlEmailViaBrevo, sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
 import { getWpBaseUrl } from "./auth";
-import type { Quote } from "./types/quote";
+import type { Quote, QuoteAddressSnapshot } from "./types/quote";
 import { formatPrice } from "./format-utils";
 
 export type QuoteEmailEvent =
@@ -36,6 +36,86 @@ function escapeHtmlForEmail(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function quoteAddressHasContent(addr: QuoteAddressSnapshot | null | undefined): boolean {
+  if (!addr || typeof addr !== "object") return false;
+  return Object.values(addr).some((v) => typeof v === "string" && v.trim().length > 0);
+}
+
+function quoteAddressInnerLines(addr: QuoteAddressSnapshot): string[] {
+  const lines: string[] = [];
+  const name = [addr.first_name, addr.last_name].filter((x) => x?.trim()).join(" ").trim();
+  if (name) lines.push(name);
+  if (addr.company?.trim()) lines.push(addr.company.trim());
+  const street = [addr.address_1, addr.address_2].filter((x) => x?.trim()).join(", ");
+  if (street) lines.push(street);
+  const cityLine = [addr.city, addr.state, addr.postcode].filter((x) => x?.trim()).join(" ").trim();
+  if (cityLine) lines.push(cityLine);
+  if (addr.country?.trim()) lines.push(addr.country.trim());
+  if (addr.phone?.trim()) lines.push(`Phone: ${addr.phone.trim()}`);
+  if (addr.email?.trim()) lines.push(`Email: ${addr.email.trim()}`);
+  return lines;
+}
+
+function quoteAddressHtmlBlock(title: string, addr: QuoteAddressSnapshot | null | undefined): string {
+  if (!quoteAddressHasContent(addr)) return "";
+  const lines = quoteAddressInnerLines(addr!);
+  if (!lines.length) return "";
+  const inner = lines
+    .map(
+      (l) =>
+        `<span style="display:block;margin-top:4px;color:#374151;">${escapeHtmlForEmail(l)}</span>`
+    )
+    .join("");
+  return `
+    <div style="margin-bottom: 16px; padding: 14px; background-color: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+      <strong style="display: block; margin-bottom: 4px; color: #111827; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtmlForEmail(title)}</strong>
+      ${inner}
+    </div>`;
+}
+
+function quoteCreatedContactSectionHtml(quote: Quote): string {
+  const emailHtml = quote.user_email
+    ? `<p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${escapeHtmlForEmail(quote.user_email)}</p>`
+    : "";
+  const nameHtml = quote.user_name
+    ? `<p style="margin: 0 0 16px 0;"><strong>Name:</strong> ${escapeHtmlForEmail(quote.user_name)}</p>`
+    : "";
+  const billingHtml = quoteAddressHtmlBlock("Billing address", quote.billing_address ?? undefined);
+  const shippingHtml = quoteAddressHtmlBlock("Shipping address", quote.shipping_address ?? undefined);
+  if (!emailHtml && !nameHtml && !billingHtml && !shippingHtml) return "";
+  return `
+    <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb;">
+      <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 16px;">Your details</h3>
+      ${emailHtml}
+      ${nameHtml}
+      ${billingHtml}
+      ${shippingHtml}
+    </div>`;
+}
+
+function quoteAddressPlainBlock(title: string, addr: QuoteAddressSnapshot | null | undefined): string {
+  if (!quoteAddressHasContent(addr)) return "";
+  const lines = quoteAddressInnerLines(addr!);
+  if (!lines.length) return "";
+  return `${title}:\n${lines.map((l) => `  ${l}`).join("\n")}\n`;
+}
+
+function quoteCreatedPlainBody(quote: Quote, quoteUrl: string): string {
+  const parts: string[] = [];
+  parts.push(`Your quote request ${quote.quote_number} has been received.`);
+  parts.push("");
+  parts.push("Your details");
+  if (quote.user_email) parts.push(`Email: ${quote.user_email}`);
+  if (quote.user_name) parts.push(`Name: ${quote.user_name}`);
+  const bill = quoteAddressPlainBlock("Billing address", quote.billing_address ?? undefined);
+  if (bill) parts.push(bill.trimEnd());
+  const ship = quoteAddressPlainBlock("Shipping address", quote.shipping_address ?? undefined);
+  if (ship) parts.push(ship.trimEnd());
+  parts.push("");
+  parts.push(`View in dashboard: ${quoteUrl}`);
+  return parts.join("\n");
 }
 
 /**
@@ -223,7 +303,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     if (!staffTo || staffTo.toLowerCase() === customer) {
       continue;
     }
-    const staffSubject = `[Joya — staff copy] ${options.subject}`;
+    const staffSubject = `[Joya — Customer Service] ${options.subject}`;
     const staffBody = `${options.body}\n\n---\nInternal copy — original recipient: ${options.to}`;
     const staffHtml = options.html
       ? prependStaffCopyBannerHtml(options.html, options.to)
@@ -248,7 +328,16 @@ function generateHTMLEmail(
   actionButton?: { text: string; url: string }
 ): string {
   const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "Joya Medical Supplies";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
+  const safeTitle = escapeHtmlForEmail(title);
+  const safeGreeting = escapeHtmlForEmail(greeting);
+  const safeSiteName = escapeHtmlForEmail(siteName);
+  const safeButton =
+    actionButton != null
+      ? {
+          text: escapeHtmlForEmail(actionButton.text),
+          url: escapeHtmlForEmail(actionButton.url),
+        }
+      : null;
 
   return `
 <!DOCTYPE html>
@@ -256,29 +345,29 @@ function generateHTMLEmail(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <div style="background-color: #14b8a6; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
-    <h1 style="margin: 0; font-size: 24px;">${siteName}</h1>
+    <h1 style="margin: 0; font-size: 24px;">${safeSiteName}</h1>
   </div>
   
   <div style="background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px;">
-    <h2 style="color: #1f2937; margin-top: 0;">${title}</h2>
+    <h2 style="color: #1f2937; margin-top: 0;">${safeTitle}</h2>
     
-    <p>${greeting}</p>
+    <p>${safeGreeting}</p>
     
     <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
       ${content}
     </div>
     
     ${
-      actionButton
+      safeButton
         ? `
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${actionButton.url}" 
+        <a href="${safeButton.url}" 
            style="display: inline-block; background-color: #14b8a6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
-          ${actionButton.text}
+          ${safeButton.text}
         </a>
       </div>
     `
@@ -291,7 +380,7 @@ function generateHTMLEmail(
     
     <p style="color: #6b7280; font-size: 14px;">
       Best regards,<br>
-      ${siteName}
+      ${safeSiteName}
     </p>
   </div>
   
@@ -314,9 +403,14 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
     .map((item) => {
       const qty = item.qty || 1;
       const price = Number(item.price) || 0;
+      const nameEsc = escapeHtmlForEmail(String(item.name ?? ""));
+      const skuPart =
+        item.sku && String(item.sku).trim()
+          ? ` (SKU: ${escapeHtmlForEmail(String(item.sku).trim())})`
+          : "";
       return `
       <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${item.name}${item.sku ? ` (SKU: ${item.sku})` : ""}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${nameEsc}${skuPart}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${qty}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price)}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price * qty)}</td>
@@ -325,8 +419,14 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
     })
     .join("");
 
+  const contactSection = quoteCreatedContactSectionHtml(quote);
+  const qn = escapeHtmlForEmail(quote.quote_number);
+  const notesEsc = quote.notes ? escapeHtmlForEmail(quote.notes) : "";
+
   const content = `
-    <p>Your quote request <strong>${quote.quote_number}</strong> has been received.</p>
+    <p>Your quote request <strong>${qn}</strong> has been received.</p>
+    
+    ${contactSection}
     
     <h3 style="color: #1f2937; margin-top: 20px;">Quote Details</h3>
     <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
@@ -379,13 +479,13 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
         ? `
       <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-radius: 6px;">
         <strong>Your Notes:</strong>
-        <p style="margin: 8px 0 0 0; font-style: italic; color: #6b7280;">${quote.notes}</p>
+        <p style="margin: 8px 0 0 0; font-style: italic; color: #6b7280;">${notesEsc}</p>
       </div>
     `
         : ""
     }
     
-    <p style="margin-top: 20px;">Our team will review your request and get back to you within 2-3 business days.</p>
+    <p style="margin-top: 20px;">Our team will review your request and get back to you within 24-48 hours.</p>
   `;
 
   const html = generateHTMLEmail(
@@ -399,7 +499,7 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
   return sendEmail({
     to: quote.user_email,
     subject,
-    body: `Your quote request ${quote.quote_number} has been received. View it at: ${quoteUrl}`,
+    body: quoteCreatedPlainBody(quote, quoteUrl),
     html,
     type: "quote_created",
   });
@@ -411,9 +511,10 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
 export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
+  const qn = escapeHtmlForEmail(quote.quote_number);
 
   const content = `
-    <p>A quote has been prepared for you: <strong>${quote.quote_number}</strong></p>
+    <p>A quote has been prepared for you: <strong>${qn}</strong></p>
     
     <p style="margin-top: 15px;">Please review the quote details and let us know if you'd like to proceed.</p>
     
@@ -454,9 +555,10 @@ export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
 export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
+  const qn = escapeHtmlForEmail(quote.quote_number);
 
   const content = `
-    <p>Great news! You have accepted quote <strong>${quote.quote_number}</strong>.</p>
+    <p>Great news! You have accepted quote <strong>${qn}</strong>.</p>
     
     <p style="margin-top: 15px;">You can now convert this quote to an order when you're ready to proceed with the purchase.</p>
   `;
@@ -485,15 +587,17 @@ export async function sendQuoteAcceptedEmail(quote: Quote): Promise<boolean> {
 export async function sendQuoteRejectedEmail(quote: Quote, reason?: string): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
+  const qn = escapeHtmlForEmail(quote.quote_number);
+  const reasonEsc = reason ? escapeHtmlForEmail(reason) : "";
 
   const content = `
-    <p>You have rejected quote <strong>${quote.quote_number}</strong>.</p>
+    <p>You have rejected quote <strong>${qn}</strong>.</p>
     
     ${
       reason
         ? `
       <div style="margin-top: 15px; padding: 12px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px;">
-        <strong>Reason:</strong> ${reason}
+        <strong>Reason:</strong> ${reasonEsc}
       </div>
     `
         : ""
@@ -530,13 +634,15 @@ export async function sendQuoteConvertedEmail(
 ): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const orderUrl = `${siteUrl}/dashboard/orders/${orderId}`;
+  const qn = escapeHtmlForEmail(quote.quote_number);
+  const orderLabelEsc = escapeHtmlForEmail(String(orderNumber ?? orderId));
 
   const content = `
-    <p>Your quote <strong>${quote.quote_number}</strong> has been successfully converted to an order.</p>
+    <p>Your quote <strong>${qn}</strong> has been successfully converted to an order.</p>
     
     <div style="margin-top: 20px; padding: 15px; background-color: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
       <strong>Order Details:</strong><br>
-      Order #${orderNumber || orderId}<br>
+      Order #${orderLabelEsc}<br>
       Total: ${formatPrice(quote.total)}
     </div>
     
@@ -567,9 +673,10 @@ export async function sendQuoteConvertedEmail(
 export async function sendQuoteExpiredEmail(quote: Quote): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
+  const qn = escapeHtmlForEmail(quote.quote_number);
 
   const content = `
-    <p>This is to inform you that quote <strong>${quote.quote_number}</strong> has expired.</p>
+    <p>This is to inform you that quote <strong>${qn}</strong> has expired.</p>
     
     <p style="margin-top: 15px;">If you're still interested in these items, please request a new quote or contact us directly.</p>
   `;

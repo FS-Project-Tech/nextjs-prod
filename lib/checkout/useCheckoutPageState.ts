@@ -40,6 +40,12 @@ import { CHECKOUT_FORM_DEFAULTS } from "./formDefaults";
 import { useMountFlag, useCheckoutQueryToasts } from "./useCheckoutSideEffects";
 import { applySavedBillingAddress, applySavedShippingAddress } from "./savedAddressPatch";
 import { cartLinesFingerprint } from "./cartFingerprint";
+import {
+  clearCheckoutFormDraft,
+  mergeCheckoutFormDraft,
+  readCheckoutFormDraft,
+  writeCheckoutFormDraft,
+} from "./checkoutFormPersistence";
 
 /** Debounce before POST /api/checkout/quote-totals (ms). Lower = snappier; too low = excess API calls on address typing. */
 const QUOTE_TOTALS_DEBOUNCE_MS = 120;
@@ -105,6 +111,29 @@ export function useCheckoutPageState() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod" | "afterpay">(
     "eway",
   );
+  const selectedPaymentMethodRef = useRef(selectedPaymentMethod);
+  selectedPaymentMethodRef.current = selectedPaymentMethod;
+  /** When user picks a payment option in the UI; used so draft re-hydration cannot overwrite with an older saved method after eWAY return. */
+  const paymentMethodTouchedAtRef = useRef(0);
+
+  const checkoutPersistRefs = useRef<{
+    postSubmitNavigation: null | "secure_payment" | "order_confirmation";
+    selectedPaymentMethod: "eway" | "cod" | "afterpay";
+    empowerDiscountApplied: boolean;
+    selectedBillingAddressId: string;
+    selectedShippingAddressId: string;
+  }>({
+    postSubmitNavigation: null,
+    selectedPaymentMethod: "eway",
+    empowerDiscountApplied: false,
+    selectedBillingAddressId: "",
+    selectedShippingAddressId: "",
+  });
+  checkoutPersistRefs.current.postSubmitNavigation = postSubmitNavigation;
+  checkoutPersistRefs.current.selectedPaymentMethod = selectedPaymentMethod;
+  checkoutPersistRefs.current.empowerDiscountApplied = empowerDiscountApplied;
+  checkoutPersistRefs.current.selectedBillingAddressId = selectedBillingAddressId;
+  checkoutPersistRefs.current.selectedShippingAddressId = selectedShippingAddressId;
 
   /** Copy only: submit always tries `/api/checkout/create-session` first for card; set env to `"false"` for legacy hosted wording. */
   const ewayTokenFlowEnabled =
@@ -131,8 +160,11 @@ export function useCheckoutPageState() {
     handleSubmit,
     setValue,
     getValues,
+    watch,
     formState: { errors },
   } = form;
+  const getValuesForPersistRef = useRef(getValues);
+  getValuesForPersistRef.current = getValues;
   // Scoped useWatch fields only — avoids subscribing to the entire form (no watch() snapshot).
   const watchedShippingMethod = useWatch({ control, name: "shippingMethod" });
   const shipToDifferentAddress = useWatch({
@@ -180,8 +212,14 @@ export function useCheckoutPageState() {
     }
   }, [canUseOnAccount, selectedPaymentMethod]);
 
+  const onUserPaymentMethodChange = useCallback((method: "eway" | "cod" | "afterpay") => {
+    paymentMethodTouchedAtRef.current = Date.now();
+    setSelectedPaymentMethod(method);
+  }, []);
+
   /** One-shot apply of first saved address per section (returning customers). */
   const savedAddressHydrationRef = useRef({ billing: false, shipping: false });
+  const checkoutDraftHydratedForFingerprintRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!shipToDifferentAddress) {
@@ -232,6 +270,156 @@ export function useCheckoutPageState() {
     setSelectedShippingAddressId,
   ]);
 
+  useEffect(() => {
+    if (getCartPersistHydrated()) {
+      setCartPersistReady(true);
+      return;
+    }
+    return subscribeCartPersistHydrated(() => setCartPersistReady(true));
+  }, []);
+
+  const cartReady = useMemo(() => {
+    if (!cartPersistReady) return false;
+    if (authLoading) return false;
+    if (!cartIsHydrated) return false;
+    if (user?.id) {
+      if (cartLines.length > 0) return true;
+      return hasLoadedServerCart;
+    }
+    return true;
+  }, [
+    authLoading,
+    cartIsHydrated,
+    cartLines.length,
+    cartPersistReady,
+    hasLoadedServerCart,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (cartLines.length === 0) {
+      checkoutDraftHydratedForFingerprintRef.current = null;
+      paymentMethodTouchedAtRef.current = 0;
+      return;
+    }
+    const fp = cartLinesFingerprint(cartLines);
+    if (
+      checkoutDraftHydratedForFingerprintRef.current !== null &&
+      checkoutDraftHydratedForFingerprintRef.current !== fp
+    ) {
+      checkoutDraftHydratedForFingerprintRef.current = null;
+      paymentMethodTouchedAtRef.current = 0;
+    }
+  }, [cartLines]);
+
+  useEffect(() => {
+    if (!isMounted || !cartReady || cartLines.length === 0) return;
+    const fp = cartLinesFingerprint(cartLines);
+    if (checkoutDraftHydratedForFingerprintRef.current === fp) return;
+    const draft = readCheckoutFormDraft();
+    if (!draft) {
+      checkoutDraftHydratedForFingerprintRef.current = fp;
+      return;
+    }
+    if (draft.cartFingerprint && draft.cartFingerprint !== fp) {
+      clearCheckoutFormDraft();
+      checkoutDraftHydratedForFingerprintRef.current = fp;
+      return;
+    }
+    const draftSavedAt = typeof draft.savedAt === "number" && Number.isFinite(draft.savedAt) ? draft.savedAt : 0;
+    const tid = window.setTimeout(() => {
+      const patch = mergeCheckoutFormDraft(draft.form);
+      const merged = { ...CHECKOUT_FORM_DEFAULTS, ...patch } as CheckoutFormData;
+      form.reset(merged);
+      const userPickedPaymentAfterDraft =
+        paymentMethodTouchedAtRef.current > draftSavedAt;
+      if (
+        !userPickedPaymentAfterDraft &&
+        (draft.selectedPaymentMethod === "eway" ||
+          draft.selectedPaymentMethod === "cod" ||
+          draft.selectedPaymentMethod === "afterpay")
+      ) {
+        setSelectedPaymentMethod(draft.selectedPaymentMethod);
+      }
+      if (typeof draft.empowerDiscountApplied === "boolean") {
+        setEmpowerDiscountApplied(draft.empowerDiscountApplied);
+      }
+      if (typeof draft.selectedBillingAddressId === "string") {
+        setSelectedBillingAddressId(draft.selectedBillingAddressId);
+      }
+      if (typeof draft.selectedShippingAddressId === "string") {
+        setSelectedShippingAddressId(draft.selectedShippingAddressId);
+      }
+      const hasBilling =
+        Boolean(patch.billing_first_name?.trim()) || Boolean(patch.billing_email?.trim());
+      if (hasBilling) savedAddressHydrationRef.current.billing = true;
+      if (
+        patch.shipToDifferentAddress &&
+        (Boolean(patch.shipping_address_1?.trim()) || Boolean(patch.shipping_city?.trim()))
+      ) {
+        savedAddressHydrationRef.current.shipping = true;
+      }
+      checkoutDraftHydratedForFingerprintRef.current = fp;
+    }, 0);
+    return () => clearTimeout(tid);
+  }, [isMounted, cartReady, cartLines, form, setSelectedPaymentMethod]);
+
+  useEffect(() => {
+    if (!isMounted || cartLines.length === 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sub = watch(() => {
+      if (checkoutPersistRefs.current.postSubmitNavigation) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const fp = cartLinesFingerprint(cartLinesRef.current);
+        if (!fp || cartLinesRef.current.length === 0) return;
+        writeCheckoutFormDraft({
+          version: 1,
+          savedAt: Date.now(),
+          cartFingerprint: fp,
+          form: getValuesForPersistRef.current() as CheckoutFormData,
+          selectedPaymentMethod: checkoutPersistRefs.current.selectedPaymentMethod,
+          empowerDiscountApplied: checkoutPersistRefs.current.empowerDiscountApplied,
+          selectedBillingAddressId: checkoutPersistRefs.current.selectedBillingAddressId,
+          selectedShippingAddressId: checkoutPersistRefs.current.selectedShippingAddressId,
+        });
+      }, 320);
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.unsubscribe();
+    };
+  }, [isMounted, watch, cartLines.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isMounted) return;
+    const flush = () => {
+      if (checkoutPersistRefs.current.postSubmitNavigation) return;
+      if (cartLinesRef.current.length === 0) return;
+      const fp = cartLinesFingerprint(cartLinesRef.current);
+      if (!fp) return;
+      writeCheckoutFormDraft({
+        version: 1,
+        savedAt: Date.now(),
+        cartFingerprint: fp,
+        form: getValuesForPersistRef.current() as CheckoutFormData,
+        selectedPaymentMethod: checkoutPersistRefs.current.selectedPaymentMethod,
+        empowerDiscountApplied: checkoutPersistRefs.current.empowerDiscountApplied,
+        selectedBillingAddressId: checkoutPersistRefs.current.selectedBillingAddressId,
+        selectedShippingAddressId: checkoutPersistRefs.current.selectedShippingAddressId,
+      });
+    };
+    window.addEventListener("pagehide", flush);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isMounted]);
+
   const cartSubtotal = useMemo(() => parseCartTotal(cartTotalString), [cartTotalString]);
   const subtotal = parseCartTotal(cartTotalString);
   const taxableSubtotal = useMemo(() => calculateTaxableSubtotal(cartLines), [cartLines]);
@@ -262,32 +450,6 @@ export function useCheckoutPageState() {
   }, [empowerSummary.applied, success]);
 
   useMountFlag(setIsMounted);
-
-  useEffect(() => {
-    if (getCartPersistHydrated()) {
-      setCartPersistReady(true);
-      return;
-    }
-    return subscribeCartPersistHydrated(() => setCartPersistReady(true));
-  }, []);
-
-  const cartReady = useMemo(() => {
-    if (!cartPersistReady) return false;
-    if (authLoading) return false;
-    if (!cartIsHydrated) return false;
-    if (user?.id) {
-      if (cartLines.length > 0) return true;
-      return hasLoadedServerCart;
-    }
-    return true;
-  }, [
-    authLoading,
-    cartIsHydrated,
-    cartLines.length,
-    cartPersistReady,
-    hasLoadedServerCart,
-    user?.id,
-  ]);
 
   /**
    * Restoring checkout via browser Back after leaving for eWAY uses the back-forward cache:
@@ -340,6 +502,7 @@ export function useCheckoutPageState() {
         });
         if (st === "processing" || st === "completed" || st === "on-hold") {
           clearCheckoutSubmitLock();
+          clearCheckoutFormDraft();
           router.replace(`/thank-you?order=${encodeURIComponent(String(json.woo_order_id))}`, {
             scroll: false,
           });
@@ -580,6 +743,10 @@ export function useCheckoutPageState() {
     ? orderTotal
     : (serverTotals?.total ?? orderTotal);
   const summaryCartSubtotal = serverTotals?.subtotal ?? cartSubtotal;
+  const selectedShippingMethodLabel = useMemo(() => {
+    const sm = watchedShippingMethod as ShippingMethodType | undefined;
+    return (sm?.label || "").trim();
+  }, [watchedShippingMethod]);
 
   useCheckoutQueryToasts(isMounted, searchParams, showError);
 
@@ -609,7 +776,6 @@ export function useCheckoutPageState() {
       quoteEpochRef.current += 1;
       quoteFetchAbortRef.current?.abort();
       quoteFetchAbortRef.current = null;
-      setPlacing(true);
       setPlacingSubmitPhase("payment");
       if (shouldBlockSubmitDueToRecentLock()) {
         const blockedId = readActiveSubmitId();
@@ -633,7 +799,7 @@ export function useCheckoutPageState() {
         data,
         cartLines: linesForOrder,
         checkoutSessionId: ensureCheckoutSessionId(),
-        selectedPaymentMethod,
+        selectedPaymentMethod: selectedPaymentMethodRef.current,
         ewayTokenFlowEnabled,
         appliedCoupon,
         couponSearchParam: searchParams.get("coupon"),
@@ -653,7 +819,6 @@ export function useCheckoutPageState() {
     [
       placing,
       showError,
-      selectedPaymentMethod,
       ewayTokenFlowEnabled,
       appliedCoupon,
       empowerDiscountApplied,
@@ -688,6 +853,7 @@ export function useCheckoutPageState() {
     onApplyEmpowerDiscount,
     appliedCoupon,
     shippingCost: summaryShipping,
+    selectedShippingMethodLabel,
     gst: summaryGst,
     orderTotal: summaryOrderTotal,
     totalsQuoteLoading,
@@ -696,6 +862,7 @@ export function useCheckoutPageState() {
     placingSubmitPhase,
     selectedPaymentMethod,
     setSelectedPaymentMethod,
+    onUserPaymentMethodChange,
     user,
     billingAddresses,
     shippingAddresses,
@@ -717,5 +884,7 @@ export function useCheckoutPageState() {
     recoveryBannerVisible,
     recoveryChecking,
     placingSlow,
+    watch,
+    getValues,
   };
 }

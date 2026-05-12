@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
  * In-memory idempotency for POST /api/checkout.
  * Same Idempotency-Key → same successful response (no second Woo order).
  * Multi-instance: replace with Redis; see {@link getIdempotencyTtlMs}.
+ *
+ * Client sends keys scoped by payment method (e.g. `sessionUuid:eway` vs `sessionUuid:cod`) so a
+ * successful card checkout response is never replayed when the shopper switches to On account.
  */
 
 const GLOBAL_KEY = "__checkoutPostIdempotencyStore";

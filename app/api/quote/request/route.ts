@@ -3,6 +3,7 @@ import { getWpBaseUrl } from "@/lib/auth";
 import { storeQuote, generateQuoteNumber } from "@/lib/quote-storage";
 import { sendQuoteCreatedEmail } from "@/lib/quote-email";
 import type { QuoteRequestPayload } from "@/lib/types/quote";
+import { parseQuoteAddressSnapshotFromBody } from "@/lib/quote-request-addresses";
 
 /**
  * POST /api/quote/request
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
       discount,
       total,
       notes, // Add notes field
+      billing_address: billingAddressRaw,
+      shipping_address: shippingAddressRaw,
     } = body;
 
     if (!email) {
@@ -40,6 +43,9 @@ export async function POST(req: NextRequest) {
     // Generate unique quote number
     const quoteNumber = generateQuoteNumber();
 
+    const billing_address = parseQuoteAddressSnapshotFromBody(billingAddressRaw);
+    const shipping_address = parseQuoteAddressSnapshotFromBody(shippingAddressRaw);
+
     // Store quote in database
     const quotePayload: QuoteRequestPayload = {
       email,
@@ -51,6 +57,8 @@ export async function POST(req: NextRequest) {
       discount,
       total,
       notes,
+      billing_address,
+      shipping_address,
     };
 
     const storedQuote = await storeQuote(quotePayload, quoteNumber);

@@ -16,6 +16,21 @@ import { messageFromCreateOrderError } from "./createOrderHttp";
 import { submitAfterpayCheckout } from "./submitAfterpayCheckout";
 import { clearCheckoutSubmitLock } from "@/lib/checkout/checkoutSubmitSession";
 
+/** Must differ per payment method so `/api/checkout` idempotency cannot replay an eWAY response for a later COD submit (same browser session id). */
+export function buildCheckoutSubmitIdempotencyKey(
+  checkoutSessionId: string,
+  paymentMethod: "eway" | "cod" | "afterpay",
+): string {
+  const base = String(checkoutSessionId || "").trim();
+  const tag = `:${paymentMethod}`;
+  if (base.length >= 8) return `${base}${tag}`;
+  const fallback =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return `${fallback}${tag}`;
+}
+
 export type SubmitCheckoutOrderArgs = {
   data: CheckoutFormData;
   cartLines: CartItem[];
@@ -131,7 +146,8 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       couponFromUrl: couponSearchParam,
       checkoutSessionId,
       empowerApplied,
-      quoteSigning: selectedPaymentMethod === "eway" ? signedQuote ?? null : null,
+      /** Same HMAC bundle as eWAY — lets `/api/checkout` skip full Woo pricing for COD when fresh. */
+      quoteSigning: signedQuote ?? null,
     });
 
     if (process.env.NODE_ENV === "development") {
@@ -143,16 +159,14 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
         ? window.location.origin
         : "";
 
-    const idempotencyKey =
-      checkoutSessionId.trim() ||
-      (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "");
+    const idempotencyKey = buildCheckoutSubmitIdempotencyKey(checkoutSessionId, selectedPaymentMethod);
 
     const fetchInit: RequestInit = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(payload),
       cache: "no-store",

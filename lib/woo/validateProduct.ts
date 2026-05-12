@@ -9,6 +9,8 @@ export type WooProductValidation =
         status: string;
         purchasable: boolean;
         price: string;
+        /** Present when `GET /products/{id}` resolves a variation (Woo REST `parent_id`). */
+        parent_id?: number;
       };
     }
   | {
@@ -85,6 +87,10 @@ export async function validateProduct(productId: number): Promise<WooProductVali
       };
     }
 
+    const parentRaw = Number((p as { parent_id?: unknown }).parent_id ?? 0);
+    const parentId =
+      type === "variation" && Number.isFinite(parentRaw) && parentRaw > 0 ? parentRaw : undefined;
+
     return {
       ok: true,
       product: {
@@ -93,6 +99,7 @@ export async function validateProduct(productId: number): Promise<WooProductVali
         status,
         purchasable,
         price,
+        ...(parentId != null ? { parent_id: parentId } : {}),
       },
     };
   } catch (error: any) {

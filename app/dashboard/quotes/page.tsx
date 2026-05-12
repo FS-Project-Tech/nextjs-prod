@@ -230,7 +230,7 @@ export default function DashboardQuotes() {
         <div className="text-center py-12">
           <span className="text-6xl mb-4 block">📄</span>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No quotes yet</h3>
-          <p className="text-gray-600 mb-6">Request a quote from your cart to see it here</p>
+          <p className="text-gray-600 mb-6">Request a quote from checkout to see it here</p>
           <Link
             href="/shop"
             className="inline-block px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
@@ -370,7 +370,7 @@ export default function DashboardQuotes() {
             <p className="text-gray-600 mb-6">
               {searchQuery || statusFilter !== "all"
                 ? "Try adjusting your filters or search query"
-                : "Request a quote from your cart to see it here"}
+                : "Request a quote from checkout to see it here"}
             </p>
             {(searchQuery || statusFilter !== "all") && (
               <button

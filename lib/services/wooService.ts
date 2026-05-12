@@ -437,7 +437,7 @@ export function validateCreatedLineItems(order: unknown): void {
  
 /**
  * Phase 1: minimal POST /orders (fast). Phase 2: PUT shipping, fees, meta, coupons.
- * COD can defer phase 2 with `after()` so the HTTP response returns immediately after phase 1.
+ * COD can defer phase 2 via {@link OrderExtensionTiming} `after_response` so callers return JSON sooner.
  */
 export async function createValidatedCheckoutOrder(
   input: WooCreateOrderInput,
@@ -603,27 +603,44 @@ export async function createValidatedCheckoutOrder(
    */
   let existingShippingLineIdFromOrder: number | undefined;
   if (input.shipping_line) {
-    try {
-      const current = (await getWooOrder(String(postIdNum))) as {
-        shipping_lines?: Array<{ id?: unknown; method_id?: unknown }>;
-      };
-      const lines = current.shipping_lines;
-      if (Array.isArray(lines) && lines.length > 0) {
-        const want = String(input.shipping_line.method_id || "");
-        const byMethod = want
-          ? lines.find((l) => String(l.method_id || "") === want)
-          : undefined;
-        const idRaw = (byMethod ?? lines[0])?.id;
-        const n = Number(idRaw);
-        if (Number.isFinite(n) && n > 0) {
-          existingShippingLineIdFromOrder = n;
-        }
+    const minimalOrder = orderMinimal as {
+      shipping_lines?: Array<{ id?: unknown; method_id?: unknown }>;
+    };
+    const minimalLines = minimalOrder.shipping_lines;
+    if (Array.isArray(minimalLines) && minimalLines.length > 0) {
+      const want = String(input.shipping_line.method_id || "");
+      const byMethod = want
+        ? minimalLines.find((l) => String(l.method_id || "") === want)
+        : undefined;
+      const idRaw = (byMethod ?? minimalLines[0])?.id;
+      const n = Number(idRaw);
+      if (Number.isFinite(n) && n > 0) {
+        existingShippingLineIdFromOrder = n;
       }
-    } catch (e) {
-      console.warn("[checkout] pre-extension shipping_lines read failed", {
-        orderId: postIdNum,
-        message: e instanceof Error ? e.message : String(e),
-      });
+    }
+    if (existingShippingLineIdFromOrder == null) {
+      try {
+        const current = (await getWooOrder(String(postIdNum))) as {
+          shipping_lines?: Array<{ id?: unknown; method_id?: unknown }>;
+        };
+        const lines = current.shipping_lines;
+        if (Array.isArray(lines) && lines.length > 0) {
+          const want = String(input.shipping_line.method_id || "");
+          const byMethod = want
+            ? lines.find((l) => String(l.method_id || "") === want)
+            : undefined;
+          const idRaw = (byMethod ?? lines[0])?.id;
+          const n = Number(idRaw);
+          if (Number.isFinite(n) && n > 0) {
+            existingShippingLineIdFromOrder = n;
+          }
+        }
+      } catch (e) {
+        console.warn("[checkout] pre-extension shipping_lines read failed", {
+          orderId: postIdNum,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
 

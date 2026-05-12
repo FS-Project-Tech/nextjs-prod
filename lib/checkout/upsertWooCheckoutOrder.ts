@@ -177,7 +177,7 @@ export async function upsertValidatedCheckoutOrder(params: {
     perf,
   });
   validateCreatedLineItems(order);
-  /** With inline timing, totals/meta/shipping are applied before returning (COD uses inline from handleCheckoutPost). */
+  /** With `inline` timing the extension PATCH finished; with `after_response` payable check runs in executeWooCheckoutOrder. */
   if (timing.mode === "inline") {
     assertWooOrderPayable(order);
   }

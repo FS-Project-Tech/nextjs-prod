@@ -1,3 +1,18 @@
+/** Snapshot of billing/shipping for quote confirmation emails (Woo-style keys). */
+export interface QuoteAddressSnapshot {
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+  address_1?: string;
+  address_2?: string;
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface QuoteItem {
   name: string;
   sku?: string | null;
@@ -52,6 +67,8 @@ export interface Quote {
   rejected_reason?: string;
   status_history?: QuoteStatusHistory[];
   comments?: QuoteComment[];
+  billing_address?: QuoteAddressSnapshot | null;
+  shipping_address?: QuoteAddressSnapshot | null;
 }
 
 export interface QuoteRequestPayload {
@@ -64,4 +81,6 @@ export interface QuoteRequestPayload {
   discount: number;
   total: number;
   notes?: string;
+  billing_address?: QuoteAddressSnapshot | null;
+  shipping_address?: QuoteAddressSnapshot | null;
 }

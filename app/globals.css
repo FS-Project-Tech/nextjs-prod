@@ -1033,3 +1033,31 @@ div[id*="acsb"] {
   }
 
 }
+
+/* Order review: “Download PDF” opens print — show only #invoice-content (order summary card). */
+@media print {
+  html.invoice-print-mode {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html.invoice-print-mode body * {
+    visibility: hidden;
+  }
+
+  html.invoice-print-mode #invoice-content,
+  html.invoice-print-mode #invoice-content * {
+    visibility: visible;
+  }
+
+  html.invoice-print-mode #invoice-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    box-shadow: none !important;
+    border-radius: 0;
+  }
+}
