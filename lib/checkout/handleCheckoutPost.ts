@@ -1,8 +1,8 @@
 /**
  * Headless checkout POST: validates cart + shipping server-side, creates a Woo REST order in two
  * phases (minimal POST + extension PUT), then COD complete or eWAY redirect.
- * COD defers the extension PUT (shipping/coupon/meta) via setImmediate so the JSON response can
- * return sooner; executeWooCheckoutOrder briefly polls until the order is payable or caps out.
+ * On account (COD) requires a valid signed quote from `/api/checkout/quote-totals` and skips the
+ * full Woo pricing recompute on POST for speed; eWAY may still use the pricing gate when no quote.
  */
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
@@ -19,6 +19,7 @@ import { pricingWithEwayCartGate } from "@/lib/checkout/pricingWithEwayCartGate"
 import { deriveCustomerPricingKey, wooStoreCurrency } from "@/lib/checkout/pricingOptions";
 import {
   assertPayloadMatchesQuoteSnapshot,
+  getQuoteSigningSecret,
   isQuoteSnapshotFresh,
   quoteSigningConstants,
   verifyQuoteSignature,
@@ -29,7 +30,7 @@ import {
 } from "@/lib/checkout/ndisHcpPayload";
 import { isTimeoutError } from "@/lib/utils/errors";
 import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
-import type { CheckoutActor } from "@/types/checkout";
+import type { CheckoutActor, CheckoutInitiatePayload, CheckoutQuoteSnapshotV1 } from "@/types/checkout";
 import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionDuplicateError";
 
 function clientIpFromRequest(req: NextRequest): string {
@@ -45,6 +46,52 @@ function clientIpFromRequest(req: NextRequest): string {
 
 type CheckoutResultHint = "cod" | "redirect";
 type PricingSuccess = Extract<Awaited<ReturnType<typeof pricingWithEwayCartGate>>, { ok: true }>["pricing"];
+
+function codSignedQuoteOrError(payload: CheckoutInitiatePayload):
+  | { ok: true; snapshot: CheckoutQuoteSnapshotV1 }
+  | { ok: false; status: 400 | 503; code: string; message: string } {
+  if (!getQuoteSigningSecret()) {
+    return {
+      ok: false,
+      status: 503,
+      code: "QUOTE_SIGNING_NOT_CONFIGURED",
+      message:
+        "On account checkout requires quote signing. Set CHECKOUT_QUOTE_SIGNING_SECRET or CHECKOUT_SESSION_SERVER_SECRET on the server.",
+    };
+  }
+  const qs = payload.quote_signing;
+  if (!qs) {
+    return {
+      ok: false,
+      status: 400,
+      code: "SIGNED_QUOTE_REQUIRED",
+      message:
+        "Missing signed order total. Wait for order totals to finish loading, then try again, or refresh the checkout page.",
+    };
+  }
+  const { signature, snapshot } = qs;
+  if (!verifyQuoteSignature(snapshot, signature)) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_QUOTE_SIGNATURE",
+      message: "Order total signature is invalid. Wait for totals to refresh, then try again.",
+    };
+  }
+  if (!isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)) {
+    return {
+      ok: false,
+      status: 400,
+      code: "STALE_QUOTE",
+      message: "Order total preview expired. Wait for totals to refresh, then place the order again.",
+    };
+  }
+  const match = assertPayloadMatchesQuoteSnapshot(payload, snapshot);
+  if (match.ok === false) {
+    return { ok: false, status: 400, code: "QUOTE_PAYLOAD_MISMATCH", message: match.message };
+  }
+  return { ok: true, snapshot };
+}
 
 function orderResponseHeaders(
   orderIdRaw: string | number | bigint,
@@ -334,56 +381,70 @@ export async function handleCheckoutPost(
     let usedSignedQuoteFastPath = false;
 
     const tValidate0 = Date.now();
-    if (
-      (payload.payment_method === "eway" || payload.payment_method === "cod") &&
-      payload.quote_signing
-    ) {
-      const { signature, snapshot } = payload.quote_signing;
-      const signatureOk = verifyQuoteSignature(snapshot, signature);
-      const fresh = signatureOk
-        ? isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)
-        : false;
-      const match = signatureOk && fresh ? assertPayloadMatchesQuoteSnapshot(payload, snapshot) : null;
-      if (signatureOk && fresh && match?.ok) {
-        wooLineItems = snapshot.woo_line_items;
-        shippingLine = snapshot.shipping_line;
-        totals = snapshot.totals;
-        usedSignedQuoteFastPath = true;
-      } else {
-        console.warn("[checkout] quote_signing_fast_path_skipped", {
-          requestId: correlationId,
-          payment_method: payload.payment_method,
-          signatureOk,
-          fresh,
-          mismatch: match && !match.ok && "message" in match ? match.message : null,
-        });
-      }
-    }
 
-    if (!usedSignedQuoteFastPath) {
-      const gate = await pricingWithEwayCartGate(payload, {
-        requestId: correlationId,
-        currency: wooStoreCurrency(),
-        customerType: deriveCustomerPricingKey(actor),
-      });
-
-      if (gate.ok === false) {
+    if (payload.payment_method === "cod") {
+      const codQuote = codSignedQuoteOrError(payload);
+      if (codQuote.ok === false) {
         validateMs = Date.now() - tValidate0;
-        const cartCheck = gate.cartCheck;
         logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
         return NextResponse.json(
-          {
-            success: false,
-            error: cartCheck.errors[0]?.message ?? "Cart validation failed",
-            valid: cartCheck.valid,
-            errors: cartCheck.errors,
-            code: cartCheck.code,
-          },
-          { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+          { success: false, error: codQuote.message, code: codQuote.code },
+          { status: codQuote.status },
         );
       }
+      wooLineItems = codQuote.snapshot.woo_line_items;
+      shippingLine = codQuote.snapshot.shipping_line;
+      totals = codQuote.snapshot.totals;
+      usedSignedQuoteFastPath = true;
+    } else {
+      if (payload.quote_signing) {
+        const { signature, snapshot } = payload.quote_signing;
+        const signatureOk = verifyQuoteSignature(snapshot, signature);
+        const fresh = signatureOk
+          ? isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)
+          : false;
+        const match = signatureOk && fresh ? assertPayloadMatchesQuoteSnapshot(payload, snapshot) : null;
+        if (signatureOk && fresh && match?.ok) {
+          wooLineItems = snapshot.woo_line_items;
+          shippingLine = snapshot.shipping_line;
+          totals = snapshot.totals;
+          usedSignedQuoteFastPath = true;
+        } else {
+          console.warn("[checkout] quote_signing_fast_path_skipped", {
+            requestId: correlationId,
+            payment_method: payload.payment_method,
+            signatureOk,
+            fresh,
+            mismatch: match && !match.ok && "message" in match ? match.message : null,
+          });
+        }
+      }
 
-      ({ wooLineItems, shippingLine, totals } = gate.pricing);
+      if (!usedSignedQuoteFastPath) {
+        const gate = await pricingWithEwayCartGate(payload, {
+          requestId: correlationId,
+          currency: wooStoreCurrency(),
+          customerType: deriveCustomerPricingKey(actor),
+        });
+
+        if (gate.ok === false) {
+          validateMs = Date.now() - tValidate0;
+          const cartCheck = gate.cartCheck;
+          logCheckoutPerfSummary({ validateMs, perf, checkoutStarted: started });
+          return NextResponse.json(
+            {
+              success: false,
+              error: cartCheck.errors[0]?.message ?? "Cart validation failed",
+              valid: cartCheck.valid,
+              errors: cartCheck.errors,
+              code: cartCheck.code,
+            },
+            { status: cartCheck.code === "SUBTOTAL_MISMATCH" ? 409 : 400 },
+          );
+        }
+
+        ({ wooLineItems, shippingLine, totals } = gate.pricing);
+      }
     }
 
     validateMs = Date.now() - tValidate0;
@@ -405,20 +466,10 @@ export async function handleCheckoutPost(
         ? payload.checkout_session_id.trim()
         : randomUUID();
 
-    const orderExtensionTiming: OrderExtensionTiming =
-      payload.payment_method === "cod"
-        ? {
-            mode: "after_response",
-            schedule: (task) => {
-              const run = () => void task();
-              if (typeof globalThis.setImmediate === "function") {
-                globalThis.setImmediate(run);
-              } else {
-                setTimeout(run, 0);
-              }
-            },
-          }
-        : { mode: "inline" };
+    // Always inline: Woo phase-2 (shipping/fees/meta) must finish before we assert a payable order.
+    // COD previously used after_response + polling in executeWooCheckoutOrder, which added hundreds
+    // of ms of sleeps while waiting for the deferred PATCH — same total work, slower wall clock.
+    const orderExtensionTiming: OrderExtensionTiming = { mode: "inline" };
 
     const result = await withPromiseTimeout(
       restCheckoutTimeoutMs(),

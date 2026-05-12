@@ -261,8 +261,8 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
-        source: '/molicare-premium-elastic-7-drops',
-        destination: 'https://joyamedicalsupplies.com.au/product/molicare-premium-elastic-7-drops-all-sizes?variation_id=412192',
+        source: '/molicare-premium-elastic-9-drops-all-size',
+        destination: 'https://joyamedicalsupplies.com.au/product/molicare-premium-elastic-9-drops-all-sizes?variation_id=412200',
         permanent: true,
       },
       // { source: '/privacy', destination: '/info/privacy', permanent: true },

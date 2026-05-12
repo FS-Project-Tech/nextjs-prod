@@ -2,7 +2,7 @@
 
 import { useCart } from "@/components/CartProvider";
 import Link from "next/link";
-import { useMemo, useState, useCallback, memo } from "react";
+import { useMemo, useState, useCallback, memo, useEffect } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useCoupon } from "./CouponProvider";
@@ -250,6 +250,25 @@ export default function MiniCartDrawer() {
     onEscape: close,
     initialFocusSelector: 'button[aria-label="Close"]',
   });
+
+  /** Tawk’s launcher uses a very high z-index and sits above this drawer — hide chat while the cart is open. */
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (isOpen) {
+      document.documentElement.dataset.miniCartOpen = "1";
+    } else {
+      delete document.documentElement.dataset.miniCartOpen;
+    }
+    const api = (window as unknown as { Tawk_API?: { hideWidget?: () => void; showWidget?: () => void } })
+      .Tawk_API;
+    if (!api?.hideWidget || !api?.showWidget) return;
+    const onCheckout = window.location.pathname.includes("/checkout");
+    if (isOpen) {
+      api.hideWidget();
+    } else if (!onCheckout) {
+      api.showWidget();
+    }
+  }, [isOpen]);
 
   return (
     <>

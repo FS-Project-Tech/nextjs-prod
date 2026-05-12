@@ -437,7 +437,7 @@ export function validateCreatedLineItems(order: unknown): void {
  
 /**
  * Phase 1: minimal POST /orders (fast). Phase 2: PUT shipping, fees, meta, coupons.
- * COD can defer phase 2 via {@link OrderExtensionTiming} `after_response` so callers return JSON sooner.
+ * `after_response` defers phase 2 (rare); checkout uses `inline` so the order is payable before the handler returns.
  */
 export async function createValidatedCheckoutOrder(
   input: WooCreateOrderInput,

@@ -3,6 +3,7 @@ import type { CartItem } from "@/lib/types/cart";
 import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import type { CheckoutFormData, ShippingMethodType } from "@/lib/checkout/schema";
 import { buildCreateOrderPayload } from "@/lib/checkout/buildCreateOrderPayload";
+import { fetchFreshSignedQuoteForCodSubmit } from "@/lib/checkout/fetchFreshSignedQuoteForCod";
 import {
   readCheckoutJsonOrRecoverHeaders,
   handleTokenHandoffJson,
@@ -138,6 +139,27 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
   };
 
   try {
+    const origin =
+      typeof window !== "undefined" && typeof window.location?.origin === "string"
+        ? window.location.origin
+        : "";
+
+    let quoteSigningForPayload = signedQuote ?? null;
+    if (selectedPaymentMethod === "cod") {
+      const fresh = await fetchFreshSignedQuoteForCodSubmit({
+        origin,
+        data,
+        cartLines,
+        appliedCoupon,
+        empowerApplied,
+      });
+      if (fresh.ok === false) {
+        showError(fresh.error);
+        return;
+      }
+      quoteSigningForPayload = fresh.quote;
+    }
+
     const payload = buildCreateOrderPayload({
       data,
       cartLines,
@@ -146,18 +168,13 @@ export async function submitCheckoutOrder(args: SubmitCheckoutOrderArgs): Promis
       couponFromUrl: couponSearchParam,
       checkoutSessionId,
       empowerApplied,
-      /** Same HMAC bundle as eWAY — lets `/api/checkout` skip full Woo pricing for COD when fresh. */
-      quoteSigning: signedQuote ?? null,
+      /** COD: always refreshed above so POST /api/checkout matches digest + freshness. eWAY: optional bundle for create-session fast path. */
+      quoteSigning: quoteSigningForPayload,
     });
 
     if (process.env.NODE_ENV === "development") {
       console.log("[checkout] POST checkout line_items (Zustand → Woo order):", payload.line_items);
     }
-
-    const origin =
-      typeof window !== "undefined" && typeof window.location?.origin === "string"
-        ? window.location.origin
-        : "";
 
     const idempotencyKey = buildCheckoutSubmitIdempotencyKey(checkoutSessionId, selectedPaymentMethod);
 
