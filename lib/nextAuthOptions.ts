@@ -72,9 +72,6 @@ async function loginWithWordPress(username: string, password: string) {
 }
 
 export const authOptions: NextAuthOptions = {
-  /** Vercel / reverse-proxy: trust `Host` / `X-Forwarded-Host` so `/api/auth/*` returns JSON, not redirects or HTML errors. */
-  trustHost: true,
-  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: "jwt", // NextAuth manages its own JWT; WP JWT is stored inside it
   },

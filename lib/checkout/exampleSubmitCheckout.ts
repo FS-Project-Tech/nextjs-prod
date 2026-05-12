@@ -3,9 +3,7 @@
  * Build the body with {@link buildCreateOrderPayload} from form state + Zustand cart lines.
  */
 import type { CartItem } from "@/lib/types/cart";
-import type { CheckoutQuoteSigningPayload } from "@/types/checkout";
 import { buildCreateOrderPayload } from "@/lib/checkout/buildCreateOrderPayload";
-import { fetchFreshSignedQuoteForCodSubmit } from "@/lib/checkout/fetchFreshSignedQuoteForCod";
 import type { CheckoutFormData } from "@/lib/checkout/schema";
 
 export type ExampleSubmitResult =
@@ -24,29 +22,12 @@ export async function exampleSubmitHeadlessCheckout(input: {
   couponFromUrl?: string | null;
 }): Promise<ExampleSubmitResult> {
   const { form, cartLines, paymentMethod, appliedCouponCode, couponFromUrl } = input;
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-
-  let quoteSigning: CheckoutQuoteSigningPayload | null = null;
-  if (paymentMethod === "cod") {
-    const fresh = await fetchFreshSignedQuoteForCodSubmit({
-      origin,
-      data: form,
-      cartLines,
-      appliedCoupon: appliedCouponCode?.trim() ? { code: appliedCouponCode.trim() } : null,
-    });
-    if (fresh.ok === false) {
-      return { ok: false, status: 400, message: fresh.error };
-    }
-    quoteSigning = fresh.quote;
-  }
-
   const payload = buildCreateOrderPayload({
     data: form,
     cartLines,
     paymentMethod,
     appliedCouponCode: appliedCouponCode ?? null,
     couponFromUrl: couponFromUrl ?? null,
-    quoteSigning,
   });
 
   const res = await fetch("/api/checkout", {

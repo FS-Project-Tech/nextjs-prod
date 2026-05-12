@@ -33,10 +33,8 @@ export default function TawkToWidget() {
         Tawk_API.onLoad = function () {
           console.log("Tawk loaded");
 
+          // Example: hide on checkout
           if (window.location.pathname.includes("/checkout")) {
-            Tawk_API.hideWidget();
-          }
-          if (document.documentElement.dataset.miniCartOpen === "1") {
             Tawk_API.hideWidget();
           }
         };

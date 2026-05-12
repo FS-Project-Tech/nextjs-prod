@@ -345,7 +345,7 @@ export default function LoginForm() {
         </button>
       </form>
 
-      <p className="text-center text-xs text-slate-400">
+      {/* <p className="text-center text-xs text-slate-400">
         By continuing you agree to our{" "}
         <Link href="/legal/terms" className="text-teal-500 hover:underline">
           Terms
@@ -354,7 +354,7 @@ export default function LoginForm() {
         <Link href="/legal/privacy" className="text-teal-500 hover:underline">
           Privacy Policy
         </Link>
-      </p>
+      </p> */}
     </div>
   );
 }
