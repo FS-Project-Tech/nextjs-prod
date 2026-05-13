@@ -254,8 +254,8 @@ export default function MiniCartDrawer() {
   return (
     <>
       <div
-        // className={`fixed inset-0 z-50 ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
-        className={`fixed inset-0 z-[100] ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        // Above Tawk / AccessiBe (globals.css uses z-index ~2147483645–2147483646 with !important).
+        className={`fixed inset-0 z-[2147483647] ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
         aria-hidden={!isOpen}
         suppressHydrationWarning
       >
@@ -416,7 +416,7 @@ export default function MiniCartDrawer() {
                         <p className="text-xs text-gray-500 mt-0.5">
                           {gst > 0
                             ? "GST applies only to taxable items in your cart."
-                            : "No GST on this cart total (GST-free items only)."}
+                            : "No GST on this cart total."}
                         </p>
                       </div>
                     </div>
