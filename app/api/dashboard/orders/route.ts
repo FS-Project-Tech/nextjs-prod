@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProtectedApiHandler, API_TIMEOUT } from "@/lib/api-middleware";
 import { sanitizeObject } from "@/lib/sanitize";
-import {
-  fetchLegacyOrdersForDashboardCached,
-  fetchWooOrdersForDashboardCached,
-} from "@/lib/dashboard/orders-upstream-cache";
-import {
-  extractLegacyLineItemSku,
-  extractLineItemSku,
-} from "@/lib/dashboard/format-dashboard-order-detail";
+import { fetchWooOrdersForDashboardCached } from "@/lib/dashboard/orders-upstream-cache";
+import { extractLineItemSku } from "@/lib/dashboard/format-dashboard-order-detail";
 import {
   orderCreatedMsForSort,
   orderDateYmdInStoreTz,
 } from "@/lib/order/order-created-date";
-
-/** Orders strictly before this instant are legacy; on/after are WooCommerce. */
-const CUTOFF_DATE = new Date("2026-04-07");
-const CUTOFF_MS = CUTOFF_DATE.getTime();
 
 const ALLOWED_ORDER_STATUSES = new Set([
   "pending",
@@ -28,7 +18,7 @@ const ALLOWED_ORDER_STATUSES = new Set([
   "failed",
 ]);
 
-type OrderSource = "legacy" | "woo";
+type OrderSource = "woo";
 
 type NormalizedOrder = {
   id: number;
@@ -73,11 +63,40 @@ function parseOrdersSearch(raw: string | null): string | undefined {
   return s.slice(0, 100);
 }
 
-/** Session email for legacy API (often required for permission_callback alongside token). */
-function sessionEmail(user: { email?: unknown }): string | null {
-  if (user?.email == null) return null;
-  const s = String(user.email).trim().toLowerCase();
-  return s || null;
+const ORDER_NAME_PARAM_MAX = 80;
+
+/** Trim and cap length for first/last name query params (used for in-memory order matching). */
+function parseOrderNameParam(raw: string | null): string {
+  return String(raw ?? "")
+    .trim()
+    .slice(0, ORDER_NAME_PARAM_MAX);
+}
+
+function normalizeOrderNamePart(s: string): string {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function orderMatchesBillingOrShippingName(
+  o: NormalizedOrder,
+  wantFirst: string,
+  wantLast: string,
+): boolean {
+  const wf = normalizeOrderNamePart(wantFirst);
+  const wl = normalizeOrderNamePart(wantLast);
+  if (!wf || !wl) return true;
+
+  const b = o.billing;
+  const s = o.shipping;
+  const billingMatch =
+    normalizeOrderNamePart(String(b.first_name ?? "")) === wf &&
+    normalizeOrderNamePart(String(b.last_name ?? "")) === wl;
+  const shippingMatch =
+    normalizeOrderNamePart(String(s.first_name ?? "")) === wf &&
+    normalizeOrderNamePart(String(s.last_name ?? "")) === wl;
+  return billingMatch || shippingMatch;
 }
 
 function lineItemImage(image: unknown): string | undefined {
@@ -118,42 +137,55 @@ function emptyShipping(): Record<string, string> {
   };
 }
 
-function normalizeLegacyLineItems(raw: unknown): NormalizedOrder["line_items"] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((row: Record<string, unknown>) => {
-    const vid = Number(row.variation_id ?? 0);
-    const sku = extractLegacyLineItemSku(row);
-    const out: NormalizedOrder["line_items"][number] = {
-      id: Number(row.id) || 0,
-      name: String(row.name ?? row.product_name ?? ""),
-      quantity: Number(row.quantity) || 0,
-      price: String(row.price ?? row.total ?? "0"),
-      product_id: Number(row.product_id) || 0,
-      variation_id: Number.isFinite(vid) && vid > 0 ? vid : undefined,
-      image: lineItemImage(row.image),
-    };
-    if (sku) out.sku = sku;
-    return out;
-  });
+function billingNamePairEmpty(b: Record<string, string>): boolean {
+  return (
+    !normalizeOrderNamePart(String(b.first_name ?? "")) &&
+    !normalizeOrderNamePart(String(b.last_name ?? ""))
+  );
 }
 
-function normalizeLegacyOrder(order: Record<string, unknown>): NormalizedOrder | null {
-  const id = Number(order.id);
-  if (!Number.isFinite(id)) return null;
-  const date_created = String(order.date_created ?? order.date ?? "");
-  const lineSource = order.line_items ?? order.items;
-  return {
-    id,
-    order_number: (order.number ?? order.order_number ?? id) as string | number,
-    date_created,
-    status: String(order.status ?? ""),
-    total: String(order.total ?? "0"),
-    currency: String(order.currency ?? "AUD"),
-    source: "legacy",
-    line_items: normalizeLegacyLineItems(lineSource),
-    billing: emptyBilling(),
-    shipping: emptyShipping(),
-  };
+function shippingNamePairEmpty(s: Record<string, string>): boolean {
+  return (
+    !normalizeOrderNamePart(String(s.first_name ?? "")) &&
+    !normalizeOrderNamePart(String(s.last_name ?? ""))
+  );
+}
+
+/**
+ * Billing/shipping for list + name filter — nested `billing` / `shipping` or flat Woo-style root keys.
+ */
+function orderBillingShippingFromPayload(order: Record<string, unknown>): {
+  billing: Record<string, string>;
+  shipping: Record<string, string>;
+} {
+  const billing =
+    order.billing && typeof order.billing === "object"
+      ? { ...emptyBilling(), ...(order.billing as Record<string, string>) }
+      : emptyBilling();
+  const shipping =
+    order.shipping && typeof order.shipping === "object"
+      ? { ...emptyShipping(), ...(order.shipping as Record<string, string>) }
+      : emptyShipping();
+
+  if (billingNamePairEmpty(billing)) {
+    const bfn = order.billing_first_name;
+    const bln = order.billing_last_name;
+    if (bfn != null || bln != null) {
+      billing.first_name = String(bfn ?? "").trim();
+      billing.last_name = String(bln ?? "").trim();
+    }
+  }
+
+  if (shippingNamePairEmpty(shipping)) {
+    const sfn = order.shipping_first_name;
+    const sln = order.shipping_last_name;
+    if (sfn != null || sln != null) {
+      shipping.first_name = String(sfn ?? "").trim();
+      shipping.last_name = String(sln ?? "").trim();
+    }
+  }
+
+  return { billing, shipping };
 }
 
 function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | null {
@@ -176,14 +208,7 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
       return row;
     },
   );
-  const billing =
-    order.billing && typeof order.billing === "object"
-      ? { ...emptyBilling(), ...(order.billing as Record<string, string>) }
-      : emptyBilling();
-  const shipping =
-    order.shipping && typeof order.shipping === "object"
-      ? { ...emptyShipping(), ...(order.shipping as Record<string, string>) }
-      : emptyShipping();
+  const { billing, shipping } = orderBillingShippingFromPayload(order);
   const date_created = String(order.date_created ?? "");
   return {
     id,
@@ -201,13 +226,13 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
 
 /**
  * GET /api/dashboard/orders
- * Hybrid: legacy orders before cutoff, WooCommerce on/after; merged, sorted, paginated.
+ * WooCommerce customer orders only (paginated upstream, merged in memory, sorted, paginated for response).
  *
- * Query: page, per_page (max 50, default 5), status, date_from, date_to (YYYY-MM-DD, inclusive, store TZ), search
+ * Query: page, per_page (max 50, default 5), status, date_from, date_to (YYYY-MM-DD, inclusive, store TZ), search,
+ *   first_name + last_name (both required): keep orders whose billing OR shipping contact matches those names (case-insensitive).
  *
- * Performance: Woo + legacy upstream lists are cached with `unstable_cache` (see
- * `lib/dashboard/orders-upstream-cache.ts`). Tune with DASHBOARD_ORDERS_CACHE_SECONDS (default 60, max 300).
- * Date/status/search filters run in-memory on the cached merge (changing dates does not bust Woo/legacy fetch cache).
+ * Performance: Woo list is cached with `unstable_cache` (see `lib/dashboard/orders-upstream-cache.ts`).
+ * Tune with DASHBOARD_ORDERS_CACHE_SECONDS (default 60, max 300). Date/status/search/name filters run in-memory on the cached list.
  */
 async function getOrders(req: NextRequest, context: { user: any; token: string }) {
   try {
@@ -229,34 +254,23 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
       return NextResponse.json({ error: "Invalid user id for orders" }, { status: 401 });
     }
 
-    const userEmail = sessionEmail(user);
-
     const statusFilter = parseListStatus(searchParams.get("status"));
     const dateFrom = parseDateYmd(searchParams.get("date_from"));
     const dateTo = parseDateYmd(searchParams.get("date_to"));
     const searchFilter = parseOrdersSearch(searchParams.get("search"));
+    const nameFirst = parseOrderNameParam(searchParams.get("first_name"));
+    const nameLast = parseOrderNameParam(searchParams.get("last_name"));
+    const nameProfileActive = Boolean(nameFirst && nameLast);
 
     const statusCacheKey = statusFilter ?? "";
     const searchCacheKey = searchFilter ?? "";
 
-    const [wooRaw, legacyRaw] = await Promise.all([
-      fetchWooOrdersForDashboardCached(customerId, statusCacheKey, searchCacheKey),
-      fetchLegacyOrdersForDashboardCached(customerId, userEmail),
-    ]);
+    const wooRaw = await fetchWooOrdersForDashboardCached(customerId, statusCacheKey, searchCacheKey);
 
     const merged: NormalizedOrder[] = [];
-
-    for (const row of legacyRaw) {
-      const n = normalizeLegacyOrder(row);
-      if (!n) continue;
-      if (orderCreatedMsForSort(n.date_created) >= CUTOFF_MS) continue;
-      merged.push(n);
-    }
-
     for (const row of wooRaw) {
       const n = normalizeWooOrder(row);
       if (!n) continue;
-      if (orderCreatedMsForSort(n.date_created) < CUTOFF_MS) continue;
       merged.push(n);
     }
 
@@ -284,6 +298,9 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
           String(o.order_number).toLowerCase().includes(q) ||
           o.line_items.some((li) => li.name.toLowerCase().includes(q)),
       );
+    }
+    if (nameProfileActive) {
+      filtered = filtered.filter((o) => orderMatchesBillingOrShippingName(o, nameFirst, nameLast));
     }
 
     filtered.sort(

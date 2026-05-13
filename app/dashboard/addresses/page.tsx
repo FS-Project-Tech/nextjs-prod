@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import Link from "next/link";
+import {
+  Building2,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useAddresses, type Address } from "@/hooks/useAddresses";
 import { useToast } from "@/components/ToastProvider";
 import AddressForm from "@/components/dashboard/AddressForm";
@@ -25,10 +34,15 @@ function hasNdisOrSupportCoordinatorRole(roles: string[] | undefined): boolean {
   });
 }
 
+function addressInitials(address: Address): string {
+  const a = String(address.first_name ?? "").trim().charAt(0);
+  const b = String(address.last_name ?? "").trim().charAt(0);
+  const pair = `${a}${b}`.toUpperCase();
+  return pair || "?";
+}
+
 export default function DashboardAddresses() {
-  const { data: session, status: sessionStatus } = useSession();
-  const { user, loading: userLoading } = useUser();
-  // Run addresses query when session is authenticated (not just !!user) so it runs reliably after refresh in regular mode
+  const { user, loading: userLoading, sessionStatus } = useUser();
   const sessionReady = sessionStatus === "authenticated";
   const {
     addresses,
@@ -139,26 +153,28 @@ export default function DashboardAddresses() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Addresses</h1>
-          <p className="mt-1 text-gray-600">
-            Manage multiple billing and shipping addresses. You can add as many addresses as you
-            need.
+    <div className="space-y-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-wider text-teal-700">Your account</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Address book</h1>
+          <p className="mt-2 text-base leading-relaxed text-slate-600">
+            Saved billing and shipping profiles for checkout. Use the{" "}
+            <span className="font-medium text-slate-800">Orders</span> control on a profile to see order
+            history for that contact name.
           </p>
         </div>
         {!showAddForm && !editingAddress && (
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={() => {
                 setAddType("billing");
                 setShowAddForm(true);
               }}
-              className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              Add Billing Address
+              Add billing address
             </button>
             <button
               type="button"
@@ -166,9 +182,9 @@ export default function DashboardAddresses() {
                 setAddType("shipping");
                 setShowAddForm(true);
               }}
-              className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+              className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
             >
-              Add Shipping Address
+              Add shipping address
             </button>
           </div>
         )}
@@ -181,8 +197,9 @@ export default function DashboardAddresses() {
       )}
 
       {showAddForm && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Add New Address</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">Add new address</h2>
+          <p className="mb-4 text-sm text-slate-600">Details are used at checkout and on invoices.</p>
           <AddressForm
             key={`add-${addType}`}
             defaultType={addType}
@@ -196,8 +213,9 @@ export default function DashboardAddresses() {
       )}
 
       {editingAddress && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Edit Address</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">Edit address</h2>
+          <p className="mb-4 text-sm text-slate-600">Update this profile for checkout and documents.</p>
           <AddressForm
             key={`edit-${editingAddress.id ?? "new"}`}
             address={editingAddress}
@@ -222,33 +240,33 @@ export default function DashboardAddresses() {
             <h3 className="text-lg font-semibold text-gray-900">No addresses yet</h3>
             <p className="mt-2 text-gray-600">Add your first address to get started.</p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setAddType("billing");
-                  setShowAddForm(true);
-                }}
-                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Add Billing Address
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAddType("shipping");
-                  setShowAddForm(true);
-                }}
-                className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700"
-              >
-                Add Shipping Address
-              </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddType("billing");
+                setShowAddForm(true);
+              }}
+              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              Add billing address
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddType("shipping");
+                setShowAddForm(true);
+              }}
+              className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            >
+              Add shipping address
+            </button>
             </div>
           </div>
         </div>
       )}
 
       {addresses.length > 0 && !showAddForm && !editingAddress && (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {addresses.map((address) => {
             const isDefault = address.id === "default-billing" || address.id === "default-shipping";
             const hasId = Boolean(address.id);
@@ -256,84 +274,176 @@ export default function DashboardAddresses() {
               address.type === "billing" && address.id !== "default-billing" && hasId;
             const canSetDefaultShipping =
               address.type === "shipping" && address.id !== "default-shipping" && hasId;
+            const fnTrim = String(address.first_name ?? "").trim();
+            const lnTrim = String(address.last_name ?? "").trim();
+            const fullName = [fnTrim, lnTrim].filter(Boolean).join(" ");
+            const ordersByNameHref =
+              fnTrim && lnTrim
+                ? `/dashboard/orders?first_name=${encodeURIComponent(fnTrim)}&last_name=${encodeURIComponent(lnTrim)}`
+                : null;
+            const labelTrim = String(address.label ?? "").trim();
+            const cardTitle = labelTrim || fullName || "Saved address";
+            const showNameSubtitle = Boolean(labelTrim && fullName && labelTrim !== fullName);
+            const busy = isUpdating || isDeleting || isSettingDefault;
+
             return (
-              <div
+              <article
                 key={String(address.id)}
-                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/5 transition hover:border-teal-200/90 hover:shadow-md"
               >
-                {address.label && (
-                  <p className="mb-2 text-lg font-bold text-gray-900">{address.label}</p>
-                )}
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                        address.type === "billing"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-green-100 text-green-800"
-                      }`}
+                <div
+                  className="h-1.5 w-full shrink-0 bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-500"
+                  aria-hidden
+                />
+                <div className="flex flex-1 flex-col p-5 sm:p-6">
+                  <div className="flex gap-3 sm:gap-4">
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-base font-bold text-slate-700 shadow-inner"
+                      aria-hidden
                     >
-                      {address.type === "billing" ? "Billing" : "Shipping"}
-                    </span>
-                    {isDefault && (
-                      <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-800">
-                        Default
-                      </span>
-                    )}
-                    {!isDefault && address.type === "billing" && (
-                      <span className="text-xs text-gray-500">Saved address</span>
+                      {addressInitials(address)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug text-slate-900">
+                          {cardTitle}
+                        </h2>
+                        {hasId ? (
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditingAddress(address)}
+                              disabled={busy}
+                              title="Edit"
+                              aria-label="Edit this address"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Pencil className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(address.id!)}
+                              disabled={busy}
+                              title={isDefault ? "Remove default" : "Delete"}
+                              aria-label={
+                                isDefault
+                                  ? "Remove this address as default for checkout"
+                                  : "Delete this saved address"
+                              }
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-800 transition hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            address.type === "billing"
+                              ? "bg-blue-100 text-blue-900"
+                              : "bg-emerald-100 text-emerald-900"
+                          }`}
+                        >
+                          {address.type === "billing" ? "Billing" : "Shipping"}
+                        </span>
+                        {isDefault ? (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-900">
+                            <Star className="h-3 w-3 text-teal-800" aria-hidden />
+                            Default
+                          </span>
+                        ) : address.type === "billing" ? (
+                          <span className="text-xs font-medium text-slate-500">Saved</span>
+                        ) : null}
+                      </div>
+                      {showNameSubtitle ? (
+                        <p className="mt-1 text-sm font-medium text-slate-600">{fullName}</p>
+                      ) : !labelTrim && fullName ? (
+                        <p className="mt-1 text-sm text-slate-500">Contact on file</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-1 flex-col rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-3.5">
+                    <div className="flex gap-2 text-sm text-slate-700">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                      <div className="min-w-0 space-y-1">
+                        {fullName ? (
+                          <p className="font-medium text-slate-900">{fullName}</p>
+                        ) : null}
+                        {address.company != null && String(address.company).trim() !== "" && (
+                          <p className="flex items-start gap-1.5 text-slate-600">
+                            <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                            <span>{String(address.company).trim()}</span>
+                          </p>
+                        )}
+                        <p>{address.address_1}</p>
+                        {address.address_2 ? <p>{address.address_2}</p> : null}
+                        <p>
+                          {address.city}, {address.state} {address.postcode}
+                        </p>
+                        <p className="text-slate-600">{address.country}</p>
+                      </div>
+                    </div>
+                    {(address.phone || address.email) && (
+                      <div className="mt-3 flex flex-col gap-1.5 border-t border-slate-200/80 pt-3 text-sm text-slate-600">
+                        {address.phone ? (
+                          <p className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                            <span>{address.phone}</span>
+                          </p>
+                        ) : null}
+                        {address.email ? (
+                          <p className="flex min-w-0 items-center gap-2">
+                            <Mail className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{address.email}</span>
+                          </p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
-                  {hasId && (
-                    <div className="flex flex-wrap items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setEditingAddress(address)}
-                        disabled={isUpdating || isDeleting || isSettingDefault}
-                        className="text-sm font-medium text-teal-600 hover:text-teal-700 disabled:opacity-50"
+
+                  {hasId ? (
+                    <div className="mt-5 min-w-0 space-y-2">
+                      {!ordersByNameHref ? (
+                        <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-[11px] leading-snug text-slate-600">
+                          Add first and last name to link orders.
+                        </p>
+                      ) : null}
+                      <div
+                        role="toolbar"
+                        aria-label="More address actions"
+                        className="flex flex-wrap items-center gap-2"
                       >
-                        Edit
-                      </button>
-                      {(canSetDefaultBilling || canSetDefaultShipping) && (
-                        <button
-                          type="button"
-                          onClick={() => handleSetDefaultAddress(address)}
-                          disabled={isUpdating || isDeleting || isSettingDefault}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                        >
-                          Set as Default
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(address.id!)}
-                        disabled={isUpdating || isDeleting || isSettingDefault}
-                        className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-                      >
-                        {isDefault ? "Remove default" : "Delete"}
-                      </button>
+                        {ordersByNameHref ? (
+                          <Link
+                            href={ordersByNameHref}
+                            aria-label={`View orders for ${fullName || "this contact"}`}
+                            className="inline-flex min-h-8 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-900 shadow-sm transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1"
+                          >
+                            View Orders
+                          </Link>
+                        ) : null}
+                        {(canSetDefaultBilling || canSetDefaultShipping) && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetDefaultAddress(address)}
+                            disabled={busy}
+                            aria-label={
+                              address.type === "shipping"
+                                ? "Set as default shipping address"
+                                : "Set as default billing address"
+                            }
+                            className="inline-flex min-h-8 items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Set as Default
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
-                <div className="mt-4 space-y-1.5 text-sm">
-                  <p className="font-medium text-gray-900">
-                    {address.first_name} {address.last_name}
-                  </p>
-                  {address.company != null && String(address.company).trim() !== "" && (
-                    <p className="text-gray-600">
-                      <span className="text-gray-500">Company:</span> {address.company}
-                    </p>
-                  )}
-                  <p className="text-gray-600">{address.address_1}</p>
-                  {address.address_2 && <p className="text-gray-600">{address.address_2}</p>}
-                  <p className="text-gray-600">
-                    {address.city}, {address.state} {address.postcode}
-                  </p>
-                  <p className="text-gray-600">{address.country}</p>
-                  {address.phone && <p className="text-gray-600">Phone: {address.phone}</p>}
-                  {address.email && <p className="text-gray-600">Email: {address.email}</p>}
-                </div>
-              </div>
+              </article>
             );
           })}
         </div>

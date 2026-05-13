@@ -3,7 +3,8 @@
 import { useOrdersInfinite, type Order, type OrdersListFilters } from "@/hooks/useOrders";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import Link from "next/link";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import CancelOrderModal from "@/components/dashboard/CancelOrderModal";
 import OrderStatusBadge from "@/components/dashboard/OrderStatusBadge";
@@ -20,7 +21,26 @@ const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "failed", label: "Failed" },
 ];
 
-export default function DashboardOrders() {
+export default function DashboardOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent text-teal-600" />
+          <p className="mt-4 text-gray-600">Loading orders…</p>
+        </div>
+      }
+    >
+      <DashboardOrders />
+    </Suspense>
+  );
+}
+
+function DashboardOrders() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const profileFirst = searchParams.get("first_name")?.trim() ?? "";
+  const profileLast = searchParams.get("last_name")?.trim() ?? "";
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -35,8 +55,10 @@ export default function DashboardOrders() {
       dateFrom: debouncedDateFrom,
       dateTo: debouncedDateTo,
       search: debouncedSearch,
+      firstName: profileFirst,
+      lastName: profileLast,
     }),
-    [statusFilter, debouncedDateFrom, debouncedDateTo, debouncedSearch],
+    [statusFilter, debouncedDateFrom, debouncedDateTo, debouncedSearch, profileFirst, profileLast],
   );
 
   const {
@@ -58,8 +80,16 @@ export default function DashboardOrders() {
   const [payingOrderKey, setPayingOrderKey] = useState<string | null>(null);
 
   const hasActiveFilters = Boolean(
-    statusFilter || dateFrom || dateTo || searchInput.trim(),
+    statusFilter || dateFrom || dateTo || searchInput.trim() || (profileFirst && profileLast),
   );
+
+  const clearProfileNameFromUrl = useCallback(() => {
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("first_name");
+    sp.delete("last_name");
+    const q = sp.toString();
+    router.replace(q ? `/dashboard/orders?${q}` : "/dashboard/orders");
+  }, [router, searchParams]);
 
   const initiatePayment = useCallback(
     async (order: Order) => {
@@ -96,7 +126,8 @@ export default function DashboardOrders() {
     setDateFrom("");
     setDateTo("");
     setSearchInput("");
-  }, []);
+    router.replace("/dashboard/orders");
+  }, [router]);
 
   const showListRefetchSpinner = isFetching && orders.length > 0;
 
@@ -106,6 +137,29 @@ export default function DashboardOrders() {
         <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
         <p className="text-gray-600 mt-1">View and track your order history</p>
       </div>
+
+      {profileFirst && profileLast ? (
+        <div
+          className="flex flex-col gap-3 rounded-xl border border-teal-200 bg-teal-50/90 px-4 py-3 text-sm text-teal-950 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+        >
+          <p>
+            Showing orders where <span className="font-semibold">billing</span> or{" "}
+            <span className="font-semibold">shipping</span> name matches{" "}
+            <span className="font-semibold">
+              {profileFirst} {profileLast}
+            </span>
+            .
+          </p>
+          <button
+            type="button"
+            onClick={clearProfileNameFromUrl}
+            className="shrink-0 rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-sm font-medium text-teal-900 hover:bg-teal-50"
+          >
+            Clear name filter
+          </button>
+        </div>
+      ) : null}
 
       <OrdersFiltersBar
         statusFilter={statusFilter}
@@ -144,7 +198,9 @@ export default function DashboardOrders() {
           </h3>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
             {hasActiveFilters
-              ? "Try adjusting status, dates, or search."
+              ? profileFirst && profileLast
+                ? "No orders use this billing or shipping name. Try clearing the name filter or check spelling."
+                : "Try adjusting status, dates, or search."
               : "Start shopping to see your orders here."}
           </p>
           {hasActiveFilters ? (

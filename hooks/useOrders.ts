@@ -60,6 +60,9 @@ export type OrdersListFilters = {
   dateFrom: string;
   dateTo: string;
   search: string;
+  /** Match orders where billing or shipping first + last name equals these (case-insensitive). Both empty = no name filter. */
+  firstName: string;
+  lastName: string;
 };
 
 type OrdersPagePayload = {
@@ -76,7 +79,7 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
 
   useEffect(() => {
     setPage(1);
-  }, [filters.status, filters.dateFrom, filters.dateTo, filters.search]);
+  }, [filters.status, filters.dateFrom, filters.dateTo, filters.search, filters.firstName, filters.lastName]);
 
   const query = useQuery({
     queryKey: [
@@ -88,6 +91,8 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
       filters.dateFrom,
       filters.dateTo,
       filters.search,
+      filters.firstName,
+      filters.lastName,
     ],
     queryFn: async (): Promise<OrdersPagePayload> => {
       const usp = new URLSearchParams();
@@ -101,6 +106,12 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
       if (dt) usp.set("date_to", dt);
       const q = filters.search.trim();
       if (q) usp.set("search", q);
+      const fn = filters.firstName.trim();
+      const ln = filters.lastName.trim();
+      if (fn && ln) {
+        usp.set("first_name", fn);
+        usp.set("last_name", ln);
+      }
 
       const response = await fetch(`/api/dashboard/orders?${usp.toString()}`, {
         credentials: "include",

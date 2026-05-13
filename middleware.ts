@@ -147,7 +147,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   const id = await getRateLimitIdentity(req);
 
   if (path.startsWith("/api/auth/")) {
-    const r = await checkRateLimitSafe(id, "auth", 10, 60);
+    const r = await checkRateLimitSafe(id, "auth", 60, 60);
     if (r.ok === false) {
       console.warn("Rate limit exceeded", { bucket: "auth", id: fp });
       logRateLimit(id, "auth", fp);
@@ -156,7 +156,7 @@ async function applyPerRouteApiRateLimits(req: NextRequest): Promise<NextRespons
   }
 
   if (isContactPath(path)) {
-    const r = await checkRateLimitSafe(id, "contact", 25, 60);
+    const r = await checkRateLimitSafe(id, "contact", 60, 60);
     if (r.ok === false) {
       console.warn("Rate limit exceeded", { bucket: "contact", id: fp });
       logRateLimit(id, "contact", fp);
