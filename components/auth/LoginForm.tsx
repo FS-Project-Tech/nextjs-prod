@@ -137,7 +137,7 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-md space-y-6 rounded-2xl border border-slate-200 bg-white/90 p-8 shadow-lg">
+    <div className="w-full max-w-md space-y-6 max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:shadow-none sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-white/90 sm:p-6 sm:shadow-lg md:p-8">
       {/* <div>
         <h1 className="text-2xl font-semibold text-slate-900">Welcome back</h1>
         <p className="text-sm text-slate-500">
@@ -151,14 +151,20 @@ export default function LoginForm() {
         </p>
       </div> */}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" aria-live="polite" noValidate>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-5"
+        aria-live="polite"
+        noValidate
+      >
+        <div className="flex flex-col gap-4">
         {/* Username/Email Field */}
         <div>
           <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">
             Email or Username
           </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <div className="relative min-w-0">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <Mail
                 className={`h-5 w-5 ${
                   errors.username
@@ -176,14 +182,14 @@ export default function LoginForm() {
               autoComplete="email"
               aria-invalid={!!errors.username}
               aria-describedby={errors.username ? "username-error" : undefined}
-              className={`pl-10 mt-1 w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 transition-colors ${
+              className={`mt-1 min-h-11 w-full min-w-0 rounded-md border py-2.5 pl-10 pr-3 text-base shadow-sm transition-colors focus:outline-none focus:ring-2 sm:min-h-0 sm:py-2 sm:text-sm ${
                 errors.username
-                  ? "border-red-300 focus:border-red-500 focus:ring-red-500/40 bg-red-50"
+                  ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/40"
                   : usernameValue && !errors.username
-                    ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
+                    ? "border-teal-300 bg-teal-50/30 focus:border-teal-500 focus:ring-teal-500/40"
                     : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
               }`}
-              placeholder="Enter your email or username"
+              placeholder="Email or username"
             />
           </div>
           {errors.username && (
@@ -203,8 +209,8 @@ export default function LoginForm() {
           <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
             Password
           </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <div className="relative min-w-0">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <Lock
                 className={`h-5 w-5 ${
                   errors.password
@@ -222,19 +228,19 @@ export default function LoginForm() {
               autoComplete="current-password"
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "password-error" : undefined}
-              className={`pl-10 pr-10 mt-1 w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 transition-colors ${
+              className={`mt-1 min-h-11 w-full min-w-0 rounded-md border py-2.5 pl-10 pr-11 text-base shadow-sm transition-colors focus:outline-none focus:ring-2 sm:min-h-0 sm:py-2 sm:pr-10 sm:text-sm ${
                 errors.password
-                  ? "border-red-300 focus:border-red-500 focus:ring-red-500/40 bg-red-50"
+                  ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/40"
                   : passwordValue && !errors.password
-                    ? "border-teal-300 focus:border-teal-500 focus:ring-teal-500/40 bg-teal-50/30"
+                    ? "border-teal-300 bg-teal-50/30 focus:border-teal-500 focus:ring-teal-500/40"
                     : "border-slate-300 focus:border-teal-500 focus:ring-teal-500/40"
               }`}
-              placeholder="Enter your password"
+              placeholder="Your password"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+              className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 focus:outline-none sm:pr-3"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -253,21 +259,22 @@ export default function LoginForm() {
         </div>
 
         {/* Remember Me & Forgot Password */}
-        <div className="flex items-center justify-between text-sm">
-          <label className="flex items-center gap-2 cursor-pointer">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm">
             <input
               type="checkbox"
               {...register("rememberMe")}
-              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
             />
-            <span className="text-slate-600">Remember me</span>
+            <span className="text-slate-600 select-none whitespace-nowrap">Remember me</span>
           </label>
           <Link
             href="/forgot"
-            className="text-teal-600 hover:text-teal-700 hover:underline font-medium transition-colors"
+            className="text-sm font-medium text-teal-600 transition-colors hover:text-teal-700 hover:underline sm:shrink-0 sm:text-right"
           >
             Forgot password?
           </Link>
+        </div>
         </div>
 
         {/* Success Message */}
@@ -301,7 +308,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={isSubmitting || (!isValid && isDirty)}
-          className={`flex w-full items-center justify-center rounded-md px-4 py-2.5 font-medium text-white shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`flex min-h-11 w-full items-center justify-center rounded-md px-4 py-2.5 text-base font-medium text-white shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 sm:min-h-0 sm:text-sm ${
             loginSuccess
               ? "bg-green-600 hover:bg-green-700 focus:ring-green-500"
               : formError || errors.root

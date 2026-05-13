@@ -107,9 +107,9 @@ function LoginPageContent() {
     <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-white to-slate-100 py-8 sm:py-10 lg:py-12">
       <div className="mx-auto flex w-full max-w-[min(88rem,calc(100%-1.5rem))] justify-center px-3 sm:px-5">
         <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 lg:min-h-[min(640px,calc(100dvh-10rem))] lg:max-h-[calc(100dvh-8rem)] lg:flex-row">
-          <div className="flex min-w-0 flex-1 flex-col justify-center px-6 py-8 sm:px-10 sm:py-10 lg:px-12 xl:px-14">
-            <div className="mx-auto w-full max-w-xl">
-              <div className="mb-8 text-center lg:text-left">
+          <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-6 sm:px-10 sm:py-10 lg:px-12 xl:px-14">
+            <div className="mx-auto w-full min-w-0 max-w-xl">
+              <div className="mb-6 text-center sm:mb-8 lg:text-left">
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 antialiased">
                   Welcome
                 </h1>
