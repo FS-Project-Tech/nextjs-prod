@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
       subject = `Customer feedback (free-form) — ${siteName}`;
       plain = `
 ${authLabel}
-Reply-To: ${replyTo}
+Customer Email: ${replyTo}
 
 Your message
 ${message}
@@ -181,7 +181,7 @@ ${message}
       subject = `Joya Customer Experience Survey — ${siteName}`;
       plain = `
 ${authLabel}
-Reply-To: ${replyTo}
+Customer Email: ${replyTo}
 
 Joya Customer Experience Survey responses
 ---
