@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getCartUrl } from "@/lib/access-token";
@@ -28,16 +29,24 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
+/** Same band as `RequestQuoteModal` — above site header (`z-[100]`), viewport-fixed */
+const PLACING_OVERLAY_Z = "z-[110]";
+
 function CheckoutPageInner() {
   const checkout = useCheckoutPageState();
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [placingPortalMounted, setPlacingPortalMounted] = useState(false);
 
-  const { getValues, isMounted, cartReady, cartLines } = checkout;
+  const { getValues, isMounted, cartReady, cartLines, placing } = checkout;
 
   const resolveQuoteContact = useCallback(
     () => checkoutValuesToQuoteContactPayload(getValues() as CheckoutFormData),
     [getValues]
   );
+
+  useEffect(() => {
+    setPlacingPortalMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isMounted || cartLines.length === 0) return;
@@ -51,6 +60,15 @@ function CheckoutPageInner() {
     }, 250);
     return () => window.clearTimeout(t);
   }, [isMounted, cartLines.length]);
+
+  useEffect(() => {
+    if (!placing) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [placing]);
 
   if (!isMounted || !cartReady) {
     return <Spinner label="Loading checkout…" />;
@@ -71,7 +89,6 @@ function CheckoutPageInner() {
     gst,
     orderTotal,
     totalsQuoteLoading,
-    placing,
     selectedPaymentMethod,
     onUserPaymentMethodChange,
     user,
@@ -118,8 +135,36 @@ function CheckoutPageInner() {
     );
   }
 
+  const placingOverlay =
+    placing && placingPortalMounted ? (
+      <div
+        className={`fixed inset-0 ${PLACING_OVERLAY_Z} flex items-center justify-center bg-white/55 p-4 backdrop-blur-sm`}
+        aria-hidden={false}
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div className="rounded-lg bg-white/90 px-6 py-4 text-center shadow-lg ring-1 ring-gray-200">
+          <div
+            className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-solid border-gray-900 border-r-transparent"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium text-gray-900">Processing checkout…</p>
+          <p className="mt-1 text-xs text-gray-600">Please do not refresh or close this page.</p>
+          {placingSlow ? (
+            <div className="mt-4 border-t border-gray-200 pt-4">
+              <p className="text-sm text-gray-800">
+                Still working… checkout can take a minute. Please keep this page open — do not refresh or
+                submit again.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+
   return (
     <>
+      {placingOverlay ? createPortal(placingOverlay, document.body) : null}
       <a
         href="#checkout-main"
         className={`fixed left-4 top-4 z-[200] -translate-y-[200%] rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white opacity-0 transition focus:translate-y-0 focus:opacity-100 ${FOCUS_RING_BTN} focus:ring-white focus:ring-offset-gray-900`}
@@ -150,33 +195,7 @@ function CheckoutPageInner() {
           </Link>
         </div>
 
-        <div className="relative">
-          {placing && (
-            <div
-              className="absolute inset-0 z-40 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-sm"
-              aria-hidden={false}
-              aria-busy="true"
-              aria-live="polite"
-            >
-              <div className="rounded-lg bg-white/90 px-6 py-4 text-center shadow-lg ring-1 ring-gray-200">
-                <div
-                  className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-solid border-gray-900 border-r-transparent"
-                  aria-hidden="true"
-                />
-                <p className="text-sm font-medium text-gray-900">Processing checkout…</p>
-                <p className="mt-1 text-xs text-gray-600">Please do not refresh or close this page.</p>
-                {placingSlow ? (
-                  <div className="mt-4 border-t border-gray-200 pt-4">
-                    <p className="text-sm text-gray-800">
-                      Still working… checkout can take a minute. Please keep this page open — do not
-                      refresh or submit again.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          )}
-          <form
+        <form
             id="checkout-main"
             onSubmit={onFormSubmit}
             className={`grid gap-6 lg:grid-cols-3 ${placing ? "pointer-events-none select-none" : ""}`}
@@ -248,7 +267,6 @@ function CheckoutPageInner() {
             </div>
           </aside>
         </form>
-        </div>
 
         <RequestQuoteModal
           isOpen={quoteModalOpen}

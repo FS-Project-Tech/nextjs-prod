@@ -318,7 +318,9 @@ export async function GET(request: NextRequest) {
         },
         {
           headers: {
-            "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+            // Prices come from Typesense snapshots — avoid shared CDN cache so header/listing
+            // search does not lag behind Woo after a sync (was public s-maxage=30).
+            "Cache-Control": "private, no-store, must-revalidate",
           },
         }
       ),

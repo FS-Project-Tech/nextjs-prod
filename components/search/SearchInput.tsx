@@ -101,6 +101,8 @@ function SearchInputComponent({
     params.delete("query");
     params.delete("page");
     const qs = params.toString();
+    setFocused(false);
+    inputRef.current?.blur();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [pathname, router, searchParams, input]);
 
@@ -138,6 +140,7 @@ function SearchInputComponent({
       }
       if (e.key === "Escape") {
         setPreviewActiveIndex(-1);
+        setFocused(false);
         inputRef.current?.blur();
       }
     },

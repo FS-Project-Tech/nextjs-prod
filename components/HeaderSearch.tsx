@@ -322,6 +322,8 @@ export default function HeaderSearch() {
   const closePanel = useCallback(() => {
     setShow(false);
     setActiveIndex(-1);
+    // Dismiss mobile keyboard (iOS/Android keep it open while input stays focused)
+    inputRef.current?.blur();
   }, []);
 
   const clearSearch = useCallback(() => {

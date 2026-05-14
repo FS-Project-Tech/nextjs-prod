@@ -123,14 +123,15 @@ export default async function RootLayout({
           <CoreProviders>
             <CommerceProviders>
               <div className="app-shell">
-                <div className="relative z-40 bg-white shadow-sm md:sticky md:top-0 md:z-50">
+                {/* z-[100]: above homepage Swiper/transform layers so category dropdowns (e.g. Nursing) paint over the hero */}
+                <div className="relative z-[100] bg-white shadow-sm md:sticky md:top-0 md:z-[100]">
                   <Header initialCms={headerCms} />
                   <Suspense fallback={<CategoriesNavSkeleton />}>
                     <CategoriesNav />
                   </Suspense>
                 </div>
 
-                <main className="flex-1 pb-20 md:pb-24 lg:pb-0">
+                <main className="relative z-0 flex-1 pb-20 md:pb-24 lg:pb-0">
                   <MainContent>{children}</MainContent>
                 </main>
 

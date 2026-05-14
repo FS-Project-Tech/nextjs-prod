@@ -1,5 +1,7 @@
 /**
  * Header instant search — same pipeline as `/api/typesense/search` (collection, query_by, facets, SKU logic).
+ * Prices in results are whatever Typesense last indexed; updating Woo does not change search until
+ * the WordPress `joya-typesense-woo` plugin successfully POSTs `/api/typesense/search/sync` (see plugin activity log).
  */
 
 import { TS_FIELDS } from "@/lib/typesense-products";

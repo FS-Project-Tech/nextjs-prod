@@ -283,6 +283,14 @@ export default async function Footer() {
                 </PrefetchLink>
               </li>
               <li><PrefetchLink href="/contact-us" className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10">Contact Us</PrefetchLink></li>
+              <li>
+                <PrefetchLink
+                  href="/feedback"
+                  className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10"
+                >
+                  Feedback form
+                </PrefetchLink>
+              </li>
             </ul>
           </div>
 

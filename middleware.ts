@@ -110,7 +110,9 @@ function isListingCatalogReadPath(path: string): boolean {
 }
 
 function isContactPath(path: string): boolean {
-  return path === "/api/contact" || path.startsWith("/api/contact/");
+  return path === "/api/contact" || path.startsWith("/api/contact/") ||
+  path === "/api/feedback" ||
+  path.startsWith("/api/feedback/");
 }
 
 function shouldSkipCrossSiteGuard(pathname: string): boolean {

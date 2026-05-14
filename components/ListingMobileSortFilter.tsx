@@ -55,9 +55,9 @@ export type ListingMobileSortFilterProps = {
 };
 
 /**
- * Sticky bar (lg:hidden): Sort | Filter — e-commerce mobile pattern.
- * - Sort: bottom sheet with radios (same behaviour as desktop ProductGrid select).
- * - Filter: full-screen panel with existing FilterSidebar (no logic change).
+ * Sticky bar (lg:hidden): Sort | Filter — pins to viewport top on phones; below sticky
+ * header+nav from md until lg. Sort: bottom sheet (same options as desktop). Filter:
+ * full-screen FilterSidebar.
  *
  * `useSearchParams` requires a Suspense boundary during static prerender (App Router).
  */
@@ -111,7 +111,8 @@ function ListingMobileSortFilterImpl({
 
   return (
     <>
-      <div className="lg:hidden sticky top-[72px] z-40 -mx-4 px-4 py-3 bg-white/95 backdrop-blur-sm border-b border-gray-200 mb-4 shadow-sm">
+      {/* Small viewports: header scrolls with page — bar sticks flush to viewport top. md–lg: header+nav sticky — offset below site chrome. */}
+      <div className="lg:hidden sticky top-0 z-[90] md:top-44 -mx-4 px-4 py-3 bg-white/95 backdrop-blur-sm border-b border-gray-200 mb-4 shadow-sm">
         <div className="flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <button
             type="button"
@@ -283,7 +284,7 @@ export default function ListingMobileSortFilter(props: ListingMobileSortFilterPr
     <Suspense
       fallback={
         <div
-          className="lg:hidden sticky top-[72px] z-40 -mx-4 px-4 py-3 mb-4 min-h-[57px] bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm"
+          className="lg:hidden sticky top-0 z-[90] md:top-44 -mx-4 px-4 py-3 mb-4 min-h-[57px] bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm"
           aria-hidden
         />
       }
