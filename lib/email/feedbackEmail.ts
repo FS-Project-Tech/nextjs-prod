@@ -11,7 +11,7 @@ import { getWpBaseUrl } from "@/lib/auth";
 import { sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
 import { isSmtpConfigured, sendPlainEmailViaSmtp } from "@/lib/email/sendViaSmtp";
 
-export const DEFAULT_FEEDBACK_RECIPIENT = "web@joyamedicalsupplies.com.au";
+export const DEFAULT_FEEDBACK_RECIPIENT = "info@joyamedicalsupplies.com.au";
 
 export function getFeedbackRecipientEmail(): string {
   return (process.env.FEEDBACK_FORM_EMAIL?.trim() || DEFAULT_FEEDBACK_RECIPIENT).trim();
