@@ -19,6 +19,7 @@ import { EMPOWER_TAG_SLUG } from "@/lib/cart/empowerDiscount";
 import { wcGet, type WooCommerceProduct } from "@/lib/woocommerce";
 import { decodeHTMLEntities } from "@/lib/xss-sanitizer";
 import Image from "next/image";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,7 @@ export default async function EmpowerProgramPage() {
           </div>
         </div>
         <div className="relative w-full overflow-hidden">
+          <Link href="#empower-products">
           <Image
             src="/images/Empower-Bbraun-Banner.jpg"
             alt="Empower Program"
@@ -155,6 +157,7 @@ export default async function EmpowerProgramPage() {
             priority
             className="h-auto w-full object-cover"
           />
+          </Link>
         </div>
         <article className="container mx-auto px-4 py-8 sm:px-6 lg:px-8">
           <header className="rounded-3xl border border-[#008542]/20 bg-gradient-to-br from-[#e9f9f1] via-white to-[#f5fcf8] p-6 shadow-sm sm:p-10">

@@ -864,7 +864,7 @@ export default function ProductVariations({
         type="button"
         onClick={() => handleAttributeSelect(attributeName, option)}
         disabled={!isEnabled}
-        className={`rounded-md border px-4 py-2 text-sm font-medium transition-all ${
+        className={`rounded-md border px-4 py-2 text-sm font-medium transition-all cursor-pointer ${
           isSelected
             ? "border-black bg-black text-white"
             : isEnabled

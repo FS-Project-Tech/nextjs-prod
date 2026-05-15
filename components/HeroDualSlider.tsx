@@ -106,13 +106,44 @@ export default function HeroDualSlider({
 
   const paginationStyles = (
     <style jsx global>{`
-      .hero-banner-root .hero-slider-left .swiper-pagination,
-      .hero-banner-root .hero-slider-right .swiper-pagination,
-      .hero-banner-root .hero-slider-mobile-left .swiper-pagination,
-      .hero-banner-root .hero-slider-mobile-right .swiper-pagination {
-        bottom: 20px !important;
+      /* md+: bullets overlay bottom of banner */
+      @media (min-width: 768px) {
+        .hero-banner-root .hero-slider-left .swiper-pagination,
+        .hero-banner-root .hero-slider-right .swiper-pagination {
+          bottom: 20px !important;
+        }
       }
-    
+
+      /* Mobile: bullets below image (not over the banner art) */
+      @media (max-width: 767px) {
+        .hero-banner-root .hero-slider-mobile-left,
+        .hero-banner-root .hero-slider-mobile-right {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .hero-banner-root .hero-slider-mobile-left .swiper-wrapper,
+        .hero-banner-root .hero-slider-mobile-right .swiper-wrapper {
+          order: 0;
+          width: 100%;
+        }
+
+        .hero-banner-root .hero-slider-mobile-left .swiper-pagination,
+        .hero-banner-root .hero-slider-mobile-right .swiper-pagination {
+          position: static !important;
+          bottom: auto !important;
+          top: auto !important;
+          left: auto !important;
+          right: auto !important;
+          transform: none !important;
+          width: 100% !important;
+          order: 1;
+          margin-top: 10px;
+          padding-bottom: 2px;
+          line-height: 0;
+        }
+      }
+
       .hero-banner-root .swiper-pagination-bullet {
         width: 10px;
         height: 10px;

@@ -1391,7 +1391,7 @@ export default function ProductDetailPanel({
                         onClick={() =>
                           setSelectedSimpleAttributes((prev) => ({ ...prev, [attr.name]: value }))
                         }
-                        className={`rounded-md border px-4 py-2 text-sm font-medium transition-all ${
+                        className={`rounded-md border px-4 py-2 text-sm font-medium transition-all cursor-pointer ${
                           isSelected
                             ? "border-black bg-black text-white"
                             : "border-black bg-transparent text-black hover:bg-gray-50"
@@ -1437,7 +1437,7 @@ export default function ProductDetailPanel({
                     <button
                       type="button"
                       onClick={() => setSelectedUnitOption("")}
-                      className={`rounded-lg border border-black px-4 py-2.5 text-sm font-medium transition-colors ${
+                      className={`rounded-lg border border-black px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                         !selectedUnitOption
                           ? "bg-black text-white"
                           : "bg-white text-black hover:bg-gray-50"
@@ -1453,7 +1453,7 @@ export default function ProductDetailPanel({
                         key={opt}
                         type="button"
                         onClick={() => setSelectedUnitOption(opt)}
-                        className={`rounded-lg border border-black px-4 py-2.5 text-sm font-medium transition-colors ${
+                        className={`rounded-lg border border-black px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                           isSelected
                             ? "bg-black text-white"
                             : "bg-white text-black hover:bg-gray-50"

@@ -6,7 +6,6 @@ import { mapWpToFrontendUrl } from "@/lib/urlMapper";
 import MarketingUpdatesDisplay, {
   type MarketingSectionItem,
 } from "@/components/MarketingUpdatesDisplay";
-import { shuffleAndTake } from "@/lib/utils/shuffle-take";
 
 export default async function MarketingUpdatesSection() {
   unstable_noStore();
@@ -36,13 +35,12 @@ export default async function MarketingUpdatesSection() {
     })
     .filter((x): x is MarketingSectionItem => x !== null);
 
-  const items = shuffleAndTake(parsedItems, parsedItems.length);
-
-  if (!items.length) return null;
+  /** Keep ACF repeater order (was shuffleAndTake — random order every request). */
+  if (!parsedItems.length) return null;
 
   return (
     <section className="mb-10 marketing-section">
-      <MarketingUpdatesDisplay items={items} />
+      <MarketingUpdatesDisplay items={parsedItems} />
     </section>
   );
 }

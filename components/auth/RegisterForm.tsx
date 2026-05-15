@@ -189,7 +189,7 @@ export default function RegisterForm() {
           {loading ? "Creating account…" : "Create account"}
         </button>
 
-        <p className="text-xs text-slate-400">
+        {/* <p className="text-xs text-slate-400">
           By creating an account you agree to our{" "}
           <Link href="/legal/terms" className="text-teal-500 hover:underline">
             Terms of Service
@@ -199,7 +199,7 @@ export default function RegisterForm() {
             Privacy Policy
           </Link>
           .
-        </p>
+        </p> */}
       </form>
     </div>
   );

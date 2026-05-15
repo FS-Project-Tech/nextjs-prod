@@ -25,7 +25,7 @@ export default function RecurringSelect({ onChange, value = "none" }: RecurringS
               key={plan.value}
               type="button"
               onClick={() => onChange(plan.value)}
-              className={`rounded-md border px-4 py-2 text-sm font-medium transition-all ${
+              className={`rounded-md border px-4 py-2 text-sm font-medium transition-all cursor-pointer ${
                 isSelected
                   ? "border-black bg-black text-white"
                   : "border-black bg-transparent text-black hover:bg-gray-50"

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useProductListing } from "@/contexts/ProductListingContext";
@@ -16,6 +17,9 @@ const FilterSidebar = dynamic(() => import("@/components/FilterSidebar"), {
   loading: () => <FilterSidebarSkeleton />,
   ssr: false,
 });
+
+/** Same as `MiniCartDrawer` — above Tawk, scroll-to-top, and `main` z-0 stacking. */
+const LISTING_MOBILE_OVERLAY_Z = "z-[2147483647]";
 
 function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
   if (!pathname.startsWith("/search")) {
@@ -76,6 +80,11 @@ function ListingMobileSortFilterImpl({
 
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [portalMounted, setPortalMounted] = useState(false);
+
+  useEffect(() => {
+    setPortalMounted(true);
+  }, []);
 
   useEffect(() => {
     if (sortOpen || filterOpen) {
@@ -171,110 +180,115 @@ function ListingMobileSortFilterImpl({
         </div>
       </div>
 
-      {/* Sort bottom sheet */}
-      {sortOpen && (
-        <div
-          className="fixed inset-0 z-[60] lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Sort products"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            aria-label="Close sort"
-            onClick={() => setSortOpen(false)}
-          />
-          <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] animate-in slide-in-from-bottom duration-200 bg-white shadow-2xl">
-            <div className="border-b border-gray-200 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
-                Sort by
-              </p>
-            </div>
-            <ul className="max-h-[min(70vh,520px)] overflow-y-auto px-1 py-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-              {LISTING_SORT_OPTIONS.map((o) => {
-                const selected = currentSort === o.value;
-                return (
-                  <li key={o.value}>
-                    <button
-                      type="button"
-                      disabled={filtersLocked}
-                      onClick={() => applySort(o.value)}
-                      className="flex w-full items-center justify-between px-4 py-4 text-left text-[15px] text-gray-900 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
-                    >
-                      <span>{o.label}</span>
-                      <span
-                        className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 ${
-                          selected ? "border-teal-600 bg-teal-600" : "border-gray-300 bg-white"
-                        }`}
-                        aria-hidden
-                      >
-                        {selected && <span className="h-2 w-2 rounded-full bg-white" />}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {/* Filter full screen */}
-      {filterOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex flex-col bg-white lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Filter products"
-        >
-          <header className="flex shrink-0 items-center gap-3 border-b border-gray-200 px-3 py-3">
-            <button
-              type="button"
-              onClick={() => setFilterOpen(false)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              aria-label="Back"
+      {/* Sort + filter: portal + max z (MiniCartDrawer band) — escapes main z-0 vs Tawk / FABs */}
+      {portalMounted && sortOpen
+        ? createPortal(
+            <div
+              className={`fixed inset-0 ${LISTING_MOBILE_OVERLAY_Z} lg:hidden`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Sort products"
             >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-            </button>
-            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            <FilterSidebar
-              categorySlug={categorySlug}
-              brandSlug={brandSlug}
-              onSaleOnly={onSaleOnly}
-              isMobileDrawer
-              mobileFullscreen
-              onClose={() => setFilterOpen(false)}
-            />
-          </div>
-          <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <div className="flex items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-lg font-bold leading-tight text-gray-900 tabular-nums">
-                  {listingTotal != null ? listingTotal.toLocaleString() : "—"}
-                </p>
-                <p className="text-xs text-gray-500">products found</p>
-              </div>
               <button
                 type="button"
-                onClick={() => setFilterOpen(false)}
-                className="shrink-0 rounded-lg bg-teal-600 px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                className="absolute inset-0 bg-black/50"
+                aria-label="Close sort"
+                onClick={() => setSortOpen(false)}
+              />
+              <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] animate-in slide-in-from-bottom duration-200 bg-white shadow-2xl">
+                <div className="border-b border-gray-200 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                    Sort by
+                  </p>
+                </div>
+                <ul className="max-h-[min(70vh,520px)] overflow-y-auto px-1 py-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                  {LISTING_SORT_OPTIONS.map((o) => {
+                    const selected = currentSort === o.value;
+                    return (
+                      <li key={o.value}>
+                        <button
+                          type="button"
+                          disabled={filtersLocked}
+                          onClick={() => applySort(o.value)}
+                          className="flex w-full items-center justify-between px-4 py-4 text-left text-[15px] text-gray-900 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
+                        >
+                          <span>{o.label}</span>
+                          <span
+                            className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 ${
+                              selected ? "border-teal-600 bg-teal-600" : "border-gray-300 bg-white"
+                            }`}
+                            aria-hidden
+                          >
+                            {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {portalMounted && filterOpen
+        ? createPortal(
+            <div
+              className={`fixed inset-0 ${LISTING_MOBILE_OVERLAY_Z} flex flex-col bg-white lg:hidden`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filter products"
+            >
+              <header className="flex shrink-0 items-center gap-3 border-b border-gray-200 px-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  aria-label="Back"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                </button>
+                <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                <FilterSidebar
+                  categorySlug={categorySlug}
+                  brandSlug={brandSlug}
+                  onSaleOnly={onSaleOnly}
+                  isMobileDrawer
+                  mobileFullscreen
+                  onClose={() => setFilterOpen(false)}
+                />
+              </div>
+              <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-bold leading-tight text-gray-900 tabular-nums">
+                      {listingTotal != null ? listingTotal.toLocaleString() : "—"}
+                    </p>
+                    <p className="text-xs text-gray-500">products found</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen(false)}
+                    className="shrink-0 rounded-lg bg-teal-600 px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
