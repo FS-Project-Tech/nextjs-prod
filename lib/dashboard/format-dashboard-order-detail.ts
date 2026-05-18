@@ -1,3 +1,5 @@
+import { extractMachshipTrackingTokenFromOrderMeta } from "@/lib/machship/tracking";
+
 /** Same cutoff as dashboard orders list (legacy vs Woo). */
 export const ORDER_DETAIL_CUTOFF_MS = new Date("2026-04-07").getTime();
 
@@ -279,6 +281,11 @@ export function formatDashboardOrderDetail(
   const lineSource =
     source === "legacy" ? (raw.line_items ?? raw.items) : raw.line_items;
   const line_items = normalizeLineItems(lineSource, source);
+  const machship_tracking_token = extractMachshipTrackingTokenFromOrderMeta(
+    Array.isArray(raw.meta_data)
+      ? (raw.meta_data as Array<{ key?: string; value?: unknown }>)
+      : undefined,
+  );
 
   return {
     id: Number(raw.id) || 0,
@@ -294,5 +301,6 @@ export function formatDashboardOrderDetail(
     shipping,
     line_items,
     source,
+    ...(machship_tracking_token ? { machship_tracking_token } : {}),
   };
 }

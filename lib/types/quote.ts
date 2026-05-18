@@ -69,6 +69,7 @@ export interface Quote {
   comments?: QuoteComment[];
   billing_address?: QuoteAddressSnapshot | null;
   shipping_address?: QuoteAddressSnapshot | null;
+  ndis_info?: string | null;
 }
 
 export interface QuoteRequestPayload {
@@ -83,4 +84,6 @@ export interface QuoteRequestPayload {
   notes?: string;
   billing_address?: QuoteAddressSnapshot | null;
   shipping_address?: QuoteAddressSnapshot | null;
+  /** JSON string (checkout-aligned NDIS fields) for dashboard and emails. */
+  ndis_info?: string | null;
 }

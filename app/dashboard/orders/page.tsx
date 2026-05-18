@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import CancelOrderModal from "@/components/dashboard/CancelOrderModal";
 import OrderStatusBadge from "@/components/dashboard/OrderStatusBadge";
+import TrackOrderButton from "@/components/dashboard/TrackOrderButton";
 import { formatDateDdMmYyyy } from "@/lib/format-dates";
 
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -292,6 +293,9 @@ function DashboardOrders() {
                           {payBusy ? "Please wait…" : payLabel}
                         </button>
                       )}
+                      {order.machship_tracking_token ? (
+                        <TrackOrderButton trackingToken={order.machship_tracking_token} />
+                      ) : null}
                       <Link
                         href={`/dashboard/orders/${order.order_number}`}
                         className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"

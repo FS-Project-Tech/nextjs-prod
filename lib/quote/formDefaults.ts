@@ -1,0 +1,31 @@
+import type { DefaultValues } from "react-hook-form";
+import type { QuoteFormData } from "./schema";
+
+export const QUOTE_FORM_DEFAULTS: DefaultValues<QuoteFormData> = {
+  billing_first_name: "",
+  billing_last_name: "",
+  billing_email: "",
+  billing_phone: "",
+  billing_company: "",
+  shipping_address_1: "",
+  shipping_address_2: "",
+  shipping_city: "",
+  shipping_postcode: "",
+  shipping_country: "AU",
+  shipping_state: "",
+  sameAddressForBilling: true,
+  billing_address_1: "",
+  billing_address_2: "",
+  billing_city: "",
+  billing_postcode: "",
+  billing_country: "AU",
+  billing_state: "",
+  quote_notes: "",
+  quote_ndis_claim_who: "self",
+  cust_woo_ndis_participant_name: "",
+  cust_woo_ndis_number: "",
+  cust_woo_ndis_dob: "",
+  quote_ndis_plan_start: "",
+  quote_ndis_plan_end: "",
+  cust_woo_ndis_funding_type: "",
+};

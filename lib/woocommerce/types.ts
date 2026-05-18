@@ -232,6 +232,9 @@ export interface WooCommerceVariation {
   image?: { id: number; src: string; name: string; alt: string } | null;
   attributes: WooCommerceVariationAttribute[];
   stock_status: string;
+  manage_stock?: boolean;
+  stock_quantity?: number | null;
+  backorders_allowed?: boolean;
   meta_data?: Array<{ id?: number; key?: string; value?: unknown }>;
 }
 

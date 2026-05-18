@@ -28,7 +28,10 @@ import {
   stripEmptyNdisHcpFromInitiatePayload,
 } from "@/lib/checkout/ndisHcpPayload";
 import { isTimeoutError } from "@/lib/utils/errors";
-import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
+import {
+  getCheckoutWpToken,
+  syncCheckoutCustomerAfterOrder,
+} from "@/lib/checkout/syncCheckoutCustomerAfterOrder";
 import type { CheckoutActor } from "@/types/checkout";
 import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionDuplicateError";
 
@@ -319,9 +322,10 @@ export async function handleCheckoutPost(
 
     after(async () => {
       try {
-        await syncCheckoutUserMeta(actor, payload);
+        const wpToken = await getCheckoutWpToken(req);
+        await syncCheckoutCustomerAfterOrder(actor, payload, wpToken);
       } catch (e) {
-        console.warn("[checkout] user meta sync failed", {
+        console.warn("[checkout] customer profile / address book sync failed", {
           requestId: correlationId,
           userId: actor.userId,
           message: e instanceof Error ? e.message : String(e),

@@ -7,6 +7,7 @@ import {
   orderCreatedMsForSort,
   orderDateYmdInStoreTz,
 } from "@/lib/order/order-created-date";
+import { extractMachshipTrackingTokenFromOrderMeta } from "@/lib/machship/tracking";
 
 const ALLOWED_ORDER_STATUSES = new Set([
   "pending",
@@ -40,6 +41,7 @@ type NormalizedOrder = {
   }>;
   billing: Record<string, string>;
   shipping: Record<string, string>;
+  machship_tracking_token?: string;
 };
 
 function parseListStatus(raw: string | null): string | undefined {
@@ -210,6 +212,12 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
   );
   const { billing, shipping } = orderBillingShippingFromPayload(order);
   const date_created = String(order.date_created ?? "");
+  const machship_tracking_token =
+    extractMachshipTrackingTokenFromOrderMeta(
+      Array.isArray(order.meta_data)
+        ? (order.meta_data as Array<{ key?: string; value?: unknown }>)
+        : undefined,
+    ) ?? undefined;
   return {
     id,
     order_number: (order.number ?? id) as string | number,
@@ -221,6 +229,7 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
     line_items,
     billing,
     shipping,
+    ...(machship_tracking_token ? { machship_tracking_token } : {}),
   };
 }
 

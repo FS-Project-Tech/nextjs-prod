@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo, useState, useCallback, useMemo, type MouseEvent } from "react";
+import { memo, useState, useCallback, useMemo } from "react";
 import { useCart } from "@/components/CartProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
@@ -368,17 +368,19 @@ function ProductCardComponent({
 
   return (
     <article
-      className="grid h-full grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-3 transition hover:shadow-md md:grid-cols-1"
+      className="relative grid h-full cursor-pointer grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-3 transition hover:shadow-md md:grid-cols-1"
       style={{ contain: "layout style paint" }}
     >
+      <Link
+        href={productUrl}
+        className="absolute inset-0 z-[1] rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+        aria-label={`View ${name}`}
+        prefetch={false}
+      />
+
       {/* Image column — 50% width on mobile; mobile wishlist under image (desktop: heart on image top-left) */}
       <div className="flex min-w-0 flex-col items-stretch gap-2">
-        <Link
-          href={productUrl}
-          className="relative block w-full overflow-hidden rounded-lg bg-white"
-          aria-label={`View ${name}`}
-          prefetch={false}
-        >
+        <div className="relative block w-full overflow-hidden rounded-lg bg-white">
           <div className="relative aspect-square">
             <Image
               src={imageSrc}
@@ -408,9 +410,9 @@ function ProductCardComponent({
               <DiscountBadge discount={saleDiscountForBadge} saleOnly={saleBadgeSaleOnly} />
             ) : null}
           </div>
-        </Link>
+        </div>
 
-        <div className="flex w-full justify-start md:hidden">
+        <div className="relative z-10 flex w-full justify-start md:hidden">
           <WishlistButton
             productId={id}
             size="sm"
@@ -423,12 +425,9 @@ function ProductCardComponent({
       {/* Details column */}
       <div className="flex min-w-0 flex-col md:pt-3">
         <div className="min-h-0 flex-1">
-          <Link
-            href={productUrl}
-            className="text-sm font-medium leading-snug text-gray-900 break-words"
-          >
+          <h3 className="text-sm font-medium leading-snug text-gray-900 break-words">
             {name}
-          </Link>
+          </h3>
 
           <p className="mt-1 min-h-[18px] text-sm text-gray-700 py-2">
             {sku ? `SKU: ${sku}` : "\u00A0"}

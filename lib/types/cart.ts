@@ -35,6 +35,10 @@ export interface CartItem {
   wc_store_item_key?: string;
   /** Tag-based campaign line discount (Empower 10%). */
   empowerEligible?: boolean;
+  /** WooCommerce manage stock — used to cap qty in cart UI. */
+  manageStock?: boolean;
+  /** WooCommerce stock quantity when manageStock is true. */
+  stockQuantity?: number | null;
 }
 
 /**

@@ -293,7 +293,7 @@
 //         </div>
 //       </div>
 
-//       {/* ✅ FIXED SPACING HERE */}
+//       {/* âœ… FIXED SPACING HERE */}
 //       {showProductTerms(product) && (
 //         <div className="mt-5">
 //           <Image
@@ -306,7 +306,7 @@
 //         </div>
 //       )}
 
-//       {/* Price — same treatment as product card: strikethrough original + Save $X when on sale */}
+//       {/* Price â€” same treatment as product card: strikethrough original + Save $X when on sale */}
 //       <div className="space-y-2">
 //   {(() => {
 //     const raw = scaledSaleNum;
@@ -349,13 +349,13 @@
 //     return (
 //       <div className="space-y-1 text-gray-900">
 
-//         {/* 💰 Price Row */}
+//         {/* ðŸ’° Price Row */}
 //         <div className="flex items-center gap-2 text-lg font-semibold">
 //           <span className="text-[#1f605f]">
 //             {priceInfo.exclPrice || priceInfo.price}
 //           </span>
 
-//            {/* 🔥 SALE TAG */}
+//            {/* ðŸ”¥ SALE TAG */}
 //             {isOnSale && (
 //               <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded">
 //                 {discountPercent}% Discount
@@ -375,7 +375,7 @@
 //           )}
 //         </div>
 
-//         {/* 📊 GST Breakdown */}
+//         {/* ðŸ“Š GST Breakdown */}
 //         {priceInfo.taxType !== "gst_free" && (
 //           <div className="text-sm text-gray-600 leading-tight">
 //             <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
@@ -383,7 +383,7 @@
 //           </div>
 //         )}
 
-//         {/* 🟢 GST FREE */}
+//         {/* ðŸŸ¢ GST FREE */}
 //         {priceInfo.taxType === "gst_free" && (
 //           <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
 //             GST FREE
@@ -392,7 +392,7 @@
 
 //         {selectedBulk != null && (
 //           <p className="mt-2 text-sm text-gray-600">
-//             ₹{basePriceNum.toFixed(2)} × {selectedBulk.multiplier} = ₹{finalPriceNum.toFixed(2)}
+//             â‚¹{basePriceNum.toFixed(2)} Ã— {selectedBulk.multiplier} = â‚¹{finalPriceNum.toFixed(2)}
 //           </p>
 //         )}
 //       </div>
@@ -645,15 +645,21 @@ import {
   extractProductUnitOptions,
   extractVariationUnitOptions,
 } from "@/lib/woocommerce/quantity-units-meta";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProductVariationGallery } from "@/components/product/ProductVariationGalleryProvider";
 import ProductVariations from "@/components/ProductVariations";
 import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
 import { useCart } from "@/components/CartProvider";
+import { useQuote } from "@/components/QuoteProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
 import { formatPriceWithLabel } from "@/lib/format-utils";
+import {
+  getStockCap,
+  maxDisplayQuantityForStock,
+  resolveStockCapSource,
+} from "@/lib/woo/stockLimit";
 import {
   matchVariation,
   findBrand,
@@ -742,7 +748,7 @@ function resolvePackagingUnitAttribute(
     if ((k.includes("unit") || k.includes("pack")) && !k.includes("quantity")) return attr;
   }
 
-  // Common Woo layout: colour / size / … / unit format last.
+  // Common Woo layout: colour / size / â€¦ / unit format last.
   return attributes[attributes.length - 1] ?? null;
 }
 
@@ -785,9 +791,9 @@ export default function ProductDetailPanel({
 }: {
   product: WooCommerceProduct;
   variations: WooCommerceVariation[];
-  /** Server-prefetched wc-quantity-units (and meta) keyed by lowercase SKU — instant unit row on variation change */
+  /** Server-prefetched wc-quantity-units (and meta) keyed by lowercase SKU â€” instant unit row on variation change */
   initialSkuQuantityUnits?: Record<string, string[]>;
-  /** Root → leaf path for the primary category (from Woo REST parent chain). */
+  /** Root â†’ leaf path for the primary category (from Woo REST parent chain). */
   categoryTrail?: CategoryTrailItem[];
 }) {
   const searchParams = useSearchParams();
@@ -839,7 +845,7 @@ export default function ProductDetailPanel({
       .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
   }, [product.attributes]);
 
-  /** Maps `?variation_id=` to swatch keys — ProductVariations must receive this as defaultSelected or UI stays on parent. */
+  /** Maps `?variation_id=` to swatch keys â€” ProductVariations must receive this as defaultSelected or UI stays on parent. */
   const urlDerivedAttributeSelection = useMemo(() => {
     if (!variationIdFromUrl || variations.length === 0 || attributes.length === 0) return {};
     return selectedAttributesForVariationId(variationIdFromUrl, variations, attributes) ?? {};
@@ -924,9 +930,11 @@ export default function ProductDetailPanel({
           : displayRegularRaw;
   const hasResolvedVariation = attributes.length === 0 || Boolean(matchedVariation || matched);
   const { addItem, open: openCart } = useCart();
+  const { addItem: addQuoteItem, open: openQuote, openNdisPanel } = useQuote();
   const { success, error: showError } = useToast();
   const [quantityInput, setQuantityInput] = useState<string>("1");
   const [addingToCart, setAddingToCart] = useState(false);
+  const [addingToQuote, setAddingToQuote] = useState(false);
   const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
   const [selectedUnitOption, setSelectedUnitOption] = useState<string>("");
   const [skuUnitOptions, setSkuUnitOptions] = useState<string[]>([]);
@@ -956,7 +964,7 @@ export default function ProductDetailPanel({
     return extractProductUnitOptions(product);
   }, [matchedVariation, matched, variations, currentSku, product.sku, product]);
 
-  /** SKU whose "Available Unit Options" row applies — only this one is fetched from wc-quantity-units. */
+  /** SKU whose "Available Unit Options" row applies â€” only this one is fetched from wc-quantity-units. */
   const activeSkuForQuantityUnits = useMemo(
     () =>
       String(currentSku || matchedVariation?.sku || matched?.sku || product.sku || "").trim(),
@@ -1147,11 +1155,150 @@ export default function ProductDetailPanel({
     return Number.isFinite(n) && n > 0 ? n : 1;
   }, [quantityInput]);
 
+  const activeStockSource = useMemo(
+    () => resolveStockCapSource(product, matchedVariation ?? matched),
+    [product, matchedVariation, matched],
+  );
+
+  const stockCap = useMemo(() => getStockCap(activeStockSource), [activeStockSource]);
+
+  const maxDisplayQty = useMemo(
+    () => maxDisplayQuantityForStock(stockCap, unitMultiplier),
+    [stockCap, unitMultiplier],
+  );
+
   const displayPrice = useMemo(() => {
     const base = Number(baseDisplayPrice || 0);
     if (!Number.isFinite(base) || base <= 0) return baseDisplayPrice;
     return (base * unitMultiplier).toFixed(2);
   }, [baseDisplayPrice, unitMultiplier]);
+
+  const addCurrentProductLine = useCallback(
+    async (mode: "cart" | "quote" | "quoteNdis") => {
+      if (!hasResolvedVariation) return;
+      if (mode === "cart" && addingToCart) return;
+      if (mode !== "cart" && addingToQuote) return;
+
+      if (mode === "cart") setAddingToCart(true);
+      else setAddingToQuote(true);
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const variationId = matchedVariation?.id || matched?.id;
+        const variationTaxClass =
+          matchedVariation?.tax_class ||
+          matched?.tax_class ||
+          product.tax_class ||
+          undefined;
+        const variationTaxStatus =
+          matchedVariation?.tax_status ||
+          matched?.tax_status ||
+          product.tax_status ||
+          undefined;
+        const rawAttrs =
+          attributes.length > 0 ? { ...selected } : { ...selectedSimpleAttributes };
+        const baseAttrs =
+          attributes.length > 0
+            ? overlayConcreteVariationAttributes(rawAttrs, matchedVariation || matched, attributes)
+            : rawAttrs;
+        const attrsForCart =
+          packagingUnitAttribute && selectedUnitOption
+            ? { ...baseAttrs, [packagingUnitAttribute.name]: selectedUnitOption }
+            : baseAttrs;
+        const safeUomMult =
+          Number.isFinite(unitMultiplier) && unitMultiplier > 0 ? Math.floor(unitMultiplier) : 1;
+        const cartQty = Math.max(1, Math.floor(quantity * safeUomMult));
+        if (stockCap != null && cartQty > stockCap) {
+          showError(`Only ${stockCap} available in stock`);
+          return;
+        }
+        const displayNum = Number(displayPrice || 0);
+        const linePrice =
+          selectedUnitOption && Number.isFinite(displayNum) && displayNum > 0 && safeUomMult > 0
+            ? (displayNum / safeUomMult).toFixed(2)
+            : displayPrice || "0";
+        const cartItemData =
+          selectedUnitOption && String(selectedUnitOption).trim()
+            ? {
+                bulk_uom: String(selectedUnitOption).trim().slice(0, 200),
+                bulk_multiplier: 1,
+              }
+            : undefined;
+
+        const line = {
+          productId: product.id,
+          variationId,
+          name: product.name,
+          slug: product.slug,
+          imageUrl: cartLineImageUrl,
+          price: linePrice,
+          qty: cartQty,
+          sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,
+          attributes: attrsForCart,
+          ...(cartItemData ? { cartItemData } : {}),
+          deliveryPlan: plan,
+          tax_class: variationTaxClass,
+          tax_status: variationTaxStatus,
+          empowerEligible: hasEmpowerTag(product),
+          manageStock: activeStockSource.manage_stock,
+          stockQuantity: activeStockSource.stock_quantity ?? null,
+        };
+
+        if (mode === "cart") {
+          addItem(line);
+          openCart();
+          success("Product added to cart");
+        } else {
+          addQuoteItem(line);
+          if (mode === "quoteNdis") openNdisPanel();
+          else openQuote();
+          success("Product added to quote");
+        }
+      } catch (error) {
+        console.error("Error adding product line:", error);
+        showError("Could not add this product. Please try again.");
+      } finally {
+        if (mode === "cart") setAddingToCart(false);
+        else setAddingToQuote(false);
+      }
+    },
+    [
+      addingToCart,
+      addingToQuote,
+      hasResolvedVariation,
+      matchedVariation,
+      matched,
+      product,
+      attributes,
+      selected,
+      selectedSimpleAttributes,
+      packagingUnitAttribute,
+      selectedUnitOption,
+      unitMultiplier,
+      quantity,
+      displayPrice,
+      cartLineImageUrl,
+      plan,
+      addItem,
+      openCart,
+      addQuoteItem,
+      openQuote,
+      openNdisPanel,
+      success,
+      showError,
+      stockCap,
+      activeStockSource,
+    ],
+  );
+
+  useEffect(() => {
+    if (maxDisplayQty == null) return;
+    setQuantityInput((prev) => {
+      const n = Number.parseInt(prev, 10);
+      if (!Number.isFinite(n) || n <= maxDisplayQty) return prev;
+      return String(maxDisplayQty);
+    });
+  }, [maxDisplayQty, activeSkuForQuantityUnits, matchedVariation?.id, matched?.id]);
 
   const displayRegular = useMemo(() => {
     const base = Number(displayRegularBase || 0);
@@ -1235,7 +1382,7 @@ export default function ProductDetailPanel({
                         {idx > 0 ? (
                           <span className="mx-0.5 text-gray-400" aria-hidden>
                             {" "}
-                            ›{" "}
+                            â€º{" "}
                           </span>
                         ) : null}
                         <Link
@@ -1263,7 +1410,7 @@ export default function ProductDetailPanel({
         </div>
       </div>
 
-      {/* ✅ FIXED SPACING HERE */}
+      {/* âœ… FIXED SPACING HERE */}
       {showProductTerms(product) && (
         <div className="mt-5">
           <Image
@@ -1276,7 +1423,7 @@ export default function ProductDetailPanel({
         </div>
       )}
 
-      {/* Price — same treatment as product card: strikethrough original + Save $X when on sale */}
+      {/* Price â€” same treatment as product card: strikethrough original + Save $X when on sale */}
       <div className="space-y-2">
   {(() => {
     const raw = Number(displayPrice || 0);
@@ -1319,13 +1466,13 @@ export default function ProductDetailPanel({
     return (
       <div className="space-y-1 text-gray-900">
 
-        {/* 💰 Price Row */}
+        {/* ðŸ’° Price Row */}
         <div className="flex items-center gap-2 text-lg font-semibold">
           <span className="text-[#1f605f]">
             {priceInfo.exclPrice || priceInfo.price}
           </span>
 
-           {/* 🔥 SALE TAG — no numeric % until variation selected when product is variable */}
+           {/* ðŸ”¥ SALE TAG â€” no numeric % until variation selected when product is variable */}
             {isOnSale && (
               <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded">
                 {showDiscountPercent ? `${discountPercent}% Discount` : "Discount"}
@@ -1345,7 +1492,7 @@ export default function ProductDetailPanel({
           )}
         </div>
 
-        {/* 📊 GST Breakdown */}
+        {/* ðŸ“Š GST Breakdown */}
         {priceInfo.taxType !== "gst_free" && (
           <div className="text-sm text-gray-600 leading-tight">
             <div className="text-dark">Ex. GST : {priceInfo.exclPrice || priceInfo.price}</div>
@@ -1353,7 +1500,7 @@ export default function ProductDetailPanel({
           </div>
         )}
 
-        {/* 🟢 GST FREE */}
+        {/* ðŸŸ¢ GST FREE */}
         {priceInfo.taxType === "gst_free" && (
           <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
             GST FREE
@@ -1498,6 +1645,7 @@ export default function ProductDetailPanel({
         <input
           type="number"
           min={1}
+          max={maxDisplayQty ?? undefined}
           inputMode="numeric"
           pattern="[0-9]*"
           value={quantityInput}
@@ -1508,10 +1656,12 @@ export default function ProductDetailPanel({
             setQuantityInput(digits);
           }}
           onBlur={() => {
-            const normalized = Number.parseInt(quantityInput, 10);
-            setQuantityInput(
-              Number.isFinite(normalized) && normalized > 0 ? String(normalized) : "1"
-            );
+            let normalized = Number.parseInt(quantityInput, 10);
+            if (!Number.isFinite(normalized) || normalized < 1) normalized = 1;
+            if (maxDisplayQty != null && normalized > maxDisplayQty) {
+              normalized = maxDisplayQty;
+            }
+            setQuantityInput(String(normalized));
           }}
           className="w-24 rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
         />
@@ -1550,87 +1700,7 @@ export default function ProductDetailPanel({
       <div className="space-y-3">
         <div className="flex items-stretch gap-3">
           <button
-            onClick={async () => {
-              if (addingToCart) return;
-              if (!hasResolvedVariation) return;
-              setAddingToCart(true);
-              try {
-                await new Promise((resolve) => setTimeout(resolve, 500));
-                const variationId = matchedVariation?.id || matched?.id;
-                const variationTaxClass =
-                  matchedVariation?.tax_class ||
-                  matched?.tax_class ||
-                  product.tax_class ||
-                  undefined;
-                const variationTaxStatus =
-                  matchedVariation?.tax_status ||
-                  matched?.tax_status ||
-                  product.tax_status ||
-                  undefined;
-                const rawAttrs =
-                  attributes.length > 0 ? { ...selected } : { ...selectedSimpleAttributes };
-                const baseAttrs =
-                  attributes.length > 0
-                    ? overlayConcreteVariationAttributes(
-                        rawAttrs,
-                        matchedVariation || matched,
-                        attributes,
-                      )
-                    : rawAttrs;
-                /** Store API ignores "Available Unit Options"; map merged-row choice onto the real Woo attribute. */
-                const attrsForCart =
-                  packagingUnitAttribute && selectedUnitOption
-                    ? { ...baseAttrs, [packagingUnitAttribute.name]: selectedUnitOption }
-                    : baseAttrs;
-
-                /** Alternate unit label (e.g. "3 PKT/CTN") → expand PDP qty into minimum-UOM line qty. */
-                const uomMult = selectedUnitOption ? extractUnitMultiplier(selectedUnitOption) : 1;
-                const safeUomMult =
-                  Number.isFinite(uomMult) && uomMult > 0 ? Math.floor(uomMult) : 1;
-                const cartQty = Math.max(1, Math.floor(Number(quantity) * safeUomMult));
-                /** Per minimum-UOM unit price so (price × cartQty) matches PDP (displayPrice × quantity). */
-                const displayNum = Number(displayPrice || 0);
-                const linePrice =
-                  selectedUnitOption &&
-                  Number.isFinite(displayNum) &&
-                  displayNum > 0 &&
-                  safeUomMult > 0
-                    ? (displayNum / safeUomMult).toFixed(2)
-                    : displayPrice || "0";
-
-                const cartItemData =
-                  selectedUnitOption && String(selectedUnitOption).trim()
-                    ? {
-                        bulk_uom: String(selectedUnitOption).trim().slice(0, 200),
-                        /** Line qty is already expanded to min UOM; Woo/plugin uses 1 unit per cart qty. */
-                        bulk_multiplier: 1,
-                      }
-                    : undefined;
-
-                addItem({
-                  productId: product.id,
-                  variationId,
-                  name: product.name,
-                  slug: product.slug,
-                  imageUrl: cartLineImageUrl,
-                  price: linePrice,
-                  qty: cartQty,
-                  sku: matchedVariation?.sku || matched?.sku || product.sku || undefined,
-                  attributes: attrsForCart,
-                  ...(cartItemData ? { cartItemData } : {}),
-                  deliveryPlan: plan,
-                  tax_class: variationTaxClass,
-                  tax_status: variationTaxStatus,
-                  empowerEligible: hasEmpowerTag(product),
-                });
-                openCart();
-                success("Product added to cart");
-              } catch (error) {
-                console.error("Error adding to cart:", error);
-              } finally {
-                setAddingToCart(false);
-              }
-            }}
+            onClick={() => addCurrentProductLine("cart")}
             disabled={!hasResolvedVariation || addingToCart}
             className="btn-brand flex-1 rounded-lg px-5 py-3.5 text-base font-semibold text-white shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 cursor-pointer"
           >
@@ -1668,6 +1738,35 @@ export default function ProductDetailPanel({
             variant="icon"
             className="!h-[52px] !w-12 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
           />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => addCurrentProductLine("quote")}
+            disabled={!hasResolvedVariation || addingToQuote}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Add to quote
+          </button>
+          <button
+            type="button"
+            onClick={() => addCurrentProductLine("quoteNdis")}
+            disabled={!hasResolvedVariation || addingToQuote}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="inline-flex h-5 w-7 shrink-0 items-center justify-center rounded bg-violet-700 text-[8px] font-bold uppercase text-white">
+              ndis
+            </span>
+            quote
+          </button>
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-400 cursor-not-allowed"
+          >
+            Price match
+          </button>
         </div>
         {attributes.length > 0 && !hasResolvedVariation && (
           <p className="text-sm font-medium text-red-600" role="alert">
@@ -1710,3 +1809,4 @@ export default function ProductDetailPanel({
     </div>
   );
 }
+

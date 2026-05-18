@@ -6,7 +6,10 @@ import { stripEmptyNdisHcpFromInitiatePayload } from "@/lib/checkout/ndisHcpPayl
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
-import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
+import {
+  getCheckoutWpToken,
+  syncCheckoutCustomerAfterOrder,
+} from "@/lib/checkout/syncCheckoutCustomerAfterOrder";
 import { executeWooCheckoutOrder } from "@/lib/checkout/executeWooCheckoutOrder";
 import type { CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
 import { extractWooOrderId, extractWooOrderKey, getWooOrder } from "@/lib/services/wooService";
@@ -215,9 +218,10 @@ export async function confirmAfterpayOrder(params: {
 
   const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
   try {
-    await syncCheckoutUserMeta(actor, payload);
+    const wpToken = await getCheckoutWpToken(params.req);
+    await syncCheckoutCustomerAfterOrder(actor, payload, wpToken);
   } catch (e) {
-    console.warn("[afterpay confirm] user meta sync failed", {
+    console.warn("[afterpay confirm] customer profile / address book sync failed", {
       message: e instanceof Error ? e.message : String(e),
     });
   }

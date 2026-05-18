@@ -18,6 +18,8 @@ import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
 import { sanitizeString } from "@/lib/sanitize";
 import { getCartUrl } from "@/lib/access-token";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { canIncrementQty, clampToStockCap, getStockCap } from "@/lib/woo/stockLimit";
+import type { CartItem } from "@/lib/types/cart";
 
 const ShippingOptionsSkeleton = () => (
   <div className="space-y-2" aria-hidden="true">
@@ -39,10 +41,18 @@ const CartItem = memo(
     onRemove,
     onUpdateQty,
   }: {
-    item: any;
+    item: CartItem;
     onRemove: (id: string) => void;
     onUpdateQty: (id: string, qty: number) => void;
   }) => {
+    const stockCap = useMemo(
+      () =>
+        getStockCap({
+          manage_stock: item.manageStock,
+          stock_quantity: item.stockQuantity,
+        }),
+      [item.manageStock, item.stockQuantity],
+    );
     const safeName = useMemo(() => sanitizeString(item?.name || ""), [item?.name]);
     const safeSku = useMemo(() => sanitizeString(item?.sku || ""), [item?.sku]);
     const normalizedAttributes = useMemo(() => {
@@ -54,7 +64,7 @@ const CartItem = memo(
     }, [item?.attributes]);
 
     const handleQtyChange = (newQty: number) => {
-      const qty = Math.max(1, Math.floor(newQty));
+      const qty = clampToStockCap(newQty, stockCap);
       onUpdateQty(item.id, qty);
     };
 
@@ -65,6 +75,7 @@ const CartItem = memo(
     };
 
     const handleIncrement = () => {
+      if (!canIncrementQty(item.qty, stockCap)) return;
       onUpdateQty(item.id, item.qty + 1);
     };
 
@@ -135,6 +146,7 @@ const CartItem = memo(
               <input
                 type="number"
                 min="1"
+                max={stockCap ?? undefined}
                 value={item.qty}
                 onChange={(e) => handleQtyChange(Number(e.target.value))}
                 className="w-12 border-0 bg-transparent text-center text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1"
@@ -142,7 +154,8 @@ const CartItem = memo(
               />
               <button
                 onClick={handleIncrement}
-                className="px-2 py-1 text-gray-600 hover:bg-gray-50"
+                disabled={!canIncrementQty(item.qty, stockCap)}
+                className="px-2 py-1 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Increase quantity"
               >
                 <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -46,6 +46,8 @@ export interface Order {
     postcode: string;
     country: string;
   };
+  /** MachShip consignment token from `_wc_ns_machship_tracking_token` when present. */
+  machship_tracking_token?: string;
 }
 
 export interface PaginationInfo {

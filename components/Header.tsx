@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/components/CartProvider";
+import { useQuote } from "@/components/QuoteProvider";
 import { useWishlist } from "@/contexts/WishlistContext";
 import { useToast } from "@/components/ToastProvider";
 import { useSession, signOut } from "next-auth/react";
@@ -32,7 +33,7 @@ function initialLogoFromCms(initialCms: PublicHeaderPayload | null | undefined):
 export default function Header({
   initialCms,
 }: {
-  /** From RSC layout — avoids /api/cms/header on first paint when set */
+  /** From RSC layout â€” avoids /api/cms/header on first paint when set */
   initialCms?: PublicHeaderPayload | null;
 }) {
   const pathname = usePathname();
@@ -47,6 +48,7 @@ export default function Header({
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const { open: openCart, items } = useCart();
+  const { open: openQuote, itemCount: quoteCount } = useQuote();
   const { items: wishlistItems } = useWishlist();
   const { info } = useToast();
 
@@ -121,7 +123,7 @@ export default function Header({
 
   return (
     <header className="bg-white">
-      {/* Site migration / improvement notice — above tagline */}
+      {/* Site migration / improvement notice â€” above tagline */}
       {/* <div className="border-b border-amber-200 bg-amber-50 py-2 px-3 sm:px-4 md:px-5 lg:px-0">
         <div className="container mx-auto text-[11px] leading-relaxed text-amber-950 sm:text-xs">
           <p className="text-center sm:text-left">
@@ -168,8 +170,11 @@ export default function Header({
           </PrefetchLink>
         </div>
 
-        {/* Mobile Menu Button */}
-        <div className="flex lg:hidden justify-end">
+        {/* Mobile: quote + menu */}
+        <div className="flex lg:hidden items-center justify-end gap-2">
+          {isMounted && quoteCount > 0 && (
+            <QuoteHeaderButton count={quoteCount} onClick={openQuote} />
+          )}
           <button
             ref={mobileMenuButtonRef}
             onClick={() => setOpen(!open)}
@@ -188,14 +193,14 @@ export default function Header({
           </button>
         </div>
 
-        {/* Desktop Search — below 1480px use 7 cols so bar + ring do not crowd phone; 8 cols from 1480px up */}
+        {/* Desktop Search â€” below 1480px use 7 cols so bar + ring do not crowd phone; 8 cols from 1480px up */}
         <div className="hidden min-w-0 w-full overflow-visible lg:flex lg:col-span-7 min-[1480px]:lg:col-span-8 justify-center px-1">
           <Suspense fallback={<HeaderSearchFallback />}>
             <HeaderSearch />
           </Suspense>
         </div>
 
-        {/* Right Icons — extra column below 1480px for phone + icons; stay above search if subpixel overlap */}
+        {/* Right Icons â€” extra column below 1480px for phone + icons; stay above search if subpixel overlap */}
         <div className="relative z-10 hidden min-w-0 shrink-0 lg:flex lg:col-span-3 min-[1480px]:lg:col-span-2 items-center justify-end gap-2 xl:gap-3">
           <div className="hidden md:flex items-center gap-2">
             <svg
@@ -239,6 +244,10 @@ export default function Header({
               </span>
             )}
           </PrefetchLink>
+
+          {isMounted && quoteCount > 0 && (
+            <QuoteHeaderButton count={quoteCount} onClick={openQuote} />
+          )}
 
           {/* Cart */}
           <button
@@ -400,3 +409,21 @@ export default function Header({
     </header>
   );
 }
+
+function QuoteHeaderButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative inline-flex h-11 min-w-[4.75rem] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-100 px-3 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-200"
+      aria-label="Open quote"
+    >
+      Quote
+      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
+        {count > 99 ? "99+" : count}
+      </span>
+    </button>
+  );
+}
+
+

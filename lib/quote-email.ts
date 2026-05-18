@@ -2,7 +2,7 @@
  * Quote Email Notifications
  * Handles sending emails for various quote events
  *
- * Staff copy (same HTML/details) — set `QUOTE_STAFF_NOTIFY_EMAIL` to a comma-separated list, or leave
+ * Staff copy (same HTML/details) â€” set `QUOTE_STAFF_NOTIFY_EMAIL` to a comma-separated list, or leave
  * unset to default to info@joyamedicalsupplies.com.au. Set to empty string `QUOTE_STAFF_NOTIFY_EMAIL=`
  * or `false` / `0` to disable.
  */
@@ -75,6 +75,33 @@ function quoteAddressHtmlBlock(title: string, addr: QuoteAddressSnapshot | null 
     </div>`;
 }
 
+function formatNdisInfoForEmail(raw: string | null | undefined): string {
+  if (!raw?.trim()) return "";
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const lines: string[] = [];
+    const labels: Record<string, string> = {
+      participant_name: "Participant name",
+      number: "NDIS number",
+      dob: "Date of birth",
+      plan_start: "Plan start",
+      plan_end: "Plan end",
+      claim_who: "Who will claim",
+      funding_type: "Funding type",
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      const v = o[key];
+      if (v == null || v === "") continue;
+      lines.push(
+        `<p style="margin: 0 0 6px 0;"><strong>${escapeHtmlForEmail(label)}:</strong> ${escapeHtmlForEmail(String(v))}</p>`,
+      );
+    }
+    return lines.join("");
+  } catch {
+    return "";
+  }
+}
+
 function quoteCreatedContactSectionHtml(quote: Quote): string {
   const emailHtml = quote.user_email
     ? `<p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${escapeHtmlForEmail(quote.user_email)}</p>`
@@ -84,7 +111,11 @@ function quoteCreatedContactSectionHtml(quote: Quote): string {
     : "";
   const billingHtml = quoteAddressHtmlBlock("Billing address", quote.billing_address ?? undefined);
   const shippingHtml = quoteAddressHtmlBlock("Shipping address", quote.shipping_address ?? undefined);
-  if (!emailHtml && !nameHtml && !billingHtml && !shippingHtml) return "";
+  const ndisHtml = formatNdisInfoForEmail(quote.ndis_info);
+  const ndisBlock = ndisHtml
+    ? `<div style="margin-top: 12px; padding: 12px; background: #f5f3ff; border-radius: 6px;"><strong style="display:block;margin-bottom:8px;">NDIS details</strong>${ndisHtml}</div>`
+    : "";
+  if (!emailHtml && !nameHtml && !billingHtml && !shippingHtml && !ndisBlock) return "";
   return `
     <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb;">
       <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 16px;">Your details</h3>
@@ -92,6 +123,7 @@ function quoteCreatedContactSectionHtml(quote: Quote): string {
       ${nameHtml}
       ${billingHtml}
       ${shippingHtml}
+      ${ndisBlock}
     </div>`;
 }
 
@@ -145,7 +177,7 @@ export function getQuoteStaffNotifyEmails(): string[] {
 
 function prependStaffCopyBannerHtml(html: string, customerEmail: string): string {
   const safe = escapeHtmlForEmail(customerEmail);
-  const banner = `<div style="background:#fef3c7;padding:12px 16px;margin:0 0 16px;border-radius:8px;border:1px solid #f59e0b;font-size:14px;line-height:1.5;color:#78350f;"><strong>Staff copy</strong> — original recipient: ${safe}</div>`;
+  const banner = `<div style="background:#fef3c7;padding:12px 16px;margin:0 0 16px;border-radius:8px;border:1px solid #f59e0b;font-size:14px;line-height:1.5;color:#78350f;"><strong>Staff copy</strong> â€” original recipient: ${safe}</div>`;
   if (/<body[^>]*>/i.test(html)) {
     return html.replace(/<body[^>]*>/i, (open) => `${open}${banner}`);
   }
@@ -303,8 +335,8 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     if (!staffTo || staffTo.toLowerCase() === customer) {
       continue;
     }
-    const staffSubject = `[Joya — Customer Service] ${options.subject}`;
-    const staffBody = `${options.body}\n\n---\nInternal copy — original recipient: ${options.to}`;
+    const staffSubject = `[Joya â€” Customer Service] ${options.subject}`;
+    const staffBody = `${options.body}\n\n---\nInternal copy â€” original recipient: ${options.to}`;
     const staffHtml = options.html
       ? prependStaffCopyBannerHtml(options.html, options.to)
       : undefined;
@@ -522,7 +554,7 @@ export async function sendQuoteSentEmail(quote: Quote): Promise<boolean> {
       quote.expires_at
         ? `
       <div style="margin-top: 15px; padding: 12px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
-        <strong>⚠️ Important:</strong> This quote expires on ${new Date(quote.expires_at).toLocaleDateString()}
+        <strong>âš ï¸ Important:</strong> This quote expires on ${new Date(quote.expires_at).toLocaleDateString()}
       </div>
     `
         : ""
@@ -698,3 +730,5 @@ export async function sendQuoteExpiredEmail(quote: Quote): Promise<boolean> {
     type: "quote_expired",
   });
 }
+
+

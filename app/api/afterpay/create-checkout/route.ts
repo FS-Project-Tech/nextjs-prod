@@ -14,7 +14,10 @@ import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
 import { validateCartForEwayCheckout } from "@/lib/checkout/validateCartForEwayCheckout";
 import { runFullCartValidation } from "@/lib/cart/validate-cart-full";
-import { syncCheckoutUserMeta } from "@/lib/checkout/syncCheckoutUserMeta";
+import {
+  getCheckoutWpToken,
+  syncCheckoutCustomerAfterOrder,
+} from "@/lib/checkout/syncCheckoutCustomerAfterOrder";
 import { afterpayConfigured, afterpaySiteUrl } from "@/lib/afterpay/env";
 import { parseAfterpayCheckoutBody } from "@/lib/afterpay/schema";
 import { savePendingCheckoutPayload } from "@/lib/afterpay/pendingSession";
@@ -105,9 +108,10 @@ export async function POST(req: NextRequest) {
     after(async () => {
       try {
         const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
-        await syncCheckoutUserMeta(actor, payload);
+        const wpToken = await getCheckoutWpToken(req);
+        await syncCheckoutCustomerAfterOrder(actor, payload, wpToken);
       } catch (e) {
-        console.warn("[afterpay create-checkout] user meta sync failed", {
+        console.warn("[afterpay create-checkout] customer profile / address book sync failed", {
           message: e instanceof Error ? e.message : String(e),
         });
       }

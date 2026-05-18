@@ -5,6 +5,14 @@ import { persist } from "zustand/middleware";
 import { calculateSubtotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
 import { trackAddToCart } from "@/lib/analytics";
+import { clampToStockCap, getStockCap } from "@/lib/woo/stockLimit";
+
+function stockCapForLine(line: Pick<CartItem, "manageStock" | "stockQuantity">): number | null {
+  return getStockCap({
+    manage_stock: line.manageStock,
+    stock_quantity: line.stockQuantity,
+  });
+}
 
 const EMPTY_ITEMS: CartItem[] = [];
 
@@ -262,16 +270,31 @@ export const useCartStore = create<CartStoreState>()(
         const prev = sliceItems(state);
         const idx = prev.findIndex((p) => p.id === id);
         let next: CartItem[];
+        const cap = stockCapForLine({
+          manageStock: input.manageStock,
+          stockQuantity: input.stockQuantity,
+        });
         if (idx >= 0) {
           next = [...prev];
+          const mergedQty = next[idx].qty + input.qty;
+          const lineCap =
+            stockCapForLine({
+              manageStock: input.manageStock ?? next[idx].manageStock,
+              stockQuantity: input.stockQuantity ?? next[idx].stockQuantity,
+            }) ?? cap;
           next[idx] = {
             ...next[idx],
             ...input,
-            qty: next[idx].qty + input.qty,
+            qty: clampToStockCap(mergedQty, lineCap),
+            manageStock: input.manageStock ?? next[idx].manageStock,
+            stockQuantity: input.stockQuantity ?? next[idx].stockQuantity,
             id: next[idx].id,
           };
         } else {
-          next = [...prev, { ...input, id } as CartItem];
+          next = [
+            ...prev,
+            { ...input, id, qty: clampToStockCap(input.qty, cap) } as CartItem,
+          ];
         }
         set(setSlice(state, next));
 
@@ -302,7 +325,9 @@ export const useCartStore = create<CartStoreState>()(
         set(setSlice(
           state,
           sliceItems(state).map((item) =>
-            item.id === id ? { ...item, qty: Math.max(1, qty) } : item,
+            item.id === id
+              ? { ...item, qty: clampToStockCap(qty, stockCapForLine(item)) }
+              : item,
           ),
         ));
       },

@@ -1,15 +1,13 @@
 import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getWpBaseUrl } from "@/lib/auth";
-import {
-  getAddresses,
-  getDeletedIds,
-  upsertAddress,
-  addDeletedId,
-  removeDeletedId,
-} from "@/lib/addresses-memory-store";
+import { getAddresses, getDeletedIds } from "@/lib/addresses-memory-store";
 import { loadFromFile } from "@/lib/addresses-file-store";
 import { normalizeAddressFromWp } from "@/lib/addresses-normalize";
+import {
+  normalizeAddressPersistBody,
+  persistCustomerAddress,
+} from "@/lib/addresses-server";
 import { mergeAddressListWithWooPrimaries } from "@/lib/wc-primary-addresses";
 import { getToken } from "next-auth/jwt";
 
@@ -198,52 +196,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Keys the WordPress secondary-addresses REST API expects (billing2_* / shipping2_*) */
-const SECONDARY_ADDRESS_KEYS = [
-  "type",
-  "first_name",
-  "last_name",
-  "company",
-  "address_1",
-  "address_2",
-  "city",
-  "state",
-  "postcode",
-  "country",
-  "phone",
-  "email",
-  "ndis_participant_name",
-  "ndis_number",
-  "ndis_dob",
-  "ndis_funding_type",
-  "ndis_approval",
-  "ndis_invoice_email",
-  "hcp_participant_name",
-  "hcp_number",
-  "hcp_provider_email",
-  "hcp_approval",
-] as const;
-
-function normalizeAddressBody(body: unknown): Record<string, string> {
-  const o =
-    body && typeof body === "object" && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : {};
-  const out: Record<string, string> = {};
-  const type = o.type === "shipping" ? "shipping" : "billing";
-  out.type = type;
-  for (const key of SECONDARY_ADDRESS_KEYS) {
-    if (key === "type") continue;
-    const v = o[key];
-    if (key === "ndis_approval" || key === "hcp_approval") {
-      out[key] = v === true || v === "1" || v === 1 ? "1" : "0";
-    } else {
-      out[key] = v != null && typeof v === "string" ? v : String(v ?? "");
-    }
-  }
-  return out;
-}
-
 /**
  * POST /api/dashboard/addresses
  * Add a new address (Address Book first = multiple rows; secondary = single billing2/shipping2 slot)
@@ -273,83 +225,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to get user data" }, { status: 401 });
     }
 
-    const body = normalizeAddressBody(rawBody);
+    const body = normalizeAddressPersistBody(rawBody);
     const payloadForWp = { ...rawBody, ...body } as Record<string, unknown>;
     if (payloadForWp.type === undefined) payloadForWp.type = body.type;
 
-    /** 1) Multiple addresses — Address Book / Customer Addresses API */
-    const bookPost = await fetch(`${wpBase}/wp-json/customers/v1/addresses`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payloadForWp),
-      cache: "no-store",
+    const { id, ok } = await persistCustomerAddress({
+      wpToken: token,
+      fileStoreKey,
+      rawBody: payloadForWp,
     });
 
-    if (bookPost.ok) {
-      const result = await bookPost.json();
-      const addr = result.address as Record<string, unknown>;
-      const id = String(addr?.id ?? "");
-      if (id) {
-        upsertAddress(fileStoreKey, id, addr ?? {});
-        removeDeletedId(fileStoreKey, id);
-      }
-      return NextResponse.json({
-        address: normalizeAddressFromWp(addr ?? {}, id || `wp-${Date.now()}`),
-        message: result.message || "Address added successfully",
-      });
-    }
-
-    /** 2) Single secondary slot (billing2 / shipping2) */
-    const secondaryPost = await fetch(`${wpBase}/wp-json/customers/v1/addresses-secondary`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payloadForWp),
-      cache: "no-store",
-    });
-
-    if (secondaryPost.ok) {
-      const result = await secondaryPost.json();
-      const addr = result.address as Record<string, unknown>;
-      const id = String(addr?.id ?? `local-${Date.now()}`);
-      upsertAddress(fileStoreKey, id, addr ?? {});
-      removeDeletedId(fileStoreKey, id);
-      return NextResponse.json({
-        address: normalizeAddressFromWp(addr ?? {}, id),
-        message: result.message || "Address added successfully",
-      });
-    }
-
-    const bookErr = await bookPost.text().catch(() => "");
-    const secErr = await secondaryPost.text().catch(() => "");
-    console.warn(
-      "[Addresses] Add failed — address-book:",
-      bookPost.status,
-      bookErr.slice(0, 120),
-      "secondary:",
-      secondaryPost.status,
-      secErr.slice(0, 120)
-    );
-
-    const fallbackId = `local-${Date.now()}`;
-    const fallbackAddr: Record<string, unknown> = {
-      id: fallbackId,
-      type: body.type,
-      label: body.type === "shipping" ? "Shipping" : "Billing",
-      ...payloadForWp,
-    };
-    upsertAddress(fileStoreKey, fallbackId, fallbackAddr);
-    removeDeletedId(fileStoreKey, fallbackId);
-
-    if (bookPost.status === 404 || bookPost.status === 501 || secondaryPost.status === 404) {
-      return NextResponse.json({
-        address: normalizeAddressFromWp(fallbackAddr, fallbackId),
-        message: "Address saved locally. Enable Address Book or secondary-addresses REST on WordPress to sync.",
-      });
-    }
+    const fromStore = getAddresses(fileStoreKey).find((a) => String(a.id) === id);
+    const addr = (fromStore ?? payloadForWp) as Record<string, unknown>;
 
     return NextResponse.json({
-      address: normalizeAddressFromWp(fallbackAddr, fallbackId),
-      message: "Address saved. Check WordPress REST auth for permanent sync.",
+      address: normalizeAddressFromWp(addr, id),
+      message: ok
+        ? "Address added successfully"
+        : "Address saved. Check WordPress REST auth for permanent sync.",
     });
   } catch (error) {
     console.error("Add address error:", error);

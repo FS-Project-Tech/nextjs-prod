@@ -151,16 +151,18 @@ function SearchProductCardComponent({
 
   return (
     <article
-      className="grid h-full grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-3 transition hover:shadow-md md:grid-cols-1"
+      className="relative grid h-full cursor-pointer grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-3 transition hover:shadow-md md:grid-cols-1"
       style={{ contain: "layout style paint" }}
     >
+      <Link
+        href={href}
+        className="absolute inset-0 z-[1] rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+        aria-label={`View ${displayTitle}`}
+        prefetch={false}
+      />
+
       <div className="flex min-w-0 flex-col items-stretch gap-2">
-        <Link
-          href={href}
-          className="relative block w-full overflow-hidden rounded-lg bg-white"
-          aria-label={`View ${displayTitle}`}
-          prefetch={false}
-        >
+        <div className="relative block w-full overflow-hidden rounded-lg bg-white">
           <div className="relative aspect-square">
             <Image
               src={imageSrc}
@@ -199,9 +201,9 @@ function SearchProductCardComponent({
               Product image is for reference only
             </p> */}
           </div>
-        </Link>
+        </div>
 
-        <div className="flex w-full justify-start md:hidden">
+        <div className="relative z-10 flex w-full justify-start md:hidden">
           <WishlistButton
             productId={wishlistProductId}
             size="sm"
@@ -214,12 +216,9 @@ function SearchProductCardComponent({
       <div className="flex min-w-0 flex-col md:pt-3">
         <div className="min-h-0 flex-1">
           <div className="flex flex-wrap items-start gap-2">
-            <Link
-              href={href}
-              className="min-w-0 flex-1 basis-full text-sm font-medium leading-snug text-gray-900 break-words md:basis-auto"
-            >
+            <h3 className="min-w-0 flex-1 basis-full text-sm font-medium leading-snug text-gray-900 break-words md:basis-auto">
               {displayTitle}
-            </Link>
+            </h3>
             {isVariation ? (
               <span className="inline-flex rounded-full border border-teal-600/35 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-800">
                 Variant

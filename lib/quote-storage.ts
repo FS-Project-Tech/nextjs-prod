@@ -60,6 +60,7 @@ export async function storeQuote(
     notes: payload.notes,
     billing_address: payload.billing_address ?? null,
     shipping_address: payload.shipping_address ?? null,
+    ndis_info: payload.ndis_info ?? null,
     created_at: now,
     updated_at: now,
     expires_at: expiresAt,

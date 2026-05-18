@@ -14,6 +14,7 @@ import { useShippingAddress } from "@/hooks/useShippingAddress";
 import { calculateSubtotal, calculateGST, calculateTaxableSubtotal, calculateTotal } from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
+import { clampToStockCap, getStockCap } from "@/lib/woo/stockLimit";
  
 function CartPageContent() {
   const router = useRouter();
@@ -216,9 +217,24 @@ function CartPageContent() {
                                   type="number"
                                   inputMode="numeric"
                                   min={1}
+                                  max={
+                                    getStockCap({
+                                      manage_stock: i.manageStock,
+                                      stock_quantity: i.stockQuantity,
+                                    }) ?? undefined
+                                  }
                                   value={i.qty}
                                   onChange={(e) =>
-                                    updateItemQty(i.id, Math.max(1, Number(e.target.value)))
+                                    updateItemQty(
+                                      i.id,
+                                      clampToStockCap(
+                                        Number(e.target.value),
+                                        getStockCap({
+                                          manage_stock: i.manageStock,
+                                          stock_quantity: i.stockQuantity,
+                                        }),
+                                      ),
+                                    )
                                   }
                                   className="min-h-11 w-[5.5rem] rounded-lg border border-gray-300 px-3 py-2 text-center text-base tabular-nums shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 sm:min-h-10 sm:text-sm"
                                 />

@@ -19,7 +19,7 @@ const PER_PAGE = 100;
  * Omit heavy meta at order root.
  */
 const WC_ORDERS_LIST_FIELDS =
-  "id,number,status,total,currency,date_created,line_items,billing,shipping";
+  "id,number,status,total,currency,date_created,line_items,billing,shipping,meta_data";
 
 async function fetchAllWooOrdersUncached(
   customerId: number,

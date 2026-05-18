@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       notes, // Add notes field
       billing_address: billingAddressRaw,
       shipping_address: shippingAddressRaw,
+      ndis_info: ndisInfoRaw,
     } = body;
 
     if (!email) {
@@ -47,6 +48,9 @@ export async function POST(req: NextRequest) {
     const shipping_address = parseQuoteAddressSnapshotFromBody(shippingAddressRaw);
 
     // Store quote in database
+    const ndis_info =
+      typeof ndisInfoRaw === "string" && ndisInfoRaw.trim() ? ndisInfoRaw.trim() : null;
+
     const quotePayload: QuoteRequestPayload = {
       email,
       userName,
@@ -59,6 +63,7 @@ export async function POST(req: NextRequest) {
       notes,
       billing_address,
       shipping_address,
+      ndis_info,
     };
 
     const storedQuote = await storeQuote(quotePayload, quoteNumber);

@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { getOrderPaymentMethodDisplay } from "@/lib/checkout/paymentDisplay";
 import { formatDateDdMmYyyy } from "@/lib/format-dates";
+import TrackOrderButton from "@/components/dashboard/TrackOrderButton";
 
 interface OrderItem {
   id: number;
@@ -56,6 +57,7 @@ interface Order {
     total: string;
   }>;
   source?: "woo" | "legacy";
+  machship_tracking_token?: string;
 }
 
 function formatMoney(currency: string, amount: string): string {
@@ -172,21 +174,29 @@ export default function OrderDetailPage() {
           <h1 className="text-2xl font-bold text-gray-900">Order Details</h1>
           <p className="text-gray-600 mt-1">Order #{order.order_number || order.id}</p>
         </div>
-        <span
-          className={`inline-flex px-3 py-1 rounded-full text-sm font-medium capitalize shrink-0 ${
-            order.status === "completed"
-              ? "bg-green-100 text-green-800"
-              : order.status === "processing"
-                ? "bg-blue-100 text-blue-800"
-                : order.status === "pending"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : order.status === "cancelled"
-                    ? "bg-red-100 text-red-800"
-                    : "bg-gray-100 text-gray-800"
-          }`}
-        >
-          {statusLabel}
-        </span>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {order.machship_tracking_token ? (
+            <TrackOrderButton
+              trackingToken={order.machship_tracking_token}
+              showToken
+            />
+          ) : null}
+          <span
+            className={`inline-flex px-3 py-1 rounded-full text-sm font-medium capitalize ${
+              order.status === "completed"
+                ? "bg-green-100 text-green-800"
+                : order.status === "processing"
+                  ? "bg-blue-100 text-blue-800"
+                  : order.status === "pending"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : order.status === "cancelled"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-gray-100 text-gray-800"
+            }`}
+          >
+            {statusLabel}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
