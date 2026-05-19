@@ -1,26 +1,12 @@
 import { useEffect } from "react";
 import type { UseFormSetValue } from "react-hook-form";
+import { stripCheckoutTransientQueryParamsFromAddressBar } from "@/lib/checkout/checkoutUrlSanitize";
 import type { CheckoutFormData } from "./schema";
 
 export function useMountFlag(setMounted: (v: boolean) => void): void {
   useEffect(() => {
     setMounted(true);
   }, [setMounted]);
-}
-
-function stripCheckoutErrorQueryParamsFromAddressBar(): void {
-  if (typeof window === "undefined") return;
-  try {
-    const u = new URL(window.location.href);
-    if (!u.searchParams.has("cancelled") && !u.searchParams.has("error")) return;
-    u.searchParams.delete("cancelled");
-    u.searchParams.delete("error");
-    const q = u.searchParams.toString();
-    const next = u.pathname + (q ? `?${q}` : "");
-    window.history.replaceState(window.history.state, "", next);
-  } catch {
-    /* ignore */
-  }
 }
 
 export function useCheckoutQueryToasts(
@@ -34,10 +20,7 @@ export function useCheckoutQueryToasts(
     const errCode = searchParams.get("error");
     if (cancelled === "true") {
       showError("Payment was cancelled.");
-      stripCheckoutErrorQueryParamsFromAddressBar();
-      return;
-    }
-    if (errCode) {
+    } else if (errCode) {
       const messages: Record<string, string> = {
         payment_failed: "Payment was declined or failed. Please try again.",
         session_expired: "Checkout session expired. Please start again.",
@@ -46,8 +29,8 @@ export function useCheckoutQueryToasts(
         payment_pending: "Payment is still processing. Check your email or try again shortly.",
       };
       showError(messages[errCode] || "Something went wrong. Please try again.");
-      stripCheckoutErrorQueryParamsFromAddressBar();
     }
+    stripCheckoutTransientQueryParamsFromAddressBar();
   }, [isMounted, searchParams, showError]);
 }
 

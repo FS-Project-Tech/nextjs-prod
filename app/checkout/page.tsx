@@ -9,6 +9,7 @@ import { FOCUS_RING_BTN } from "@/lib/checkout/uiConstants";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
 import OrderSummary from "@/components/checkout/OrderSummary";
 import PaymentSection from "@/components/checkout/PaymentSection";
+import CheckoutPlacingOverlay from "@/components/checkout/CheckoutPlacingOverlay";
 
 function Spinner({ label }: { label: string }) {
   return (
@@ -86,7 +87,6 @@ function CheckoutPageInner() {
     onFormSubmit,
     recoveryBannerVisible,
     recoveryChecking,
-    placingSlow,
     placingSubmitPhase,
   } = checkout;
 
@@ -117,22 +117,7 @@ function CheckoutPageInner() {
         aria-busy="true"
         aria-live="polite"
       >
-        <div className="rounded-lg bg-white/90 px-6 py-4 text-center shadow-lg ring-1 ring-gray-200">
-          <div
-            className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-solid border-gray-900 border-r-transparent"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-medium text-gray-900">Processing checkout…</p>
-          <p className="mt-1 text-xs text-gray-600">Please do not refresh or close this page.</p>
-          {placingSlow ? (
-            <div className="mt-4 border-t border-gray-200 pt-4">
-              <p className="text-sm text-gray-800">
-                Still working… checkout can take a minute. Please keep this page open — do not refresh or
-                submit again.
-              </p>
-            </div>
-          ) : null}
-        </div>
+        <CheckoutPlacingOverlay paymentMethod={selectedPaymentMethod} />
       </div>
     ) : null;
 

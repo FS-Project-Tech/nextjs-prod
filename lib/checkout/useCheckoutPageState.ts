@@ -106,7 +106,6 @@ export function useCheckoutPageState() {
   >(null);
   const [recoveryBannerVisible, setRecoveryBannerVisible] = useState(false);
   const [recoveryChecking, setRecoveryChecking] = useState(false);
-  const [placingSlow, setPlacingSlow] = useState(false);
   const recoveryAbortRef = useRef<AbortController | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod" | "afterpay">(
     "eway",
@@ -565,12 +564,8 @@ export function useCheckoutPageState() {
 
   useEffect(() => {
     if (!placing) {
-      setPlacingSlow(false);
       setPlacingSubmitPhase("idle");
-      return;
     }
-    const t = window.setTimeout(() => setPlacingSlow(true), 10_000);
-    return () => window.clearTimeout(t);
   }, [placing]);
 
   /**
@@ -883,7 +878,6 @@ export function useCheckoutPageState() {
     onFormSubmit,
     recoveryBannerVisible,
     recoveryChecking,
-    placingSlow,
     watch,
     getValues,
   };

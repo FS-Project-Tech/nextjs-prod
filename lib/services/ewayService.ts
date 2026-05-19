@@ -126,7 +126,7 @@ export async function createEwayHostedPayment(
   const redirectUrl =
     `${base}/checkout/order-review?orderId=${encodeURIComponent(routingOrderId)}&key=${keyEnc}` +
     (vpSig ? `&vp_sig=${encodeURIComponent(vpSig)}` : "");
-  const cancelUrl = `${base}/checkout`;
+  const cancelUrl = `${base}/checkout?cancelled=true`;
 
   const body = {
     Customer: {
