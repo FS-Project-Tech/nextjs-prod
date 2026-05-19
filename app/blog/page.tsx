@@ -1,17 +1,49 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
-import { fetchPosts, fetchCategories } from "@/lib/cms-posts";
+import { fetchPosts, fetchCategories, plainTextFromRendered } from "@/lib/cms-posts";
+import { fetchPageBySlug } from "@/lib/cms-pages";
+import { decodeBlogHTMLEntities } from "@/lib/blog-decode";
+import { resolveBlogIndexYoastHead } from "@/lib/wordpress";
+import { buildNextMetadataFromYoast } from "@/lib/yoast";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
-export const metadata: Metadata = {
-  title: "Blog",
-  description: "Articles, guides, and updates from Joya Medical Supplies.",
-  alternates: { canonical: "/blog" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const wpPage = await fetchPageBySlug("blog").catch(() => null);
+    const yoast = await resolveBlogIndexYoastHead(wpPage).catch(() => ({}));
+
+    const pageTitle = plainTextFromRendered(wpPage?.title?.rendered);
+    const fallbackTitle = pageTitle
+      ? decodeBlogHTMLEntities(pageTitle)
+      : "Blog";
+    const pageExcerpt = plainTextFromRendered(wpPage?.excerpt?.rendered, 160);
+    const fallbackDescription = pageExcerpt
+      ? decodeBlogHTMLEntities(pageExcerpt)
+      : "Articles, guides, and updates from Joya Medical Supplies.";
+
+    const featuredUrl = wpPage?._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
+
+    return buildNextMetadataFromYoast({
+      yoast,
+      canonicalPath: "/blog",
+      fallbackTitle,
+      fallbackDescription,
+      fallbackImages: featuredUrl
+        ? [{ url: featuredUrl, alt: fallbackTitle }]
+        : undefined,
+    });
+  } catch {
+    return {
+      title: "Blog",
+      description: "Articles, guides, and updates from Joya Medical Supplies.",
+      alternates: { canonical: "/blog" },
+    };
+  }
+}
 
 /** Next may pass `searchParams` as a Promise (request) or plain object (prerender); values may be `string | string[]`. */
 function firstSearchParam(v: string | string[] | undefined): string | undefined {

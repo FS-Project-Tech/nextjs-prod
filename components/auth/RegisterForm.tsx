@@ -65,7 +65,12 @@ export default function RegisterForm() {
         throw new Error(result?.error?.message || "Unable to register.");
       }
 
-      router.replace(result.redirectTo || `/login?next=${encodeURIComponent(nextParam)}`);
+      const loginParams = new URLSearchParams({ registered: "1" });
+      const nextFromQuery = params.get("next");
+      if (nextFromQuery) {
+        loginParams.set("next", nextFromQuery);
+      }
+      router.replace(`/login?${loginParams.toString()}`);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Unexpected error.");
     } finally {

@@ -1461,7 +1461,7 @@ export default function ProductDetailPanel({
                         {idx > 0 ? (
                           <span className="mx-0.5 text-gray-400" aria-hidden>
                             {" "}
-                            â€º{" "}
+                            ›{" "}
                           </span>
                         ) : null}
                         <Link
@@ -1489,7 +1489,7 @@ export default function ProductDetailPanel({
         </div>
       </div>
 
-      {/* âœ… FIXED SPACING HERE */}
+      {/*  FIXED SPACING HERE */}
       {showProductTerms(product) && (
         <div className="mt-5">
           <Image
@@ -1818,7 +1818,7 @@ export default function ProductDetailPanel({
             className="!h-[52px] !w-12 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
           />
         </div>
-        <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-gray-50/90 to-white p-2.5 shadow-sm">
+        {/* <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-gray-50/90 to-white p-2.5 shadow-sm"> */}
           <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
             <button
               type="button"
@@ -1847,7 +1847,7 @@ export default function ProductDetailPanel({
               Price match
             </button>
           </div>
-        </div>
+        {/* </div> */}
 
         {attributes.length > 0 && !hasResolvedVariation && (
           <p className="text-sm font-medium text-red-600" role="alert">

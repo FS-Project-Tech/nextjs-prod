@@ -2,9 +2,14 @@
  * Fetch WordPress blog posts for the headless blog page
  */
 
-const WP_URL = process.env.NEXT_PUBLIC_WP_URL || "";
+import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
+import type { WpEntityWithYoast } from "@/lib/yoast";
 
-export interface WpPost {
+function wpPostsBaseUrl(): string {
+  return getWordPressRestBaseUrl();
+}
+
+export interface WpPost extends WpEntityWithYoast {
   id: number;
   slug: string;
   title: { rendered: string };
@@ -23,13 +28,21 @@ export interface WpPost {
 /** Slugs to exclude from blog (funding scheme posts live at /funding-scheme) */
 export const BLOG_EXCLUDE_SLUGS = ["funding-schemes", "caps", "my-aged-care", "ndis"];
 
+/** Strip tags from a WP `rendered` field for fallbacks when Yoast is empty. */
+export function plainTextFromRendered(html: string | undefined, maxLength?: number): string {
+  const text = (html || "").replace(/<[^>]+>/g, "").trim();
+  if (maxLength != null && maxLength > 0) return text.slice(0, maxLength);
+  return text;
+}
+
 export async function fetchPosts(params?: {
   per?: number;
   page?: number;
   categories?: number[];
   excludeSlugs?: string[];
 }): Promise<{ posts: WpPost[]; totalPages: number }> {
-  if (!WP_URL) return { posts: [], totalPages: 0 };
+  const base = wpPostsBaseUrl();
+  if (!base) return { posts: [], totalPages: 0 };
   try {
     const per = params?.per ?? 10;
     const excludeSlugs = params?.excludeSlugs ?? BLOG_EXCLUDE_SLUGS;
@@ -40,7 +53,7 @@ export async function fetchPosts(params?: {
     if (params?.categories?.length) {
       search.set("categories", params.categories.join(","));
     }
-    const res = await fetch(`${WP_URL}/wp-json/wp/v2/posts?${search}`, {
+    const res = await fetch(`${base}/wp-json/wp/v2/posts?${search}`, {
       next: { revalidate: 60 },
     });
     if (!res.ok) return { posts: [], totalPages: 0 };
@@ -59,10 +72,11 @@ export async function fetchPosts(params?: {
 }
 
 export async function fetchPostBySlug(slug: string): Promise<WpPost | null> {
-  if (!WP_URL) return null;
+  const base = wpPostsBaseUrl();
+  if (!base) return null;
   try {
     const res = await fetch(
-      `${WP_URL}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_embed=1`,
+      `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_embed=1`,
       { next: { revalidate: 60 } }
     );
     if (!res.ok) return null;
@@ -75,9 +89,10 @@ export async function fetchPostBySlug(slug: string): Promise<WpPost | null> {
 }
 
 export async function fetchCategories(): Promise<{ id: number; name: string; slug: string }[]> {
-  if (!WP_URL) return [];
+  const base = wpPostsBaseUrl();
+  if (!base) return [];
   try {
-    const res = await fetch(`${WP_URL}/wp-json/wp/v2/categories?per_page=50`, {
+    const res = await fetch(`${base}/wp-json/wp/v2/categories?per_page=50`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
@@ -114,7 +129,7 @@ function blogSitemapMaxPages(requested?: number): number {
 export async function fetchAllPostsForSitemap(options?: {
   maxPages?: number;
 }): Promise<WpPost[]> {
-  const base = WP_URL.replace(/\/$/, "");
+  const base = wpPostsBaseUrl().replace(/\/$/, "");
   if (!base) return [];
 
   const exclude = new Set(BLOG_EXCLUDE_SLUGS);

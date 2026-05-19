@@ -1,4 +1,13 @@
 import { getWordPressRestBaseUrl } from "@/lib/cms-pages";
+import { getPublicSiteOrigin } from "@/lib/cms-seo";
+import {
+  extractDescriptionsFromYoastHead,
+  extractTitleFromYoastHead,
+  isYoastHeadJsonSparse,
+  mergeYoastHeadJson,
+  type WpEntityWithYoast,
+  type YoastHeadJsonLike,
+} from "@/lib/yoast";
 
 /** WordPress REST product (Yoast adds `yoast_head_json` when REST integration is enabled). */
 export async function fetchProductSEO(slug: string) {
@@ -33,12 +42,28 @@ export async function fetchCategorySEO(slug: string) {
   return data?.[0] || null;
 }
 
+/** WordPress post with Yoast REST fields (`yoast_head_json` / `yoast_head`). */
+export async function fetchPostSEO(slug: string): Promise<WpEntityWithYoast | null> {
+  const base = getWordPressRestBaseUrl();
+  if (!base || !slug?.trim()) return null;
+
+  try {
+    const res = await fetch(
+      `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug.trim())}&_embed=1`,
+      { next: { revalidate: 60 } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const post = Array.isArray(data) ? data[0] : null;
+    return post && typeof post === "object" ? (post as WpEntityWithYoast) : null;
+  } catch {
+    return null;
+  }
+}
+
 const BRAND_TAXONOMY_REST_BASES = ["product_brand", "pa_brand", "brand"] as const;
 
-type WpTermWithYoast = Record<string, unknown> & {
-  yoast_head_json?: unknown;
-  yoast_head?: unknown;
-};
+type WpTermWithYoast = WpEntityWithYoast & Record<string, unknown>;
 
 function yoastTextRichness(term: WpTermWithYoast): number {
   const y = term.yoast_head_json;
@@ -48,7 +73,7 @@ function yoastTextRichness(term: WpTermWithYoast): number {
     if (String(o.description || "").trim()) s += 5;
     if (String(o.og_description || "").trim()) s += 4;
     if (String(o.twitter_description || "").trim()) s += 3;
-    if (String(o.title || "").trim()) s += 1;
+    if (String(o.title || "").trim()) s += 6;
     return s;
   }
   const head = term.yoast_head;
@@ -93,37 +118,195 @@ export async function fetchBrandTermSEO(slug: string): Promise<WpTermWithYoast |
   return found[0];
 }
 
-/**
- * Yoast SEO REST: head JSON for a public archive URL (fallback when term `yoast_head_json` is sparse).
- */
-export async function fetchBrandYoastHeadJsonFromYoastApi(slug: string): Promise<Record<string, unknown> | null> {
+function yoastHeadJsonFromApiPayload(data: unknown): YoastHeadJsonLike | null {
+  const j =
+    data && typeof data === "object" && data !== null && "json" in data
+      ? (data as { json?: unknown }).json
+      : data;
+  if (j && typeof j === "object" && j !== null) {
+    return j as YoastHeadJsonLike;
+  }
+  return null;
+}
+
+/** Yoast `get_head` for one or more public URLs (headless + WordPress permalinks). */
+export async function fetchYoastHeadJsonFromUrlCandidates(
+  urlCandidates: string[],
+  revalidate = 600,
+): Promise<YoastHeadJsonLike | null> {
   const base = getWordPressRestBaseUrl();
-  if (!base || !slug?.trim()) return null;
+  if (!base || urlCandidates.length === 0) return null;
 
   const normalizedBase = base.replace(/\/$/, "");
-  const urlCandidates = [
-    `${normalizedBase}/product_brand/${slug.trim()}/`,
-    `${normalizedBase}/brand/${slug.trim()}/`,
-  ];
+  let best: YoastHeadJsonLike | null = null;
 
   for (const pageUrl of urlCandidates) {
+    if (!pageUrl?.trim()) continue;
     try {
       const res = await fetch(
-        `${normalizedBase}/wp-json/yoast/v1/get_head?url=${encodeURIComponent(pageUrl)}`,
-        { next: { revalidate: 600 } },
+        `${normalizedBase}/wp-json/yoast/v1/get_head?url=${encodeURIComponent(pageUrl.trim())}`,
+        { next: { revalidate } },
       );
       if (!res.ok) continue;
-      const data = (await res.json()) as { json?: unknown };
-      const j = data?.json;
-      if (j && typeof j === "object" && j !== null) {
-        return j as Record<string, unknown>;
-      }
+      const data = await res.json();
+      const j = yoastHeadJsonFromApiPayload(data);
+      if (!j) continue;
+      if (!isYoastHeadJsonSparse(j)) return j;
+      best = mergeYoastHeadJson(best, j);
     } catch {
       continue;
     }
   }
 
-  return null;
+  return best;
+}
+
+function yoastHeadFromEntityHtml(entity: WpEntityWithYoast | null | undefined): YoastHeadJsonLike {
+  const fromHtml: YoastHeadJsonLike = {};
+  if (typeof entity?.yoast_head === "string" && entity.yoast_head.trim()) {
+    const desc = extractDescriptionsFromYoastHead(entity.yoast_head);
+    const title = extractTitleFromYoastHead(entity.yoast_head);
+    if (title) fromHtml.title = title;
+    if (desc.meta) fromHtml.description = desc.meta;
+    if (desc.og) fromHtml.og_description = desc.og;
+  }
+  return fromHtml;
+}
+
+/** REST entity → yoast_head HTML → Yoast `get_head` for supplied URLs. */
+export async function resolveYoastHeadFromEntity(
+  entity: WpEntityWithYoast | null | undefined,
+  apiUrlCandidates: string[],
+  revalidate = 600,
+): Promise<YoastHeadJsonLike> {
+  const fromJson =
+    entity?.yoast_head_json && typeof entity.yoast_head_json === "object"
+      ? (entity.yoast_head_json as YoastHeadJsonLike)
+      : undefined;
+
+  let merged = mergeYoastHeadJson(fromJson, yoastHeadFromEntityHtml(entity));
+
+  if (isYoastHeadJsonSparse(merged)) {
+    const fromApi = await fetchYoastHeadJsonFromUrlCandidates(apiUrlCandidates, revalidate).catch(
+      () => null,
+    );
+    merged = mergeYoastHeadJson(merged, fromApi);
+  }
+
+  return merged;
+}
+
+/**
+ * Yoast SEO REST: head JSON for a public brand archive URL (fallback when term `yoast_head_json` is sparse).
+ */
+export async function fetchBrandYoastHeadJsonFromYoastApi(slug: string): Promise<YoastHeadJsonLike | null> {
+  if (!slug?.trim()) return null;
+
+  const normalizedBase = getWordPressRestBaseUrl().replace(/\/$/, "");
+  const slugTrim = slug.trim();
+  const siteOrigin = getPublicSiteOrigin().replace(/\/$/, "");
+
+  const urlCandidates = [
+    siteOrigin ? `${siteOrigin}/brands/${slugTrim}` : null,
+    siteOrigin ? `${siteOrigin}/brands/${slugTrim}/` : null,
+    `${normalizedBase}/product_brand/${slugTrim}/`,
+    `${normalizedBase}/brand/${slugTrim}/`,
+    `${normalizedBase}/brands/${slugTrim}/`,
+  ].filter((u): u is string => Boolean(u));
+
+  return fetchYoastHeadJsonFromUrlCandidates(urlCandidates);
+}
+
+/** Yoast fields for brand archives: term REST → yoast_head HTML → Yoast get_head API. */
+export async function resolveBrandYoastHead(
+  slug: string,
+  wpTerm: WpTermWithYoast | null,
+): Promise<YoastHeadJsonLike> {
+  const slugTrim = slug.trim();
+  const siteOrigin = getPublicSiteOrigin().replace(/\/$/, "");
+  const normalizedBase = getWordPressRestBaseUrl().replace(/\/$/, "");
+
+  const apiUrlCandidates = [
+    siteOrigin ? `${siteOrigin}/brands/${slugTrim}` : null,
+    siteOrigin ? `${siteOrigin}/brands/${slugTrim}/` : null,
+    `${normalizedBase}/product_brand/${slugTrim}/`,
+    `${normalizedBase}/brand/${slugTrim}/`,
+    `${normalizedBase}/brands/${slugTrim}/`,
+  ].filter((u): u is string => Boolean(u));
+
+  return resolveYoastHeadFromEntity(wpTerm, apiUrlCandidates);
+}
+
+/** Yoast for a single blog post: post REST → yoast_head HTML → Yoast get_head API. */
+export async function resolvePostYoastHead(
+  slug: string,
+  post: WpEntityWithYoast | null | undefined,
+): Promise<YoastHeadJsonLike> {
+  const slugTrim = slug.trim();
+  const siteOrigin = getPublicSiteOrigin().replace(/\/$/, "");
+  const normalizedBase = getWordPressRestBaseUrl().replace(/\/$/, "");
+
+  let entity = post;
+  if (!entity?.yoast_head_json && !entity?.yoast_head) {
+    entity = (await fetchPostSEO(slugTrim).catch(() => null)) ?? entity;
+  }
+
+  const apiUrlCandidates = [
+    siteOrigin ? `${siteOrigin}/blog/${slugTrim}` : null,
+    siteOrigin ? `${siteOrigin}/blog/${slugTrim}/` : null,
+    `${normalizedBase}/${slugTrim}/`,
+    `${normalizedBase}/blog/${slugTrim}/`,
+  ].filter((u): u is string => Boolean(u));
+
+  return resolveYoastHeadFromEntity(entity, apiUrlCandidates, 60);
+}
+
+/** Yoast for a WordPress page (CMS slug + headless pathname). */
+export async function resolveWpPageYoastHead(
+  wpSlug: string,
+  pathname: string,
+  page?: WpEntityWithYoast | null,
+): Promise<YoastHeadJsonLike> {
+  let entity = page;
+  if (entity === undefined) {
+    const { fetchPageBySlug } = await import("@/lib/cms-pages");
+    entity = await fetchPageBySlug(wpSlug).catch(() => null);
+  }
+
+  const siteOrigin = getPublicSiteOrigin().replace(/\/$/, "");
+  const normalizedBase = getWordPressRestBaseUrl().replace(/\/$/, "");
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+
+  const apiUrlCandidates = [
+    siteOrigin ? `${siteOrigin}${path}` : null,
+    siteOrigin ? `${siteOrigin}${path}/` : null,
+    `${normalizedBase}${path}/`,
+    `${normalizedBase}/${wpSlug}/`,
+  ].filter((u): u is string => Boolean(u));
+
+  return resolveYoastHeadFromEntity(entity, apiUrlCandidates, 600);
+}
+
+/** Yoast for `/blog` index (optional WP page + headless / blog archive URLs). */
+export async function resolveBlogIndexYoastHead(
+  page?: WpEntityWithYoast | null,
+): Promise<YoastHeadJsonLike> {
+  let entity = page;
+  if (entity === undefined) {
+    const { fetchPageBySlug } = await import("@/lib/cms-pages");
+    entity = await fetchPageBySlug("blog").catch(() => null);
+  }
+
+  const siteOrigin = getPublicSiteOrigin().replace(/\/$/, "");
+  const normalizedBase = getWordPressRestBaseUrl().replace(/\/$/, "");
+
+  const apiUrlCandidates = [
+    siteOrigin ? `${siteOrigin}/blog` : null,
+    siteOrigin ? `${siteOrigin}/blog/` : null,
+    `${normalizedBase}/blog/`,
+  ].filter((u): u is string => Boolean(u));
+
+  return resolveYoastHeadFromEntity(entity, apiUrlCandidates, 60);
 }
 
 /** Fetch brand by slug from WordPress (e.g. /brand/3m/ – plugin may register product_brand or similar). */

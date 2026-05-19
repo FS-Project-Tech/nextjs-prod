@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import PrefetchLink from "@/components/PrefetchLink";
-import { fetchPostBySlug } from "@/lib/cms-posts";
+import { fetchPostBySlug, plainTextFromRendered } from "@/lib/cms-posts";
+import { decodeBlogHTMLEntities } from "@/lib/blog-decode";
+import { resolvePostYoastHead } from "@/lib/wordpress";
+import { buildNextMetadataFromYoast } from "@/lib/yoast";
 import { sanitizeHTML } from "@/lib/xss-sanitizer";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
  
@@ -16,18 +19,6 @@ function resolveSlug(resolved: { slug: string }): string {
   return String(resolved?.slug || "").trim();
 }
  
-function decodeHTMLEntities(str: string): string {
-  return str
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
- 
 export async function generateMetadata({
   params,
 }: {
@@ -36,21 +27,30 @@ export async function generateMetadata({
   try {
     const slug = resolveSlug(await params);
     if (!slug) return { title: "Post" };
+
     const post = await fetchPostBySlug(slug);
     if (!post) return { title: "Post" };
-    const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
-    const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Post";
-    const rawExcerpt =
-      post.excerpt?.rendered
-        ?.replace(/<[^>]+>/g, "")
-        .trim()
-        .slice(0, 160) || "";
-    const description = rawExcerpt ? decodeHTMLEntities(rawExcerpt) : undefined;
-    return {
-      title,
-      description,
-      alternates: { canonical: `/blog/${slug}` },
-    };
+
+    const rawTitle = plainTextFromRendered(post.title?.rendered);
+    const fallbackTitle = rawTitle ? decodeBlogHTMLEntities(rawTitle) : "Post";
+    const rawExcerpt = plainTextFromRendered(post.excerpt?.rendered, 160);
+    const fallbackDescription = rawExcerpt
+      ? decodeBlogHTMLEntities(rawExcerpt)
+      : undefined;
+
+    const featuredUrl = post._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
+    const yoast = await resolvePostYoastHead(slug, post).catch(() => ({}));
+
+    return buildNextMetadataFromYoast({
+      yoast,
+      canonicalPath: `/blog/${slug}`,
+      fallbackTitle,
+      fallbackDescription,
+      fallbackImages: featuredUrl
+        ? [{ url: featuredUrl, alt: fallbackTitle }]
+        : undefined,
+      openGraphType: "article",
+    });
   } catch {
     return { title: "Post" };
   }
@@ -63,8 +63,8 @@ export default async function BlogPostPage({ params }: { params: BlogSlugParams 
   const post = await fetchPostBySlug(slug);
   if (!post?.id) notFound();
  
-  const rawTitle = post.title?.rendered?.replace(/<[^>]+>/g, "").trim() || "";
-  const title = rawTitle ? decodeHTMLEntities(rawTitle) : "Untitled";
+  const rawTitle = plainTextFromRendered(post.title?.rendered);
+  const title = rawTitle ? decodeBlogHTMLEntities(rawTitle) : "Untitled";
   let content = "";
   try {
     content = sanitizeHTML(post.content?.rendered || "");

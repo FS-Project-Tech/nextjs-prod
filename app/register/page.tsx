@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, Suspense } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import RegisterForm from "@/components/auth/RegisterForm";
 import { AuthSideBanner } from "@/components/auth/AuthSideBanner";
@@ -25,21 +24,7 @@ function RegisterPageContent() {
       <div className="mx-auto flex w-full max-w-[min(88rem,calc(100%-1.5rem))] justify-center px-3 sm:px-5">
         <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 lg:min-h-[min(640px,calc(100dvh-10rem))] lg:max-h-[calc(100dvh-8rem)] lg:flex-row">
           <div className="flex min-w-0 flex-1 flex-col justify-center px-6 py-8 sm:px-10 sm:py-10 lg:px-12 xl:px-14">
-            <div className="mx-auto w-full max-w-xl space-y-8">
-              <div className="text-center lg:text-left">
-                <h2 className="text-3xl font-bold tracking-tight text-slate-900 antialiased bg-transparent">
-                  Create your account
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Or{" "}
-                  <Link
-                    href={`/login${params?.get("next") ? `?next=${encodeURIComponent(params.get("next") as string)}` : ""}`}
-                    className="font-medium text-teal-700 underline decoration-teal-700/30 underline-offset-2 hover:text-teal-800"
-                  >
-                    sign in to your existing account
-                  </Link>
-                </p>
-              </div>
+            <div className="mx-auto w-full max-w-xl">
               <RegisterForm />
             </div>
           </div>

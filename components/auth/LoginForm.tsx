@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -56,6 +56,23 @@ export default function LoginForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const registrationToastShown = useRef(false);
+
+  useEffect(() => {
+    if (params.get("registered") !== "1") return;
+    if (registrationToastShown.current) return;
+    registrationToastShown.current = true;
+
+    showToastSuccess("Registration successful. Please sign in.");
+    setRegistrationSuccess(true);
+
+    const clean = new URLSearchParams();
+    const next = params.get("next");
+    if (next) clean.set("next", next);
+    const newPath = clean.toString() ? `/login?${clean.toString()}` : "/login";
+    router.replace(newPath, { scroll: false });
+  }, [params, router, showToastSuccess]);
 
   const {
     register,
@@ -277,7 +294,21 @@ export default function LoginForm() {
         </div>
         </div>
 
-        {/* Success Message */}
+        {/* Registration success (after redirect from /register) */}
+        {registrationSuccess && !loginSuccess && (
+          <div
+            className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+            role="alert"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
+              <p className="flex-1">Registration successful. Please sign in.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Login success */}
         {loginSuccess && (
           <div
             className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700"
