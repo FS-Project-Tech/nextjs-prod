@@ -261,7 +261,7 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
-        source: '/molicare-premium-form-unisex-all-size',
+        source: '/molicare-premium-form-unisex',
         destination: 'https://joyamedicalsupplies.com.au/product/molicare-premium-form-unisex-all-size?variation_id=415729',
         permanent: true,
       },
