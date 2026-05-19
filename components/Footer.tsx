@@ -4,6 +4,9 @@ import { getAcfOptions } from "@/lib/wp-acf-options";
 
 const currentYear = new Date().getFullYear();
 
+const PAYMENT_ICONS_URL =
+  "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2024/09/JOYA-Payment-Icon-01-1.svg";
+
 
 /** Optional override: set NEXT_PUBLIC_SOCIAL_* in .env.local */
 function getSocialLinks() {
@@ -217,6 +220,22 @@ export default async function Footer() {
                   Product Return
                 </a>
               </li>
+              <li>
+                <PrefetchLink
+                  href="/info/privacy"
+                  className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10"
+                >
+                  Privacy Policy
+                </PrefetchLink>
+              </li>
+              <li>
+                <PrefetchLink
+                  href="/info/terms"
+                  className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10"
+                >
+                  Terms & Conditions
+                </PrefetchLink>
+              </li>
             </ul>
           </div>
 
@@ -289,6 +308,14 @@ export default async function Footer() {
                   className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10"
                 >
                   Feedback form
+                </PrefetchLink>
+              </li>
+              <li>
+                <PrefetchLink
+                  href="/credit-reporting-policy"
+                  className="inline-flex rounded-md px-1.5 py-1 text-white/85 hover:text-white hover:bg-white/10"
+                >
+                  Credit Reporting Policy
                 </PrefetchLink>
               </li>
             </ul>
@@ -386,22 +413,18 @@ export default async function Footer() {
         </div>
 
         <div className="border-t border-white/20 pt-5 sm:pt-7">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-3 sm:gap-4 text-center md:text-left">
-            <p className="text-xs sm:text-sm text-white/90 order-2 md:order-1">
+          <div className="flex flex-col items-center gap-4 sm:gap-5 md:flex-row md:items-center md:justify-between">
+            <p className="text-xs sm:text-sm text-white/90 text-center md:text-left">
               © {currentYear} Joya Medical Supplies. All rights reserved.
             </p>
-
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-white/90 order-1 md:order-2">
-              <PrefetchLink href="/info/privacy" className="hover:text-white">
-                Privacy Policy
-              </PrefetchLink>
-              <PrefetchLink href="/info/terms" className="hover:text-white">
-                Terms & Conditions
-              </PrefetchLink>
-              <PrefetchLink href="/credit-reporting-policy" className="hover:text-white">
-                Credit Reporting Policy
-              </PrefetchLink>
-            </div>
+            <Image
+              src={PAYMENT_ICONS_URL}
+              alt="Accepted payment methods including Visa, Mastercard, NDIS, Google Pay, Apple Pay, and Afterpay"
+              width={250}
+              height={25}
+              unoptimized
+              className="h-8 w-auto max-w-full object-contain sm:h-10 md:h-8"
+            />
           </div>
         </div>
       </div>
