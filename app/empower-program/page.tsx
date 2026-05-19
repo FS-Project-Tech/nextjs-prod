@@ -33,10 +33,10 @@ const ACCENT = "#008542";
 
 const benefits: { title: string; Icon: typeof Sprout }[] = [
   { title: "Immediate 10% discount on eligible products", Icon: Percent },
-  { title: "Priority delivery service", Icon: Handshake },
-  { title: "First access to new product innovations", Icon: Truck },
+  { title: "Priority delivery service", Icon:  Truck},
+  { title: "First access to new product innovations", Icon: Lightbulb },
   { title: "Contribution towards environmentally responsible initiatives", Icon: Sprout},
-  { title: "Access to community support programs", Icon: Lightbulb },
+  { title: "Access to community support programs", Icon: Handshake },
   { title: "Dedicated customer support hotline", Icon: Headset },
 ];
 
