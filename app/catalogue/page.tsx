@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { getUnifiedCategories, getRootCategoriesNonEmpty } from "@/lib/categories-unified";
+import Breadcrumbs from "@/components/Breadcrumbs";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 
 export const revalidate = 600;
@@ -23,6 +24,7 @@ export default async function CataloguePage() {
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
       <div className="container mx-auto px-4 py-8">
+        <Breadcrumbs items={breadcrumbItems} />
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Catalogue</h1>
         <p className="text-gray-600 mb-8">Browse by category</p>
 

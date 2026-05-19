@@ -17,35 +17,18 @@ const FONT_SIZE_BODY = 9;
 const FONT_SIZE_HEADER = 10;
 const FONT_SIZE_TITLE = 16;
 
-function formatAttributeColumn(attrs: Array<{ name?: string; options?: string[] }>): string {
-  if (!attrs.length) return "—";
-  const parts: string[] = [];
-  for (const a of attrs) {
-    const options = Array.isArray(a.options) ? a.options : [];
-    const value = options
-      .map((o) => String(o).trim())
-      .filter(Boolean)
-      .join(", ");
-    if (value) parts.push(value);
-  }
-  return parts.length ? parts.join(" / ") : "—";
-}
-
 type CatalogueRow = {
   sku: string;
   name: string;
-  attribute: string;
   price: string;
   brand: string;
 };
 
 function typesenseListingToRow(p: Record<string, unknown>): CatalogueRow {
-  const attrs = (p.attributes as Array<{ name?: string; options?: string[] }> | undefined) || [];
   const rawPrice = p.price != null ? String(p.price) : "";
   return {
     sku: p.sku != null && String(p.sku) !== "" ? String(p.sku) : "—",
     name: String(p.name ?? ""),
-    attribute: formatAttributeColumn(attrs) || "—",
     price: rawPrice !== "" ? formatPrice(rawPrice) : "—",
     brand: String(p.brand_name ?? p.brand ?? ""),
   };
@@ -96,7 +79,7 @@ export async function generateCataloguePDF(
   const { default: jsPDF } = await import("jspdf");
   const pdf = new jsPDF("p", "mm", "a4");
   const contentW = PAGE_W - 2 * MARGIN;
-  const colWidths = [22, 75, 48, 25]; // SKU, Product Name, Attribute, Price
+  const colWidths = [22, 123, 25]; // SKU, Product Name, Price
   const xStart = MARGIN;
 
   let page = 0;
@@ -147,8 +130,7 @@ export async function generateCataloguePDF(
       pdf.rect(xStart, y - 4, contentW, HEADER_ROW_HEIGHT, "F");
       pdf.text("SKU Code", xStart + 2, y + 2);
       pdf.text("Product Name", xStart + colWidths[0] + 2, y + 2);
-      pdf.text("Attribute", xStart + colWidths[0] + colWidths[1] + 2, y + 2);
-      pdf.text("Price", xStart + contentW - colWidths[3], y + 2, {
+      pdf.text("Price", xStart + contentW - colWidths[2], y + 2, {
         align: "right",
       });
       pdf.setTextColor(0, 0, 0);
@@ -163,11 +145,6 @@ export async function generateCataloguePDF(
         pdf.text(
           pdf.splitTextToSize(row.name, colWidths[1] - 2)[0] || "—",
           xStart + colWidths[0] + 2,
-          lineY
-        );
-        pdf.text(
-          pdf.splitTextToSize(row.attribute, colWidths[2] - 2)[0] || "—",
-          xStart + colWidths[0] + colWidths[1] + 2,
           lineY
         );
         pdf.text(row.price, xStart + contentW - 2, lineY, { align: "right" });

@@ -440,21 +440,13 @@ export default function MiniCartDrawer() {
 
             {items.length > 0 && (
               <div className="shrink-0 mt-auto border-t border-gray-200 bg-white p-3 space-y-2">
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <button
-                    onClick={clear}
-                    className="flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Clear cart
-                  </button>
-                  <Link
-                    href="/checkout#request-quote"
-                    onClick={close}
-                    className="flex flex-1 items-center justify-center rounded-xl border-2 border-teal-600 bg-white px-3 py-2.5 text-center text-sm font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
-                  >
-                    Request a quote
-                  </Link>
-                </div>
+                <button
+                  type="button"
+                  onClick={clear}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Clear cart
+                </button>
                 <div className="grid grid-cols-1 gap-2">
                   <Link
                     href={getCartUrl()}

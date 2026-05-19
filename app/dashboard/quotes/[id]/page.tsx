@@ -489,29 +489,35 @@ export default function QuoteDetailPage() {
 
         {/* Items */}
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Items ({quote.items.length})</h3>
-          <div className="space-y-3">
-            {quote.items.map((item, index) => {
-              const quantity = item.qty || 1;
-              const price = Number(item.price) || 0;
-              return (
-                <div
-                  key={index}
-                  className="flex justify-between items-start py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{item.name}</p>
-                    {item.sku && <p className="text-xs text-gray-500">SKU: {item.sku}</p>}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Quantity: {quantity} × {formatPrice(price)}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {formatPrice(price * quantity)}
-                  </p>
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] border-collapse text-sm">
+              <thead>
+                <tr className="bg-gray-100 text-gray-700">
+                  <th className="px-3 py-2 text-left font-medium">Item</th>
+                  <th className="px-3 py-2 text-left font-medium">SKU</th>
+                  <th className="px-3 py-2 text-right font-medium">Qty</th>
+                  <th className="px-3 py-2 text-right font-medium">Price</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quote.items.map((item, index) => {
+                  const quantity = item.qty || 1;
+                  const price = Number(item.price) || 0;
+                  return (
+                    <tr key={index} className="border-b border-gray-100 last:border-0">
+                      <td className="px-3 py-3 font-medium text-gray-900">{item.name}</td>
+                      <td className="px-3 py-3 text-gray-600">{item.sku?.trim() || "—"}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{quantity}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{formatPrice(price)}</td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                        {formatPrice(price * quantity)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 

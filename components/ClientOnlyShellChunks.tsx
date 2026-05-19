@@ -7,6 +7,9 @@ const NavigationProgress = dynamic(() => import("@/components/NavigationProgress
 });
 const MiniCartDrawer = dynamic(() => import("@/components/MiniCartDrawer"), { ssr: false });
 const QuoteDrawer = dynamic(() => import("@/components/quote/QuoteDrawer"), { ssr: false });
+const PriceMatchDrawer = dynamic(() => import("@/components/price-match/PriceMatchDrawer"), {
+  ssr: false,
+});
 const BottomNav = dynamic(() => import("@/components/BottomNav"), { ssr: false });
 const PWARegister = dynamic(() => import("@/components/PWARegister"), { ssr: false });
 
@@ -19,6 +22,7 @@ export function ClientCartNavPWA() {
     <>
       <MiniCartDrawer />
       <QuoteDrawer />
+      <PriceMatchDrawer />
       <BottomNav />
       <PWARegister />
     </>

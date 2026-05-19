@@ -1,11 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
+import { getNdisHeroImageUrl } from "@/lib/ndis-branding";
 
 export default function NDISCTASection() {
-  // Placeholder image - replace with your actual NDIS image
-  const ndisImage =
-    process.env.NEXT_PUBLIC_NDIS_IMAGE_URL ||
-    "https://live.joyamedicalsupplies.com.au/wp-content/uploads/2026/04/ndis-homepage.avif";
+  const ndisImage = getNdisHeroImageUrl();
 
   return (
     <section id="ndis" className="mb-16">

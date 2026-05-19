@@ -14,8 +14,72 @@ import { useShippingAddress } from "@/hooks/useShippingAddress";
 import { calculateSubtotal, calculateGST, calculateTaxableSubtotal, calculateTotal } from "@/lib/cart/pricing";
 import { formatPrice, formatPriceWithLabel } from "@/lib/format-utils";
 import { getDeliveryFrequencyLabel } from "@/lib/delivery-utils";
-import { clampToStockCap, getStockCap } from "@/lib/woo/stockLimit";
- 
+import { canIncrementQty, clampToStockCap, getStockCap } from "@/lib/woo/stockLimit";
+
+function CartQtyStepper({
+  id,
+  qty,
+  manageStock,
+  stockQuantity,
+  onUpdateQty,
+}: {
+  id: string;
+  qty: number;
+  manageStock?: boolean;
+  stockQuantity?: number | null;
+  onUpdateQty: (id: string, qty: number) => void;
+}) {
+  const stockCap = getStockCap({
+    manage_stock: manageStock,
+    stock_quantity: stockQuantity,
+  });
+  const handleQtyChange = (newQty: number) => {
+    onUpdateQty(id, clampToStockCap(newQty, stockCap));
+  };
+
+  return (
+    <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => {
+          if (qty > 1) handleQtyChange(qty - 1);
+        }}
+        disabled={qty <= 1}
+        className="flex min-h-11 min-w-11 items-center justify-center text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-10 sm:min-w-10"
+        aria-label="Decrease quantity"
+      >
+        <span className="text-lg font-medium leading-none" aria-hidden>
+          −
+        </span>
+      </button>
+      <input
+        id={`cart-qty-${id}`}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={stockCap ?? undefined}
+        value={qty}
+        onChange={(e) => handleQtyChange(Number(e.target.value))}
+        className="min-h-11 w-12 border-x border-gray-300 bg-transparent px-1 py-2 text-center text-base tabular-nums text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500/30 sm:min-h-10 sm:w-11 sm:text-sm"
+        aria-label="Quantity"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          if (canIncrementQty(qty, stockCap)) handleQtyChange(qty + 1);
+        }}
+        disabled={!canIncrementQty(qty, stockCap)}
+        className="flex min-h-11 min-w-11 items-center justify-center text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-10 sm:min-w-10"
+        aria-label="Increase quantity"
+      >
+        <span className="text-lg font-medium leading-none" aria-hidden>
+          +
+        </span>
+      </button>
+    </div>
+  );
+}
+
 function CartPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -206,37 +270,13 @@ function CartPageContent() {
                           return (
                             <div className="mt-4 flex flex-col gap-4 border-t border-gray-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
                               <div className="flex items-center justify-between gap-3 sm:justify-start">
-                                <label
-                                  htmlFor={`cart-qty-${i.id}`}
-                                  className="text-sm font-medium text-gray-700"
-                                >
-                                  Qty
-                                </label>
-                                <input
-                                  id={`cart-qty-${i.id}`}
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={1}
-                                  max={
-                                    getStockCap({
-                                      manage_stock: i.manageStock,
-                                      stock_quantity: i.stockQuantity,
-                                    }) ?? undefined
-                                  }
-                                  value={i.qty}
-                                  onChange={(e) =>
-                                    updateItemQty(
-                                      i.id,
-                                      clampToStockCap(
-                                        Number(e.target.value),
-                                        getStockCap({
-                                          manage_stock: i.manageStock,
-                                          stock_quantity: i.stockQuantity,
-                                        }),
-                                      ),
-                                    )
-                                  }
-                                  className="min-h-11 w-[5.5rem] rounded-lg border border-gray-300 px-3 py-2 text-center text-base tabular-nums shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 sm:min-h-10 sm:text-sm"
+                                <span className="text-sm font-medium text-gray-700">Qty</span>
+                                <CartQtyStepper
+                                  id={i.id}
+                                  qty={i.qty}
+                                  manageStock={i.manageStock}
+                                  stockQuantity={i.stockQuantity}
+                                  onUpdateQty={updateItemQty}
                                 />
                               </div>
                               <div className="text-left sm:text-right">

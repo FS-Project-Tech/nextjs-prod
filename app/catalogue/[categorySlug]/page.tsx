@@ -6,6 +6,7 @@ import {
   findCategoryBySlug,
   getChildrenForParent,
 } from "@/lib/categories-unified";
+import Breadcrumbs from "@/components/Breadcrumbs";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import CategorySubcategoryBook from "@/components/CategorySubcategoryBook";
 
@@ -52,6 +53,7 @@ export default async function CatalogueCategoryPage({ params }: Props) {
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
       <div className="container mx-auto max-w-5xl px-4 py-8">
+        <Breadcrumbs items={breadcrumbItems} />
         <CategorySubcategoryBook
           parentName={parentCategory.name}
           subcategories={subcategories.map((s) => ({

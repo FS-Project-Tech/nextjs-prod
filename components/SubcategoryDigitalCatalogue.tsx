@@ -4,38 +4,6 @@ import { useEffect, useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/format-utils";
 
-/** Format product attributes for the Attribute column (Pkt/CTN/Each – packaging / selling unit). Prefer packaging-related attributes. */
-function formatAttributeColumn(attrs: Array<{ name?: string; options?: string[] }>): string {
-  if (!attrs.length) return "—";
-  const packagingKeys = [
-    "pkt",
-    "ctn",
-    "each",
-    "pack",
-    "unit",
-    "box",
-    "selling",
-    "attribute",
-    "size",
-  ];
-  const getRelevance = (name: string) => {
-    const n = name.toLowerCase();
-    return packagingKeys.some((k) => n.includes(k));
-  };
-  const packagingAttrs = attrs.filter((a) => getRelevance(String(a.name || "")));
-  const preferred = packagingAttrs.length ? packagingAttrs : attrs;
-  const parts: string[] = [];
-  for (const a of preferred) {
-    const options = Array.isArray(a.options) ? a.options : [];
-    const value = options
-      .map((o) => String(o).trim())
-      .filter(Boolean)
-      .join(", ");
-    if (value) parts.push(value);
-  }
-  return parts.length ? parts.join(" / ") : "—";
-}
-
 type SubcategoryDigitalCatalogueProps = {
   subcategorySlug: string;
   subcategoryName: string;
@@ -46,7 +14,6 @@ type SubcategoryDigitalCatalogueProps = {
 type TableRow = {
   sku: string;
   name: string;
-  attribute: string; // Each (Pkt)/CTN or similar from product attributes
   price: string;
   brand: string;
   slug: string;
@@ -105,19 +72,13 @@ export default function SubcategoryDigitalCatalogue({
             const json = await res.json();
             const products = Array.isArray(json.products) ? json.products : [];
 
-            return products.map((p: Record<string, unknown>) => {
-              const attrs =
-                (p.attributes as Array<{ name?: string; options?: string[] }> | undefined) || [];
-              const attributeLabel = formatAttributeColumn(attrs);
-              return {
-                sku: String(p.sku ?? ""),
-                name: String(p.name ?? ""),
-                attribute: attributeLabel,
-                price: String(p.price ?? ""),
-                brand: String(p.brand_name ?? p.brand ?? ""),
-                slug: String(p.slug ?? ""),
-              };
-            });
+            return products.map((p: Record<string, unknown>) => ({
+              sku: String(p.sku ?? ""),
+              name: String(p.name ?? ""),
+              price: String(p.price ?? ""),
+              brand: String(p.brand_name ?? p.brand ?? ""),
+              slug: String(p.slug ?? ""),
+            }));
           })();
           inFlightCache.set(cacheKey, request);
         }
@@ -181,7 +142,6 @@ export default function SubcategoryDigitalCatalogue({
             <tr className="bg-teal-600 text-white">
               <th className="px-3 py-2 border-b border-teal-700 text-left">SKU Code</th>
               <th className="px-3 py-2 border-b border-teal-700 text-left">Product Name</th>
-              <th className="px-3 py-2 border-b border-teal-700 text-left">Attribute</th>
               <th className="px-3 py-2 border-b border-teal-700 text-left">Price</th>
             </tr>
           </thead>
@@ -191,7 +151,7 @@ export default function SubcategoryDigitalCatalogue({
                 {brand && (
                   <tr className="bg-gray-100">
                     <td
-                      colSpan={4}
+                      colSpan={3}
                       className="px-3 py-2 font-semibold text-gray-800 border-b border-gray-300"
                     >
                       {brand}
@@ -214,7 +174,6 @@ export default function SubcategoryDigitalCatalogue({
                   >
                     <td className="px-3 py-1.5 border-b border-gray-200">{row.sku || "—"}</td>
                     <td className="px-3 py-1.5 border-b border-gray-200">{row.name}</td>
-                    <td className="px-3 py-1.5 border-b border-gray-200">{row.attribute || "—"}</td>
                     <td className="px-3 py-1.5 border-b border-gray-200">
                       {row.price != null && row.price !== "" ? formatPrice(row.price) : "—"}
                     </td>

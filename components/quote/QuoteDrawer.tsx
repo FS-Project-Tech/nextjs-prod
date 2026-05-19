@@ -12,6 +12,7 @@ import { fetchDashboardAddresses } from "@/lib/quote/fetchDashboardAddresses";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import RequiredMark from "@/components/checkout/RequiredMark";
 import QuoteNdisPanel from "@/components/quote/QuoteNdisPanel";
+import { NdisLogo } from "@/components/ndis/NdisLogo";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { formatPrice } from "@/lib/format-utils";
@@ -30,6 +31,9 @@ import { pickPrimaryQuoteAddresses } from "@/lib/quote-request-addresses";
 import { parseCartTotal } from "@/lib/cart/pricing";
 import type { CartItem } from "@/lib/types/cart";
 import { canIncrementQty, getStockCap } from "@/lib/woo/stockLimit";
+
+const drawerTransitionClass =
+  "transition-[transform,opacity] duration-320 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
 const QuoteLineItem = memo(function QuoteLineItem({
   item,
@@ -196,10 +200,17 @@ export default function QuoteDrawer() {
 
   useBodyScrollLock(isOpen);
 
+  const handleEscape = useCallback(() => {
+    if (ndisPanelOpen) closeNdisPanel();
+    else close();
+  }, [ndisPanelOpen, closeNdisPanel, close]);
+
   const { containerRef } = useFocusTrap({
     enabled: isOpen,
-    onEscape: close,
-    initialFocusSelector: 'button[aria-label="Close quote"]',
+    onEscape: handleEscape,
+    initialFocusSelector: ndisPanelOpen
+      ? 'button[aria-label="Back to quote"]'
+      : 'button[aria-label="Close quote"]',
   });
 
   useEffect(() => {
@@ -293,33 +304,31 @@ export default function QuoteDrawer() {
     [items, subtotal, clear, close, form, showError, success],
   );
 
-  if (!isOpen) return null;
-
   return (
     <div
       className={`fixed inset-0 z-[2147483647] overscroll-none ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
       aria-hidden={!isOpen}
     >
       <div
-        className={`absolute inset-0 bg-black/50 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${drawerTransitionClass} ${isOpen ? "opacity-100" : "opacity-0"}`}
         onClick={close}
       />
       <aside
         ref={containerRef as RefObject<HTMLElement>}
         role="dialog"
         aria-modal="true"
-        aria-label="Quote drawer"
-        className={`absolute right-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out md:max-w-xl lg:max-w-2xl xl:max-w-[44rem] ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        aria-label={ndisPanelOpen ? "NDIS options" : "Quote drawer"}
+        className={`absolute right-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-white shadow-2xl will-change-transform md:max-w-xl lg:max-w-2xl xl:max-w-[44rem] ${drawerTransitionClass} ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
-        {ndisPanelOpen ? (
-          <QuoteNdisPanel
-            control={control}
-            errors={errors}
-            setValue={setValue}
-            onBack={closeNdisPanel}
-          />
-        ) : (
-          <>
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            className={`flex h-full w-[200%] will-change-transform ${drawerTransitionClass} ${ndisPanelOpen ? "-translate-x-1/2" : "translate-x-0"}`}
+          >
+            <div
+              className={`flex h-full w-1/2 min-w-0 flex-col ${ndisPanelOpen ? "pointer-events-none" : ""}`}
+              aria-hidden={ndisPanelOpen}
+              inert={ndisPanelOpen ? true : undefined}
+            >
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
               <h2 className="text-lg font-bold text-gray-900">
                 Quote
@@ -629,9 +638,7 @@ export default function QuoteDrawer() {
                     onClick={openNdisPanel}
                     className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-3 text-sm font-medium text-gray-900 hover:bg-gray-50"
                   >
-                    <span className="inline-flex h-6 w-8 items-center justify-center rounded bg-violet-700 text-[9px] font-bold uppercase text-white">
-                      ndis
-                    </span>
+                    <NdisLogo width={36} height={22} />
                     NDIS Options
                   </button>
                   <button
@@ -644,8 +651,21 @@ export default function QuoteDrawer() {
                 </div>
               </div>
             </form>
-          </>
-        )}
+            </div>
+            <div
+              className={`flex h-full w-1/2 min-w-0 flex-col ${!ndisPanelOpen ? "pointer-events-none" : ""}`}
+              aria-hidden={!ndisPanelOpen}
+              inert={!ndisPanelOpen ? true : undefined}
+            >
+              <QuoteNdisPanel
+                control={control}
+                errors={errors}
+                setValue={setValue}
+                onBack={closeNdisPanel}
+              />
+            </div>
+          </div>
+        </div>
       </aside>
     </div>
   );

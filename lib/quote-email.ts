@@ -7,7 +7,13 @@
  * or `false` / `0` to disable.
  */
 
-import { sendHtmlEmailViaBrevo, sendPlainEmailViaBrevo } from "@/lib/email/sendViaBrevo";
+import {
+  sendHtmlEmailViaBrevo,
+  sendHtmlEmailWithAttachmentsViaBrevo,
+  sendPlainEmailViaBrevo,
+  sendPlainEmailWithAttachmentsViaBrevo,
+  type BrevoAttachment,
+} from "@/lib/email/sendViaBrevo";
 import { getWpBaseUrl } from "./auth";
 import type { Quote, QuoteAddressSnapshot } from "./types/quote";
 import { formatPrice } from "./format-utils";
@@ -20,12 +26,19 @@ export type QuoteEmailEvent =
   | "quote_expired"
   | "quote_converted";
 
+export type QuoteEmailAttachment = BrevoAttachment;
+
 interface EmailOptions {
   to: string;
   subject: string;
   body: string;
   html?: string;
   type: QuoteEmailEvent;
+  attachments?: QuoteEmailAttachment[];
+}
+
+export interface SendQuoteCreatedEmailOptions {
+  attachments?: QuoteEmailAttachment[];
 }
 
 const DEFAULT_STAFF_NOTIFY = "info@joyamedicalsupplies.com.au";
@@ -193,25 +206,37 @@ async function deliverQuoteEmailOnce(
   subject: string,
   body: string,
   html: string | undefined,
-  type: QuoteEmailEvent
+  type: QuoteEmailEvent,
+  attachments?: QuoteEmailAttachment[],
 ): Promise<boolean> {
   const siteName = process.env.NEXT_PUBLIC_SITE_NAME?.trim() || "Joya Medical Supplies";
+  const hasAttachments = Boolean(attachments?.length);
 
   if (process.env.BREVO_API_KEY?.trim()) {
+    const brevoBase = { to, subject, senderName: siteName };
     const br = html?.trim()
-      ? await sendHtmlEmailViaBrevo({
-          to,
-          subject,
-          text: body,
-          html: html.trim(),
-          senderName: siteName,
-        })
-      : await sendPlainEmailViaBrevo({
-          to,
-          subject,
-          text: body,
-          senderName: siteName,
-        });
+      ? hasAttachments
+        ? await sendHtmlEmailWithAttachmentsViaBrevo({
+            ...brevoBase,
+            text: body,
+            html: html.trim(),
+            attachments,
+          })
+        : await sendHtmlEmailViaBrevo({
+            ...brevoBase,
+            text: body,
+            html: html.trim(),
+          })
+      : hasAttachments
+        ? await sendPlainEmailWithAttachmentsViaBrevo({
+            ...brevoBase,
+            text: body,
+            attachments,
+          })
+        : await sendPlainEmailViaBrevo({
+            ...brevoBase,
+            text: body,
+          });
     if (br.ok === true) {
       return true;
     }
@@ -281,6 +306,10 @@ async function deliverQuoteEmailOnce(
           body,
           html,
           type,
+          attachments: attachments?.map((a) => ({
+            name: a.name,
+            contentBase64: a.contentBase64,
+          })),
         }),
         cache: "no-store",
       });
@@ -324,7 +353,8 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     options.subject,
     options.body,
     options.html,
-    options.type
+    options.type,
+    options.attachments,
   );
 
   const customer = options.to.trim().toLowerCase();
@@ -341,7 +371,14 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
       ? prependStaffCopyBannerHtml(options.html, options.to)
       : undefined;
     try {
-      await deliverQuoteEmailOnce(staffTo, staffSubject, staffBody, staffHtml, options.type);
+      await deliverQuoteEmailOnce(
+        staffTo,
+        staffSubject,
+        staffBody,
+        staffHtml,
+        options.type,
+        options.attachments,
+      );
     } catch (e) {
       console.error("[quote-email] staff notify failed", { staffTo, error: e });
     }
@@ -427,7 +464,26 @@ function generateHTMLEmail(
 /**
  * Send quote created notification
  */
-export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
+function normalizeEmailAttachmentBase64(base64: string): string {
+  const trimmed = base64.trim();
+  const comma = trimmed.indexOf(",");
+  return comma >= 0 ? trimmed.slice(comma + 1) : trimmed;
+}
+
+function buildPriceMatchEvidenceAttachments(
+  options?: SendQuoteCreatedEmailOptions,
+): QuoteEmailAttachment[] | undefined {
+  if (!options?.attachments?.length) return undefined;
+  return options.attachments.map((a) => ({
+    name: a.name.slice(0, 200),
+    contentBase64: normalizeEmailAttachmentBase64(a.contentBase64),
+  }));
+}
+
+export async function sendQuoteCreatedEmail(
+  quote: Quote,
+  options?: SendQuoteCreatedEmailOptions,
+): Promise<boolean> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
   const quoteUrl = `${siteUrl}/dashboard/quotes/${quote.id}`;
 
@@ -436,13 +492,14 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
       const qty = item.qty || 1;
       const price = Number(item.price) || 0;
       const nameEsc = escapeHtmlForEmail(String(item.name ?? ""));
-      const skuPart =
+      const skuEsc =
         item.sku && String(item.sku).trim()
-          ? ` (SKU: ${escapeHtmlForEmail(String(item.sku).trim())})`
-          : "";
+          ? escapeHtmlForEmail(String(item.sku).trim())
+          : "—";
       return `
       <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${nameEsc}${skuPart}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${nameEsc}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">${skuEsc}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${qty}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price)}</td>
         <td style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb;">${formatPrice(price * qty)}</td>
@@ -465,6 +522,7 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
       <thead>
         <tr style="background-color: #f3f4f6;">
           <th style="padding: 8px; text-align: left; border-bottom: 2px solid #e5e7eb;">Item</th>
+          <th style="padding: 8px; text-align: left; border-bottom: 2px solid #e5e7eb;">SKU</th>
           <th style="padding: 8px; text-align: right; border-bottom: 2px solid #e5e7eb;">Qty</th>
           <th style="padding: 8px; text-align: right; border-bottom: 2px solid #e5e7eb;">Price</th>
           <th style="padding: 8px; text-align: right; border-bottom: 2px solid #e5e7eb;">Total</th>
@@ -534,6 +592,7 @@ export async function sendQuoteCreatedEmail(quote: Quote): Promise<boolean> {
     body: quoteCreatedPlainBody(quote, quoteUrl),
     html,
     type: "quote_created",
+    attachments: buildPriceMatchEvidenceAttachments(options),
   });
 }
 

@@ -652,6 +652,7 @@ import ProductVariations from "@/components/ProductVariations";
 import RecurringSelect, { RecurringPlan } from "@/components/RecurringSelect";
 import { useCart } from "@/components/CartProvider";
 import { useQuote } from "@/components/QuoteProvider";
+import { usePriceMatch } from "@/components/PriceMatchProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
 import { formatPriceWithLabel } from "@/lib/format-utils";
@@ -673,6 +674,7 @@ import {
 import { useViewedProduct } from "@/hooks/useViewedProducts";
 import ConsultationFormModal from "@/components/ConsultationFormModal";
 import EmpowerCampaignBox from "@/components/EmpowerCampaignBox";
+import { NdisLogo } from "@/components/ndis/NdisLogo";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -929,8 +931,24 @@ export default function ProductDetailPanel({
           ? regularFromFirstVariation
           : displayRegularRaw;
   const hasResolvedVariation = attributes.length === 0 || Boolean(matchedVariation || matched);
+
+  const ndisLogoUrl = useMemo(() => {
+    const keys = ["ndis_logo_url", "ndis_logo", "custom_ndis_logo"];
+    const meta = product.meta_data?.find((m: { key?: string; value?: unknown }) =>
+      keys.includes(String(m.key ?? "").toLowerCase()),
+    );
+    const value = meta?.value;
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (value && typeof value === "object" && "url" in value) {
+      const url = (value as { url?: string }).url;
+      if (typeof url === "string" && url.trim()) return url.trim();
+    }
+    return undefined;
+  }, [product.meta_data]);
+
   const { addItem, open: openCart } = useCart();
   const { addItem: addQuoteItem, open: openQuote, openNdisPanel } = useQuote();
+  const { open: openPriceMatch } = usePriceMatch();
   const { success, error: showError } = useToast();
   const [quantityInput, setQuantityInput] = useState<string>("1");
   const [addingToCart, setAddingToCart] = useState(false);
@@ -1290,6 +1308,67 @@ export default function ProductDetailPanel({
       activeStockSource,
     ],
   );
+
+  const openPriceMatchForCurrentProduct = useCallback(() => {
+    if (!hasResolvedVariation) return;
+
+    const variationId = matchedVariation?.id || matched?.id;
+    const variationTaxClass =
+      matchedVariation?.tax_class || matched?.tax_class || product.tax_class || undefined;
+    const variationTaxStatus =
+      matchedVariation?.tax_status || matched?.tax_status || product.tax_status || undefined;
+    const rawAttrs =
+      attributes.length > 0 ? { ...selected } : { ...selectedSimpleAttributes };
+    const baseAttrs =
+      attributes.length > 0
+        ? overlayConcreteVariationAttributes(rawAttrs, matchedVariation || matched, attributes)
+        : rawAttrs;
+    const attrsForCart =
+      packagingUnitAttribute && selectedUnitOption
+        ? { ...baseAttrs, [packagingUnitAttribute.name]: selectedUnitOption }
+        : baseAttrs;
+    const safeUomMult =
+      Number.isFinite(unitMultiplier) && unitMultiplier > 0 ? Math.floor(unitMultiplier) : 1;
+    const displayNum = Number(displayPrice || 0);
+    const linePrice =
+      selectedUnitOption && Number.isFinite(displayNum) && displayNum > 0 && safeUomMult > 0
+        ? (displayNum / safeUomMult).toFixed(2)
+        : displayPrice || "0";
+    const rawForLabel = parseFloat(linePrice);
+    const priceInfo = formatPriceWithLabel(rawForLabel, variationTaxClass, variationTaxStatus);
+    const currentPriceLabel =
+      priceInfo.taxType === "gst_10" && priceInfo.exclPrice
+        ? `${priceInfo.exclPrice} excl. GST`
+        : priceInfo.label
+          ? `${priceInfo.price} ${priceInfo.label}`
+          : priceInfo.price;
+
+    openPriceMatch({
+      productId: product.id,
+      variationId,
+      name: product.name,
+      imageUrl: cartLineImageUrl,
+      price: linePrice,
+      currentPriceLabel,
+      attributes: attrsForCart,
+      tax_class: variationTaxClass ?? null,
+      tax_status: variationTaxStatus ?? null,
+    });
+  }, [
+    hasResolvedVariation,
+    matchedVariation,
+    matched,
+    product,
+    attributes,
+    selected,
+    selectedSimpleAttributes,
+    packagingUnitAttribute,
+    selectedUnitOption,
+    unitMultiplier,
+    displayPrice,
+    cartLineImageUrl,
+    openPriceMatch,
+  ]);
 
   useEffect(() => {
     if (maxDisplayQty == null) return;
@@ -1739,35 +1818,37 @@ export default function ProductDetailPanel({
             className="!h-[52px] !w-12 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
           />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => addCurrentProductLine("quote")}
-            disabled={!hasResolvedVariation || addingToQuote}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Add to quote
-          </button>
-          <button
-            type="button"
-            onClick={() => addCurrentProductLine("quoteNdis")}
-            disabled={!hasResolvedVariation || addingToQuote}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="inline-flex h-5 w-7 shrink-0 items-center justify-center rounded bg-violet-700 text-[8px] font-bold uppercase text-white">
-              ndis
-            </span>
-            quote
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-400 cursor-not-allowed"
-          >
-            Price match
-          </button>
+        <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-gray-50/90 to-white p-2.5 shadow-sm">
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => addCurrentProductLine("quote")}
+              disabled={!hasResolvedVariation || addingToQuote}
+              className="flex min-h-[52px] items-center justify-center rounded-lg border border-gray-300 bg-white px-2 py-3 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:border-teal-400 hover:bg-teal-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-gray-300 disabled:hover:bg-white"
+            >
+              {addingToQuote ? "Adding…" : "Add to quote"}
+            </button>
+            <button
+              type="button"
+              onClick={() => addCurrentProductLine("quoteNdis")}
+              disabled={!hasResolvedVariation || addingToQuote}
+              className="flex min-h-[52px] items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-2 py-3 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:border-teal-400 hover:bg-teal-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-gray-300 disabled:hover:bg-white"
+              aria-label="Add to NDIS quote"
+            >
+              <NdisLogo logoUrl={ndisLogoUrl} width={44} height={24} />
+              <span>quote</span>
+            </button>
+            <button
+              type="button"
+              onClick={openPriceMatchForCurrentProduct}
+              disabled={!hasResolvedVariation}
+              className="flex min-h-[52px] items-center justify-center rounded-lg border border-gray-300 bg-white px-2 py-3 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:border-teal-400 hover:bg-teal-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-gray-300 disabled:hover:bg-white"
+            >
+              Price match
+            </button>
+          </div>
         </div>
+
         {attributes.length > 0 && !hasResolvedVariation && (
           <p className="text-sm font-medium text-red-600" role="alert">
             Please select a valid variation combination before adding to cart.

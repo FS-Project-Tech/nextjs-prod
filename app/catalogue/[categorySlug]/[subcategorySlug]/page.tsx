@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchCategoryBySlug } from "@/lib/woocommerce";
+import Breadcrumbs from "@/components/Breadcrumbs";
 import { BreadcrumbStructuredData } from "@/components/StructuredData";
 import SubcategoryBook from "@/components/SubcategoryBook";
 
@@ -46,6 +47,7 @@ export default async function SubcategoryCataloguePage({ params }: Props) {
     <>
       <BreadcrumbStructuredData items={breadcrumbItems} />
       <div className="container mx-auto max-w-5xl px-4 py-8 space-y-4">
+        <Breadcrumbs items={breadcrumbItems} />
         <SubcategoryBook
           subcategorySlug={subCategory.slug}
           subcategoryName={subCategory.name}
