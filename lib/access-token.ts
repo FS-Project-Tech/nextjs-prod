@@ -12,6 +12,28 @@ interface TokenData {
   type: "cart";
 }
 
+function readValidTokenData(requiredType: "cart"): TokenData | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!stored) return null;
+
+    const tokenData: TokenData = JSON.parse(stored);
+
+    if (tokenData.type !== requiredType) return null;
+
+    if (Date.now() > tokenData.expiresAt) {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      return null;
+    }
+
+    return tokenData;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Generate a secure random token
  */
@@ -60,22 +82,11 @@ export function validateAccessToken(token: string | null, requiredType: "cart"):
   if (!token) return false;
 
   try {
-    const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!stored) return false;
-
-    const tokenData: TokenData = JSON.parse(stored);
+    const tokenData = readValidTokenData(requiredType);
+    if (!tokenData) return false;
 
     // Check if token matches
     if (tokenData.token !== token) return false;
-
-    // Check if token has expired
-    if (Date.now() > tokenData.expiresAt) {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      return false;
-    }
-
-    // Check if token type matches
-    if (tokenData.type !== requiredType) return false;
 
     return true;
   } catch (e) {
@@ -88,24 +99,7 @@ export function validateAccessToken(token: string | null, requiredType: "cart"):
  * Get the current stored token
  */
 export function getStoredToken(): string | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!stored) return null;
-
-    const tokenData: TokenData = JSON.parse(stored);
-
-    // Check if expired
-    if (Date.now() > tokenData.expiresAt) {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      return null;
-    }
-
-    return tokenData.token;
-  } catch (e) {
-    return null;
-  }
+  return readValidTokenData("cart")?.token ?? null;
 }
 
 /**
@@ -125,6 +119,6 @@ export function clearAccessToken(): void {
  * Generate cart URL with token
  */
 export function getCartUrl(): string {
-  const token = generateAccessToken("cart");
+  const token = getStoredToken() ?? generateAccessToken("cart");
   return `/cart?token=${token}`;
 }
