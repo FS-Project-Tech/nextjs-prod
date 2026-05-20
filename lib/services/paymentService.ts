@@ -103,25 +103,25 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
 
   const existingPayUrl = readStoredPaymentUrl(latest);
   if (shouldReuseEwayPayment(latest) && existingPayUrl) {
-    console.log({
-      tag: "[payment] eWAY reuse existing payment_url from Woo meta",
-      requestId,
-      postId,
-      reused: true,
-    });
+    // console.log({
+    //   tag: "[payment] eWAY reuse existing payment_url from Woo meta",
+    //   requestId,
+    //   postId,
+    //   reused: true,
+    // });
     return { type: "redirect", url: existingPayUrl, reused: true };
   }
 
-  if (existingPayUrl) {
-    console.log({
-      tag: "[payment] eWAY not reusing stored payment_url (new AccessCodesShared)",
-      requestId,
-      postId,
-      canonical_total: readCanonicalCheckoutPaymentTotalString(latest),
-      woo_total: readCurrentWooOrderTotalString(latest),
-      stored_session_total: readStoredEwayPaymentOrderTotal(latest),
-    });
-  }
+  // if (existingPayUrl) {
+    // console.log({
+    //   tag: "[payment] eWAY not reusing stored payment_url (new AccessCodesShared)",
+    //   requestId,
+    //   postId,
+    //   canonical_total: readCanonicalCheckoutPaymentTotalString(latest),
+    //   woo_total: readCurrentWooOrderTotalString(latest),
+    //   stored_session_total: readStoredEwayPaymentOrderTotal(latest),
+    // });
+  // }
 
   const lo = latest as Record<string, unknown>;
   const fromValidated =
@@ -143,16 +143,16 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     };
   }
 
-  const wooParsed = Number.parseFloat(total);
-  const ewayAmountCents = Math.round(wooParsed * 100);
-  console.log({
-    tag: "[payment] eway amounts (validated checkout total)",
-    requestId,
-    postId,
-    payment_total: total,
-    used_validated_param: Boolean(fromValidated),
-    eway_amount_cents: ewayAmountCents,
-  });
+  // const wooParsed = Number.parseFloat(total);
+  // const ewayAmountCents = Math.round(wooParsed * 100);
+  // console.log({
+  //   tag: "[payment] eway amounts (validated checkout total)",
+  //   requestId,
+  //   postId,
+  //   payment_total: total,
+  //   used_validated_param: Boolean(fromValidated),
+  //   eway_amount_cents: ewayAmountCents,
+  // });
 
   const invoiceRef =
     extractWooOrderNumber(latest) ?? String(postId);
@@ -175,9 +175,9 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   }
 
   try {
-    const fresh = await getWooOrder(String(postId));
-    await updateWooOrder(postId, {
-      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl, total),
+    // const fresh = await getWooOrder(String(postId));
+    updateWooOrder(postId, {
+      meta_data: mergeEwayPaymentSessionMeta(latest, eway.sharedPaymentUrl, total),
     });
   } catch (e) {
     console.error("[payment] failed to store payment_url / payment_initiated on order", {

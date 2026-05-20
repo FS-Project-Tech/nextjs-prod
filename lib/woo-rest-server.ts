@@ -85,10 +85,11 @@ export async function getFeaturedProductsSampleForServer(): Promise<unknown> {
 
 export async function validateCartLineStock(
   items: CartItem[]
-): Promise<{ valid: boolean; errors: Array<{ itemId: string; message: string }> }> {
-  const errors: Array<{ itemId: string; message: string }> = [];
-
-  for (const line of items) {
+): Promise<{
+  valid: boolean;
+  errors: Array<{ itemId: string; message: string }>;
+}> {
+  const validations = items.map(async (line) => {
     try {
       const endpoint = line.variationId
         ? `/products/${line.productId}/variations/${line.variationId}`
@@ -102,21 +103,44 @@ export async function validateCartLineStock(
       }>(endpoint, undefined, "noStore");
 
       if (product.stock_status === "outofstock") {
-        errors.push({ itemId: line.id, message: `${line.name} is out of stock` });
-      } else if (product.manage_stock && product.stock_quantity != null) {
-        if (product.stock_quantity < line.qty) {
-          const msg = product.backorders_allowed
-            ? `${line.name} (only ${product.stock_quantity} available, backorders allowed)`
-            : `${line.name} (only ${product.stock_quantity} available)`;
-          errors.push({ itemId: line.id, message: msg });
-        }
+        return {
+          itemId: line.id,
+          message: `${line.name} is out of stock`,
+        };
       }
-    } catch {
-      errors.push({ itemId: line.id, message: `Unable to validate ${line.name}` });
-    }
-  }
 
-  return { valid: errors.length === 0, errors };
+      if (
+        product.manage_stock &&
+        product.stock_quantity != null &&
+        product.stock_quantity < line.qty
+      ) {
+        return {
+          itemId: line.id,
+          message: product.backorders_allowed
+            ? `${line.name} (only ${product.stock_quantity} available, backorders allowed)`
+            : `${line.name} (only ${product.stock_quantity} available)`,
+        };
+      }
+
+      return null;
+    } catch {
+      return {
+        itemId: line.id,
+        message: `Unable to validate ${line.name}`,
+      };
+    }
+  });
+
+  const results = await Promise.all(validations);
+
+  const errors = results.filter(
+    (item): item is { itemId: string; message: string } => item !== null
+  );
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
 }
 
 export async function resolveUnitPricesForCartLines(
