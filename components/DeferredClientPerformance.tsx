@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
-const Analytics = dynamic(
-  () => import("@vercel/analytics/next").then((m) => m.Analytics),
-  { ssr: false }
-);
+const Analytics = dynamic(() => import("@vercel/analytics/next").then((m) => m.Analytics), {
+  ssr: false,
+});
 const SpeedInsights = dynamic(
   () => import("@vercel/speed-insights/next").then((m) => m.SpeedInsights),
   { ssr: false }
@@ -51,6 +50,7 @@ function buildGtagBootstrapInline(ga4: string, ads: string): string {
  */
 export default function DeferredClientPerformance({ nonce }: { nonce: string }) {
   const [ready, setReady] = useState(false);
+  const [gtagReady, setGtagReady] = useState(false);
 
   useEffect(() => {
     scheduleDeferredAnalytics(() => setReady(true));
@@ -61,23 +61,28 @@ export default function DeferredClientPerformance({ nonce }: { nonce: string }) 
     const ga4 = process.env.NEXT_PUBLIC_GA4_ID?.trim() || "";
     const ads = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "";
     const gtagScriptId = ga4 || ads;
-    if (!gtagScriptId) return;
-
-    const src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtagScriptId)}`;
-    if (document.querySelector('script[src*="googletagmanager.com/gtag/js"]')) {
+    if (!gtagScriptId) {
       return;
     }
 
-    const ext = document.createElement("script");
-    ext.src = src;
-    ext.async = true;
-    ext.setAttribute("nonce", nonce);
-    document.head.appendChild(ext);
+    const src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gtagScriptId)}`;
+    if (!document.querySelector('script[src*="googletagmanager.com/gtag/js"]')) {
+      const ext = document.createElement("script");
+      ext.src = src;
+      ext.async = true;
+      ext.setAttribute("nonce", nonce);
+      document.head.appendChild(ext);
+    }
 
-    const inline = document.createElement("script");
-    inline.setAttribute("nonce", nonce);
-    inline.textContent = buildGtagBootstrapInline(ga4, ads);
-    document.head.appendChild(inline);
+    if (!window.gtag) {
+      const inline = document.createElement("script");
+      inline.setAttribute("nonce", nonce);
+      inline.textContent = buildGtagBootstrapInline(ga4, ads);
+      document.head.appendChild(inline);
+    }
+
+    const id = globalThis.setTimeout(() => setGtagReady(true), 0);
+    return () => globalThis.clearTimeout(id);
   }, [ready, nonce]);
 
   if (!ready) return null;
@@ -87,9 +92,11 @@ export default function DeferredClientPerformance({ nonce }: { nonce: string }) 
       <Analytics />
       <SpeedInsights />
       <AnalyticsInitializer />
-      <Suspense fallback={null}>
-        <AnalyticsTracker />
-      </Suspense>
+      {gtagReady ? (
+        <Suspense fallback={null}>
+          <AnalyticsTracker />
+        </Suspense>
+      ) : null}
     </>
   );
 }
