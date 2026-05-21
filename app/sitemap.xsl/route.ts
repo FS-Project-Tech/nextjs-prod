@@ -1,7 +1,7 @@
 import { SITEMAP_REVALIDATE_SECONDS } from "@/lib/sitemap-utils";
 
 export const runtime = "nodejs";
-export const revalidate = SITEMAP_REVALIDATE_SECONDS;
+export const revalidate = 3600;
 
 const stylesheet = `<?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0"

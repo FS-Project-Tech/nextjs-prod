@@ -3,11 +3,10 @@ import {
   getSitemapOrigin,
   sitemapIndexXml,
   sitemapXmlResponse,
-  SITEMAP_REVALIDATE_SECONDS,
 } from "@/lib/sitemap-utils";
 
 export const runtime = "nodejs";
-export const revalidate = SITEMAP_REVALIDATE_SECONDS;
+export const revalidate = 3600;
 
 export async function GET() {
   const baseUrl = getSitemapOrigin();

@@ -2,12 +2,11 @@ import {
   getProductSitemapEntries,
   getSitemapOrigin,
   sitemapXmlResponse,
-  SITEMAP_REVALIDATE_SECONDS,
   urlSetXml,
 } from "@/lib/sitemap-utils";
 
 export const runtime = "nodejs";
-export const revalidate = SITEMAP_REVALIDATE_SECONDS;
+export const revalidate = 3600;
 
 function parseSitemapPage(value: string): number | null {
   const page = Number.parseInt(value.replace(/\.xml$/i, ""), 10);
