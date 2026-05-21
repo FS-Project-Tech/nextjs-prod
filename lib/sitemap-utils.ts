@@ -7,7 +7,7 @@ import { getUnifiedCategories, type UnifiedCategory } from "@/lib/categories-uni
 import {
   fetchPublishedProductsForSitemapPage,
   getPublishedProductSitemapPageCount,
-} from "@/lib/woocommerce";
+} from "@/lib/woocommerce/product-sitemap"; 
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
 
