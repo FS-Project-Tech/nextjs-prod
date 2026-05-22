@@ -61,7 +61,7 @@ export const quoteFormSchema = yup.object({
   quote_notes: yup.string().optional(),
   quote_ndis_claim_who: yup
     .string()
-    .oneOf(["self", "joyamedical", "plan_manager"] as const)
+    .oneOf(["", "self", "joyamedical", "plan_manager"] as const)
     .optional(),
   cust_woo_ndis_participant_name: yup.string().optional(),
   cust_woo_ndis_number: yup.string().optional(),

@@ -21,7 +21,7 @@ export const QUOTE_FORM_DEFAULTS: DefaultValues<QuoteFormData> = {
   billing_country: "AU",
   billing_state: "",
   quote_notes: "",
-  quote_ndis_claim_who: "self",
+  quote_ndis_claim_who: "",
   cust_woo_ndis_participant_name: "",
   cust_woo_ndis_number: "",
   cust_woo_ndis_dob: "",
