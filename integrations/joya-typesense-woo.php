@@ -12,6 +12,14 @@
  *
  * Install: copy this entire folder to wp-content/plugins/joya-typesense-woo/ and activate in wp-admin.
  *
+ * Configure in wp-config.php with define() and/or server environment variables:
+ * - TYPESENSE_SYNC_BASE_URL or JOYA_NEXT_API_BASE — your Next.js public URL (no trailing slash)
+ * - TYPESENSE_SYNC_SECRET or SYNC_SECRET — Bearer token; must match Next.js TYPESENSE_SYNC_SECRET / SYNC_SECRET
+ * - TYPESENSE_DELETE_SECRET — optional; Bearer for deletes (else SYNC_SECRET)
+ * - TYPESENSE_FEED_SECRET — optional; locks GET /wp-json/custom/v1/typesense-products
+ * - JOYA_TYPESENSE_SYNC_LOG — optional true/1 to mirror debug lines to error_log
+ *
+ * WordPress does not load .env from Next — define these on the PHP host. Constants in wp-config.php are supported.
  */
 
 if (!defined('ABSPATH')) {

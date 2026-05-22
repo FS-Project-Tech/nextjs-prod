@@ -6,6 +6,7 @@ import PriceMatchProvider from "@/components/PriceMatchProvider";
 import { WishlistProvider } from "@/contexts/WishlistContext";
 import { CouponProvider } from "@/components/CouponProvider";
 import ToastProvider from "@/components/ToastProvider";
+import AIOrderAssistant from "@/components/AIOrderAssistant";
 
 export default function CommerceProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -14,7 +15,10 @@ export default function CommerceProviders({ children }: { children: React.ReactN
         <CartProvider>
           <QuoteProvider>
             <PriceMatchProvider>
-              <CouponProvider>{children}</CouponProvider>
+              <CouponProvider>
+                {children}
+                <AIOrderAssistant />
+              </CouponProvider>
             </PriceMatchProvider>
           </QuoteProvider>
         </CartProvider>

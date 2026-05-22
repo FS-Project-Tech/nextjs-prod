@@ -542,8 +542,6 @@ add_action('rest_api_init', function () {
  * - TYPESENSE_SYNC_BASE_URL or JOYA_NEXT_API_BASE — Next.js origin, e.g. https://shop.example.com
  * - TYPESENSE_SYNC_SECRET (or SYNC_SECRET) — Bearer token; must match Next.js env TYPESENSE_SYNC_SECRET
  * - TYPESENSE_DELETE_SECRET — optional; Bearer for deletes (falls back to SYNC_SECRET)
- * - VERCEL_PROTECTION_BYPASS_SECRET (optional) — same secret as Vercel → Project → Deployment Protection →
- *   "Protection Bypass for Automation". Required when Vercel returns 429 + HTML "Security Checkpoint" for wp_remote_post.
  *
  * This plugin calls Next.js, not Typesense directly. JOYA_TYPESENSE_HOST / admin keys are for a different integration.
  */
@@ -584,36 +582,6 @@ function joya_ts_delete_secret(): string {
         return trim((string) SYNC_SECRET);
     }
     return trim((string) getenv('SYNC_SECRET'));
-}
-
-/**
- * Vercel Deployment Protection / checkpoint bypass (server-to-server only).
- *
- * @see https://vercel.com/docs/security/deployment-protection#protection-bypass-for-automation
- */
-function joya_ts_vercel_protection_bypass_secret(): string {
-    if (defined('VERCEL_PROTECTION_BYPASS_SECRET') && (string) VERCEL_PROTECTION_BYPASS_SECRET !== '') {
-        return trim((string) VERCEL_PROTECTION_BYPASS_SECRET);
-    }
-    foreach (['VERCEL_PROTECTION_BYPASS_SECRET', 'VERCEL_AUTOMATION_BYPASS_SECRET', 'TYPESENSE_SYNC_VERCEL_BYPASS'] as $env_key) {
-        $v = trim((string) getenv($env_key));
-        if ($v !== '') {
-            return $v;
-        }
-    }
-    return '';
-}
-
-/**
- * @param array<string,string> $headers
- * @return array<string,string>
- */
-function joya_ts_merge_next_api_headers(array $headers): array {
-    $bypass = joya_ts_vercel_protection_bypass_secret();
-    if ($bypass !== '') {
-        $headers['x-vercel-protection-bypass'] = $bypass;
-    }
-    return $headers;
 }
 
 function joya_ts_logging_enabled() {
@@ -705,11 +673,11 @@ function joya_ts_call_sync_endpoint($product_id): bool {
     $res = wp_remote_post($base . '/api/typesense/search/sync', [
         'timeout' => 45,
         'blocking' => true,
-        'headers' => joya_ts_merge_next_api_headers([
+        'headers' => [
             'Content-Type' => 'application/json',
             'Accept' => 'application/json',
             'Authorization' => 'Bearer ' . $secret,
-        ]),
+        ],
         'body' => wp_json_encode(['product_id' => $product_id]),
     ]);
     if (is_wp_error($res)) {
@@ -722,18 +690,11 @@ function joya_ts_call_sync_endpoint($product_id): bool {
     $code = (int) wp_remote_retrieve_response_code($res);
     if ($code < 200 || $code >= 300) {
         $body = (string) wp_remote_retrieve_body($res);
-        $ctx = [
+        joya_ts_log_with_activity('error', 'sync HTTP error', [
             'product_id' => $product_id,
             'status' => $code,
             'body_preview' => substr($body, 0, 500),
-        ];
-        if (
-            stripos($body, 'Security Checkpoint') !== false
-            || stripos($body, 'vercel security checkpoint') !== false
-        ) {
-            $ctx['hint'] = 'Vercel returned a browser checkpoint, not your API. Enable Protection Bypass for Automation in the Vercel project and set the same value as VERCEL_PROTECTION_BYPASS_SECRET (or env VERCEL_AUTOMATION_BYPASS_SECRET) in wp-config.php.';
-        }
-        joya_ts_log_with_activity('error', 'sync HTTP error', $ctx);
+        ]);
         return false;
     }
     joya_ts_log_with_activity('info', 'sync request completed', ['product_id' => $product_id]);
@@ -762,10 +723,10 @@ function joya_ts_call_delete_endpoint($id) {
         'method' => 'DELETE',
         'timeout' => 5,
         'blocking' => false,
-        'headers' => joya_ts_merge_next_api_headers([
+        'headers' => [
             'Accept' => 'application/json',
             'Authorization' => 'Bearer ' . $secret,
-        ]),
+        ],
     ]);
     if (is_wp_error($res)) {
         joya_ts_log_with_activity('error', 'delete request failed', [
@@ -842,6 +803,7 @@ function joya_ts_manual_sync_product($raw_input): array {
         return ['ok' => false, 'message' => __('That post is not a WooCommerce product or variation.', 'joya-typesense-woo'), 'normalized_id' => 0];
     }
     $normalized = joya_ts_normalize_sync_id($raw_id);
+    delete_transient('joya_ts_sync_lock_' . $normalized);
     joya_ts_log_with_activity('info', 'manual sync started', ['raw_id' => $raw_id, 'normalized_parent_id' => $normalized]);
     $ok = joya_ts_call_sync_endpoint($raw_id);
     if ($ok) {
@@ -863,44 +825,6 @@ function joya_ts_manual_sync_product($raw_input): array {
     ];
 }
 
-function joya_ts_product_is_indexable($product_id): bool {
-    $product = wc_get_product(absint($product_id));
-    if (!$product instanceof \WC_Product) {
-        return false;
-    }
-    return $product->get_status() === 'publish' && $product->is_in_stock();
-}
-
-function joya_ts_run_queued_syncs(): void {
-    $queued = isset($GLOBALS['joya_ts_queued_sync_ids']) && is_array($GLOBALS['joya_ts_queued_sync_ids'])
-        ? array_keys($GLOBALS['joya_ts_queued_sync_ids'])
-        : [];
-
-    unset($GLOBALS['joya_ts_queued_sync_ids']);
-
-    foreach ($queued as $product_id) {
-        $pid = absint($product_id);
-        if ($pid <= 0) {
-            continue;
-        }
-        if (!joya_ts_product_is_indexable($pid)) {
-            $post_type = (string) get_post_type($pid);
-            joya_ts_log_with_activity('debug', 'queued sync became delete: product no longer indexable', [
-                'product_id' => $pid,
-                'post_type' => $post_type,
-            ]);
-            if (joya_ts_is_supported_post_type($post_type)) {
-                joya_ts_delete_index_docs_for_post($pid, $post_type);
-            }
-            continue;
-        }
-        joya_ts_log_with_activity('debug', 'running queued sync', [
-            'product_id' => $pid,
-        ]);
-        joya_ts_call_sync_endpoint($pid);
-    }
-}
-
 function joya_ts_schedule_sync($product_id) {
     if (defined('WP_IMPORTING') && WP_IMPORTING) {
         return;
@@ -913,36 +837,30 @@ function joya_ts_schedule_sync($product_id) {
         ]);
         return;
     }
-    static $queued_in_request = [];
-    static $logged_dedupe_skip = [];
-    static $registered_shutdown = false;
-    if (isset($queued_in_request[$normalized_id])) {
-        // Many variation/meta hooks share one parent sync; log at most once per product per request.
-        if (!isset($logged_dedupe_skip[$normalized_id])) {
-            $logged_dedupe_skip[$normalized_id] = true;
-            joya_ts_log_with_activity('debug', 'sync skipped: already queued in this request', [
-                'product_id' => $normalized_id,
-            ]);
-        }
+    static $ran_in_request = [];
+    if (isset($ran_in_request[$normalized_id])) {
+        joya_ts_log_with_activity('debug', 'immediate sync skipped: already run in this request', [
+            'product_id' => $normalized_id,
+        ]);
         return;
     }
 
-    // WooCommerce fires meta hooks while a product is still being saved. Queue until shutdown so the
-    // feed endpoint reads the final product/variation state instead of a partially-written snapshot.
-    $queued_in_request[$normalized_id] = true;
-    if (!isset($GLOBALS['joya_ts_queued_sync_ids']) || !is_array($GLOBALS['joya_ts_queued_sync_ids'])) {
-        $GLOBALS['joya_ts_queued_sync_ids'] = [];
+    // Multiple hooks can fire during one product/variation save; use a short lock to avoid duplicate
+    // sync posts while still keeping updates effectively instant.
+    $lock_key = 'joya_ts_sync_lock_' . $normalized_id;
+    if (get_transient($lock_key)) {
+        joya_ts_log_with_activity('debug', 'immediate sync skipped: lock active', [
+            'product_id' => $normalized_id,
+        ]);
+        return;
     }
-    $GLOBALS['joya_ts_queued_sync_ids'][$normalized_id] = true;
+    set_transient($lock_key, 1, 8);
+    $ran_in_request[$normalized_id] = true;
 
-    if (!$registered_shutdown) {
-        $registered_shutdown = true;
-        add_action('shutdown', 'joya_ts_run_queued_syncs', 20);
-    }
-
-    joya_ts_log_with_activity('debug', 'queued sync', [
+    joya_ts_log_with_activity('debug', 'running immediate sync', [
         'product_id' => $normalized_id,
     ]);
+    joya_ts_call_sync_endpoint($normalized_id);
 }
 
 /**
@@ -967,57 +885,6 @@ function joya_ts_delete_index_docs_for_post($post_id, $post_type) {
     if ((string) $post_type === 'product_variation') {
         joya_ts_call_delete_endpoint($post_id);
     }
-}
-
-function joya_ts_stock_status_is_indexable($stock_status): bool {
-    return strtolower(trim((string) $stock_status)) === 'instock';
-}
-
-function joya_ts_product_stock_status($product_id, $fallback = null): string {
-    if ($fallback !== null && trim((string) $fallback) !== '') {
-        return strtolower(trim((string) $fallback));
-    }
-    $product = wc_get_product(absint($product_id));
-    if ($product instanceof \WC_Product) {
-        return strtolower(trim((string) $product->get_stock_status()));
-    }
-    return '';
-}
-
-function joya_ts_handle_stock_status_change($product_id, $stock_status = null): void {
-    if (defined('WP_IMPORTING') && WP_IMPORTING) {
-        return;
-    }
-
-    $product_id = absint($product_id);
-    if ($product_id <= 0) {
-        return;
-    }
-
-    $post_type = (string) get_post_type($product_id);
-    if (!joya_ts_is_supported_post_type($post_type)) {
-        return;
-    }
-
-    $status = joya_ts_product_stock_status($product_id, $stock_status);
-    if ($status !== '' && !joya_ts_stock_status_is_indexable($status)) {
-        joya_ts_log_with_activity('debug', 'stock status removed from index', [
-            'product_id' => $product_id,
-            'post_type' => $post_type,
-            'stock_status' => $status,
-        ]);
-        joya_ts_delete_index_docs_for_post($product_id, $post_type);
-
-        if ($post_type === 'product_variation') {
-            $parent_id = (int) wp_get_post_parent_id($product_id);
-            if ($parent_id > 0) {
-                joya_ts_schedule_sync($parent_id);
-            }
-        }
-        return;
-    }
-
-    joya_ts_schedule_sync($product_id);
 }
 
 add_action('joya_ts_deferred_sync_single', function ($product_id) {
@@ -1118,8 +985,7 @@ function joya_ts_meta_change_maybe_sync($meta_id_or_ids, $object_id, $meta_key, 
     if (defined('WP_IMPORTING') && WP_IMPORTING) {
         return;
     }
-    $meta_key = (string) $meta_key;
-    if (!joya_ts_meta_key_triggers_typesense_sync($meta_key)) {
+    if (!joya_ts_meta_key_triggers_typesense_sync((string) $meta_key)) {
         return;
     }
     $object_id = (int) $object_id;
@@ -1128,10 +994,6 @@ function joya_ts_meta_change_maybe_sync($meta_id_or_ids, $object_id, $meta_key, 
     }
     $pt = get_post_type($object_id);
     if ($pt === 'product_variation' || $pt === 'product') {
-        if ($meta_key === '_stock_status') {
-            joya_ts_handle_stock_status_change($object_id, $_meta_value);
-            return;
-        }
         joya_ts_schedule_sync($object_id);
     }
 }
@@ -1161,13 +1023,13 @@ add_action('woocommerce_after_product_object_save', function ($product, $data_st
     joya_ts_schedule_sync((int) $product->get_id());
 }, 99, 2);
 
-add_action('woocommerce_product_set_stock_status', function ($product_id, $stock_status = null) {
-    joya_ts_handle_stock_status_change((int) $product_id, $stock_status);
-}, 20, 2);
+add_action('woocommerce_product_set_stock_status', function ($product_id) {
+    joya_ts_schedule_sync((int) $product_id);
+}, 20, 1);
 
-add_action('woocommerce_variation_set_stock_status', function ($variation_id, $stock_status = null) {
-    joya_ts_handle_stock_status_change((int) $variation_id, $stock_status);
-}, 20, 2);
+add_action('woocommerce_variation_set_stock_status', function ($variation_id) {
+    joya_ts_schedule_sync((int) $variation_id);
+}, 20, 1);
 
 /** Quantity-only updates (imports, POS) may not always go through stock_status hooks. */
 add_action('woocommerce_product_set_stock', function ($product) {
@@ -1374,15 +1236,6 @@ function joya_ts_render_activity_page() {
     echo '</p>';
     echo '</form>';
     echo '</div>';
-
-    if (joya_ts_vercel_protection_bypass_secret() === '') {
-        echo '<p class="description" style="max-width:48rem;margin:0 0 1rem;">';
-        echo esc_html__(
-            'If sync fails with HTTP 429 and the activity log shows HTML mentioning “Vercel Security Checkpoint”, your Next deployment is blocking server requests. In Vercel: Project → Settings → Deployment Protection → enable “Protection Bypass for Automation”, copy the secret, then add define( \'VERCEL_PROTECTION_BYPASS_SECRET\', \'…that secret…\' ); to wp-config.php (or set the same value in the PHP environment as VERCEL_AUTOMATION_BYPASS_SECRET).',
-            'joya-typesense-woo'
-        );
-        echo '</p>';
-    }
 
     echo '<h2>' . esc_html__('Activity log', 'joya-typesense-woo') . '</h2>';
     echo '<p class="description">' . esc_html__('Recent automatic sync/delete events.', 'joya-typesense-woo') . '</p>';

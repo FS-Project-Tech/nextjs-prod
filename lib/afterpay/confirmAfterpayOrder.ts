@@ -428,7 +428,6 @@ async function confirmAfterpayOrderInner(params: {
         orderExtensionTiming: { mode: "inline" },
         checkoutSessionId,
         totals: pricing.totals,
-        preferMinimalOrderCreate: true,
         perf: wooPerf,
       })
     );

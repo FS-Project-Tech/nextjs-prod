@@ -655,6 +655,7 @@ import { useQuote } from "@/components/QuoteProvider";
 import { usePriceMatch } from "@/components/PriceMatchProvider";
 import { useToast } from "@/components/ToastProvider";
 import { WishlistButton } from "@/components/WishlistButton";
+import { categoryTrailToBreadcrumbSegments } from "@/lib/category-breadcrumb-trail";
 import { formatPriceWithLabel } from "@/lib/format-utils";
 import {
   getStockCap,
@@ -666,6 +667,7 @@ import {
   findBrand,
   extractProductBrands,
   extractEtaAvailabilityDisplayForProduct,
+  extractNoStockStatusUpdateDisplayForProduct,
   extractExpiryDateDisplayForProduct,
   concretePackagingLabelFromVariation,
   overlayConcreteVariationAttributes,
@@ -763,6 +765,12 @@ type QuantityUnitsApiResponse = {
   units?: QuantityUnitApiOption[];
 };
 
+type ProductAttributeInput = {
+  name?: unknown;
+  options?: unknown;
+  variation?: unknown;
+};
+
 function hasEmpowerTag(product: WooCommerceProduct): boolean {
   const tags = product.tags || [];
   return tags.some(
@@ -842,9 +850,13 @@ export default function ProductDetailPanel({
 
   // variable attribute definitions for swatches
   const attributes = useMemo(() => {
-    return (product.attributes || [])
-      .filter((a: any) => (a?.variation ?? false) && Array.isArray(a.options))
-      .map((a: any) => ({ name: a.name as string, options: a.options as string[] }));
+    const rows = (Array.isArray(product.attributes) ? product.attributes : []) as ProductAttributeInput[];
+    return rows
+      .filter((a) => Boolean(a?.variation) && Array.isArray(a.options))
+      .map((a) => ({
+        name: String(a.name || ""),
+        options: (a.options as unknown[]).map((option) => String(option)),
+      }));
   }, [product.attributes]);
 
   /** Maps `?variation_id=` to swatch keys â€” ProductVariations must receive this as defaultSelected or UI stays on parent. */
@@ -863,9 +875,10 @@ export default function ProductDetailPanel({
   }, [product.id, variationIdFromUrl, variations, attributes.length]);
 
   const simpleAttributes = useMemo(() => {
-    return (product.attributes || [])
-      .filter((a: any) => !(a?.variation ?? false) && Array.isArray(a.options) && a.options.length > 0)
-      .map((a: any) => ({
+    const rows = (Array.isArray(product.attributes) ? product.attributes : []) as ProductAttributeInput[];
+    return rows
+      .filter((a) => !Boolean(a?.variation) && Array.isArray(a.options) && a.options.length > 0)
+      .map((a) => ({
         name: String(a?.name || "").trim(),
         values: (a.options as unknown[])
           .map((v) => String(v || "").trim())
@@ -898,7 +911,7 @@ export default function ProductDetailPanel({
         "resource_file",
         "download_resource",
       ];
-      return product.meta_data.some((meta: any) => {
+      return product.meta_data.some((meta: { key?: unknown; value?: unknown }) => {
         const key = String(meta.key || "").toLowerCase();
         return resourceKeys.some((rk) => key.includes(rk)) && meta.value;
       });
@@ -1152,6 +1165,14 @@ export default function ProductDetailPanel({
     () => extractEtaAvailabilityDisplayForProduct(product, matchedVariation ?? matched),
     [product, matchedVariation, matched],
   );
+
+  const noStockStatusUpdateDisplay = useMemo(
+    () => extractNoStockStatusUpdateDisplayForProduct(product, matchedVariation ?? matched),
+    [product, matchedVariation, matched],
+  );
+
+  const availabilityDisplay = noStockStatusUpdateDisplay || etaAvailabilityDisplay;
+  const availabilityDisplayLabel = noStockStatusUpdateDisplay ? "Availability" : "ETA Availability";
 
   const expiryDateDisplay = useMemo(
     () => extractExpiryDateDisplayForProduct(product, matchedVariation ?? matched),
@@ -1456,8 +1477,10 @@ export default function ProductDetailPanel({
               Category:{" "}
               <span className="font-medium text-gray-700">
                 {categoryTrail && categoryTrail.length > 0
-                  ? categoryTrail.map((c, idx) => (
-                      <span key={c.id}>
+                  ? categoryTrailToBreadcrumbSegments(categoryTrail, {
+                      omitHrefOnLast: false,
+                    }).map((c, idx) => (
+                      <span key={`${c.href || c.label}-${idx}`}>
                         {idx > 0 ? (
                           <span className="mx-0.5 text-gray-400" aria-hidden>
                             {" "}
@@ -1465,10 +1488,10 @@ export default function ProductDetailPanel({
                           </span>
                         ) : null}
                         <Link
-                          href={`/product-category/${encodeURIComponent(c.slug)}`}
+                          href={c.href || "/shop"}
                           className="hover:text-teal-700 hover:underline"
                         >
-                          {c.name}
+                          {c.label}
                         </Link>
                       </span>
                     ))
@@ -1705,10 +1728,11 @@ export default function ProductDetailPanel({
       <div>
         {/* <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Delivery</p> */}
         <RecurringSelect onChange={setPlan} value={plan} />
-        {etaAvailabilityDisplay ? (
+        {availabilityDisplay ? (
           <div className="mt-2" role="status">
             <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">
-              ETA Availability: <span className="ml-1 font-bold">{etaAvailabilityDisplay}</span>
+              {availabilityDisplayLabel}:{" "}
+              <span className="ml-1 font-bold">{availabilityDisplay}</span>
             </span>
           </div>
         ) : null}

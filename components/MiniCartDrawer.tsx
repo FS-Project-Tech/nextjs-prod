@@ -131,86 +131,120 @@ const CartItem = memo(
               {getDeliveryFrequencyLabel(item.deliveryPlan)}
             </div>
           )}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex items-center rounded-full border border-gray-200 bg-white">
-              <button
-                onClick={handleDecrement}
-                disabled={item.qty <= 1}
-                className="px-2 py-1 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Decrease quantity"
-              >
-                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              <input
-                type="number"
-                min="1"
-                max={stockCap ?? undefined}
-                value={item.qty}
-                onChange={(e) => handleQtyChange(Number(e.target.value))}
-                className="w-12 border-0 bg-transparent text-center text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1"
-                aria-label="Quantity"
-              />
-              <button
-                onClick={handleIncrement}
-                disabled={!canIncrementQty(item.qty, stockCap)}
-                className="px-2 py-1 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Increase quantity"
-              >
-                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="flex items-center justify-between gap-3 sm:justify-end">
-              {(() => {
-                const priceInfo = formatPriceWithLabel(item.price, item.tax_class, item.tax_status);
-                const totalPrice = Number(item.price) * item.qty;
-                const totalInfo = formatPriceWithLabel(
-                  totalPrice.toString(),
-                  item.tax_class,
-                  item.tax_status
-                );
-                return (
-                  <div className="text-right">
-                    <div className="text-base font-semibold text-gray-900">
-                      {totalInfo.label ? `${totalInfo.label}: ${totalInfo.price}` : totalInfo.price}
+          {(() => {
+            const priceInfo = formatPriceWithLabel(item.price, item.tax_class, item.tax_status);
+            const totalPrice = Number(item.price) * item.qty;
+            const totalInfo = formatPriceWithLabel(
+              totalPrice.toString(),
+              item.tax_class,
+              item.tax_status
+            );
+
+            return (
+              <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Quantity
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex items-center overflow-hidden rounded-full border border-gray-200 bg-white shadow-xs">
+                      <button
+                        onClick={handleDecrement}
+                        disabled={item.qty <= 1}
+                        className="px-2.5 py-1.5 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Decrease quantity"
+                      >
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M20 12H4"
+                          />
+                        </svg>
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        max={stockCap ?? undefined}
+                        value={item.qty}
+                        onChange={(e) => handleQtyChange(Number(e.target.value))}
+                        className="w-11 border-x border-gray-100 bg-transparent py-1 text-center text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1"
+                        aria-label="Quantity"
+                      />
+                      <button
+                        onClick={handleIncrement}
+                        disabled={!canIncrementQty(item.qty, stockCap)}
+                        className="px-2.5 py-1.5 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Increase quantity"
+                      >
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 4v16m8-8H4"
+                          />
+                        </svg>
+                      </button>
                     </div>
-                    {priceInfo.label && (
-                      <div className="text-xs text-gray-500">
-                        each
-                      </div>
-                    )}
-                    {totalInfo.exclPrice && (
-                      <div className="text-xs text-gray-600">
-                        Excl. GST: {totalInfo.exclPrice}
-                      </div>
-                    )}
+                    <button
+                      onClick={() => onRemove(item.id)}
+                      className="rounded-full border border-transparent p-2 text-gray-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
+                      aria-label="Remove item"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
                   </div>
-                );
-              })()}
-              <button
-                onClick={() => onRemove(item.id)}
-                className="rounded-full p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors"
-                aria-label="Remove item"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
+                </div>
+
+                <div className="mt-2 rounded-lg px-3 py-2 shadow-xs ring-1 ring-gray-100">
+                  <div className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-1 text-right">
+                    <span className="text-xs font-medium text-gray-500">
+                      {totalInfo.label || "Total"}
+                    </span>
+                    <span className="text-lg font-bold text-teal-700">{totalInfo.price}</span>
+                  </div>
+
+                  {totalInfo.exclPrice && (
+                    <div className="mt-1 flex flex-wrap items-baseline justify-end gap-x-2 gap-y-1 text-right text-xs">
+                      <span className="font-medium text-gray-500">Excl. GST</span>
+                      <span className="text-gray-600">{totalInfo.exclPrice}</span>
+                    </div>
+                  )}
+
+                  {item.qty > 1 && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {priceInfo.label ? `${priceInfo.label} each: ` : "Each: "}
+                      {priceInfo.price}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );

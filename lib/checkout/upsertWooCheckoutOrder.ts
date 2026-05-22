@@ -19,7 +19,7 @@ import { CheckoutSessionOrderExistsError } from "@/lib/checkout/checkoutSessionD
 import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
 import { buildWooLineItemsFullReplacePayload } from "@/lib/woo/orderLineItemsReplace";
 import type { CheckoutActor, CheckoutInitiatePayload } from "@/types/checkout";
- 
+
 function parseWooMoney(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -32,11 +32,11 @@ function parseWooMoney(v: unknown): number {
   }
   return 0;
 }
- 
+
 function parseOrderTotal(order: unknown): number {
   return parseWooMoney((order as Record<string, unknown>)?.total);
 }
- 
+
 /**
  * Payment uses WooCommerce `order.total` only — we only assert the order is non-empty and Woo reported a positive total.
  */
@@ -48,7 +48,7 @@ export function assertWooOrderPayable(order: unknown): void {
     (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
     throw err;
   }
- 
+
   const woo = parseOrderTotal(order);
   if (!Number.isFinite(woo) || woo <= 0) {
     const err = new Error("Invalid total");
@@ -56,7 +56,7 @@ export function assertWooOrderPayable(order: unknown): void {
     throw err;
   }
 }
- 
+
 /**
  * Create or update a pending Woo order (idempotent session + latest-pending reuse for logged-in users).
  */
@@ -70,13 +70,13 @@ export async function upsertValidatedCheckoutOrder(params: {
   perf?: { wooCreateMs?: number; wooPatchMs?: number; requestId?: string };
 }): Promise<unknown> {
   const { payload, input, timing, checkoutSessionId, actor, customerIp, perf } = params;
- 
+
   if (!input.line_items?.length) {
     const err = new Error("Cart is empty");
     (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
     throw err;
   }
- 
+
   const [dedup, reuseOrderId] = await Promise.all([
     findHeadlessSessionOrderDedup({
       checkoutSessionId,
@@ -96,7 +96,7 @@ export async function upsertValidatedCheckoutOrder(params: {
       dedup.orderId,
       dedup.orderKey,
       dedup.total,
-      payload.payment_method,
+      payload.payment_method
     );
   }
 
@@ -104,13 +104,13 @@ export async function upsertValidatedCheckoutOrder(params: {
   if (existingId == null) {
     existingId = reuseOrderId;
   }
- 
+
   const sessionRows = [
     { key: HEADLESS_CHECKOUT_SESSION_META_KEY, value: checkoutSessionId },
     { key: CHECKOUT_SESSION_ID_ORDER_META_KEY, value: checkoutSessionId },
   ];
   const baseMeta = input.meta_data ?? [];
- 
+
   if (existingId != null) {
     const existingFull = await getWooOrder(String(existingId));
     const ex = existingFull as Record<string, unknown>;
@@ -124,14 +124,14 @@ export async function upsertValidatedCheckoutOrder(params: {
         throw new Error("Order does not belong to this account.");
       }
     }
- 
+
     const mergedMeta = mergeWooOrderMetaByKey(
       ex.meta_data as Array<{ id?: number; key: string; value: unknown }>,
-      [...sessionRows, ...baseMeta],
+      [...sessionRows, ...baseMeta]
     );
- 
+
     const linePayload = buildWooLineItemsFullReplacePayload(existingFull, input.line_items);
- 
+
     const phase1: Record<string, unknown> = {
       line_items: linePayload,
       billing: input.billing,
@@ -145,13 +145,13 @@ export async function upsertValidatedCheckoutOrder(params: {
     if (customerIp) {
       phase1.customer_ip_address = customerIp;
     }
- 
+
     const tUp = Date.now();
     const phase1Response = await updateWooOrder(existingId, phase1);
     if (perf) perf.wooCreateMs = Date.now() - tUp;
 
     const existingShippingLineId = Number(
-      (ex.shipping_lines as Array<{ id?: unknown }> | undefined)?.[0]?.id || 0,
+      (ex.shipping_lines as Array<{ id?: unknown }> | undefined)?.[0]?.id || 0
     );
     const extPatch = buildCheckoutExtensionPatch(input, {
       omitMeta: true,
@@ -171,7 +171,7 @@ export async function upsertValidatedCheckoutOrder(params: {
     assertWooOrderPayable(afterWrite);
     return afterWrite;
   }
- 
+
   const order = await createValidatedCheckoutOrder(input, timing, {
     checkoutSessionMeta: sessionRows,
     perf,

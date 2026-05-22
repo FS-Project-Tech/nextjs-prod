@@ -13,6 +13,29 @@ function metaDataString(
   return "";
 }
 
+function metaValueIsEnabled(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => metaValueIsEnabled(item));
+  if (value != null && typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    return metaValueIsEnabled(objectValue.value ?? objectValue.enabled ?? objectValue.checked);
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "yes" || normalized === "true" || normalized === "1" || normalized === "on";
+}
+
+function hasEnabledMeta(
+  meta: Array<{ key?: string; value?: unknown }> | undefined,
+  ...keys: string[]
+): boolean {
+  if (!Array.isArray(meta) || meta.length === 0) return false;
+  const allowedKeys = new Set(keys.map((key) => key.toLowerCase()));
+  return meta.some((row) => {
+    const key = String(row?.key || "").toLowerCase().trim();
+    return allowedKeys.has(key) && metaValueIsEnabled(row?.value);
+  });
+}
+
 function normalizeWooMetaKeyForEta(key: string): string {
   return String(key || "")
     .toLowerCase()
@@ -161,6 +184,29 @@ export function extractEtaAvailabilityDisplayForProduct(
   if (fromProductMeta) return fromProductMeta;
 
   return extractEtaDateDisplayForProduct(product, variation);
+}
+
+export const NO_STOCK_STATUS_UPDATE_MESSAGE = "Product will be available in 10 days";
+
+/**
+ * Mirrors the WooCommerce availability text override for `_no_stock_status_update=yes`.
+ * Variation meta wins when present, otherwise the parent product flag is used.
+ */
+export function extractNoStockStatusUpdateDisplayForProduct(
+  product: WooCommerceProduct,
+  variation: WooCommerceVariation | null,
+): string | null {
+  const keys = ["_no_stock_status_update", "no_stock_status_update"];
+  if (hasEnabledMeta(variation?.meta_data, ...keys)) return NO_STOCK_STATUS_UPDATE_MESSAGE;
+  if (
+    hasEnabledMeta(
+      product.meta_data as Array<{ key?: string; value?: unknown }> | undefined,
+      ...keys,
+    )
+  ) {
+    return NO_STOCK_STATUS_UPDATE_MESSAGE;
+  }
+  return null;
 }
 
 /**

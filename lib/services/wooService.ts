@@ -20,21 +20,21 @@ import {
   HEADLESS_CHECKOUT_SESSION_META_KEY,
 } from "@/lib/checkout/checkoutSessionConstants";
 import { findPendingOrderIdByHeadlessSession } from "@/lib/checkout/resolveExistingPendingCheckoutOrder";
- 
+
 export type { WooCreateOrderInput };
 export { addWooOrderNote, createWooOrder, updateWooOrder, updateWooOrderAsync };
- 
+
 export async function getWooOrder(orderRef: string): Promise<unknown> {
   const ref = String(orderRef || "").trim();
   if (!ref) throw new Error("orderRef required");
   const { data } = await wcAPI.get(`/orders/${encodeURIComponent(ref)}`);
   return data;
 }
- 
+
 /** REST fallback when Store API checkout omits `order_key` (some hosts/plugins). */
 export async function fetchWooOrderKeyById(
   orderId: string | number,
-  timeoutMs: number = Number(process.env.WOOCOMMERCE_ORDER_READ_TIMEOUT_MS || 45000),
+  timeoutMs: number = Number(process.env.WOOCOMMERCE_ORDER_READ_TIMEOUT_MS || 45000)
 ): Promise<string | null> {
   const id = String(orderId).trim();
   if (!id) return null;
@@ -49,11 +49,11 @@ export async function fetchWooOrderKeyById(
     return null;
   }
 }
- 
+
 export async function resolveOrderPostId(orderRef: string): Promise<number | null> {
   const ref = String(orderRef || "").trim();
   if (!ref) return null;
- 
+
   try {
     const { data } = await wcAPI.get(`/orders/${encodeURIComponent(ref)}`);
     const id = Number((data as { id?: unknown })?.id);
@@ -62,7 +62,7 @@ export async function resolveOrderPostId(orderRef: string): Promise<number | nul
     const status = Number((err as { response?: { status?: number } })?.response?.status || 0);
     if (status !== 404) throw err;
   }
- 
+
   const { data: orders } = await wcAPI.get("/orders", {
     params: { search: ref, per_page: 20 },
   });
@@ -75,7 +75,7 @@ export async function resolveOrderPostId(orderRef: string): Promise<number | nul
   const id = Number(match?.id || 0);
   return Number.isFinite(id) && id > 0 ? id : null;
 }
- 
+
 function pickIdCandidates(o: Record<string, unknown>): unknown[] {
   return [
     o.id,
@@ -86,7 +86,7 @@ function pickIdCandidates(o: Record<string, unknown>): unknown[] {
     (o as { woocommerce_order_id?: unknown }).woocommerce_order_id,
   ];
 }
- 
+
 function firstResolvedId(candidates: unknown[]): number | string | null {
   for (const raw of candidates) {
     if (raw == null) continue;
@@ -101,7 +101,7 @@ function firstResolvedId(candidates: unknown[]): number | string | null {
   }
   return null;
 }
- 
+
 export function extractWooOrderKey(order: unknown): string | null {
   if (order == null || typeof order !== "object") return null;
   const k = (order as { order_key?: unknown }).order_key;
@@ -144,10 +144,10 @@ export function extractWooOrderId(order: unknown): number | string | null {
       nested.number != null ||
       nested.order_number != null);
   const o = nestedHasId ? (nested as Record<string, unknown>) : root;
- 
+
   const fromPrimary = firstResolvedId(pickIdCandidates(o));
   if (fromPrimary != null) return fromPrimary;
- 
+
   const orderObj =
     o.order != null && typeof o.order === "object" && !Array.isArray(o.order)
       ? (o.order as Record<string, unknown>)
@@ -158,10 +158,10 @@ export function extractWooOrderId(order: unknown): number | string | null {
     const fromNestedOrder = firstResolvedId(pickIdCandidates(orderObj));
     if (fromNestedOrder != null) return fromNestedOrder;
   }
- 
+
   return null;
 }
- 
+
 /**
  * Single timeout source of truth: axios only (do not combine with AbortController timers — both
  * firing at the same ms produces CanceledError: "canceled" and flaky retries).
@@ -170,28 +170,28 @@ function minimalCreateFirstTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_MINIMAL_CREATE_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 5_000;
 }
- 
+
 /** Second attempt with a higher budget (slow Woo). */
 function minimalCreateRetryTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_MINIMAL_CREATE_RETRY_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 8_000;
 }
- 
+
 function extensionPutFirstTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_EXTENSION_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 10_000;
 }
- 
+
 function extensionPutRetryTimeoutMs(): number {
   const n = Number(process.env.WOOCOMMERCE_CHECKOUT_EXTENSION_RETRY_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 16_000;
 }
- 
+
 function isAbortLike(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   return e.name === "AbortError" || e.name === "CanceledError";
 }
- 
+
 function orderCreateRetriable(e: unknown): boolean {
   if (isTimeoutError(e) || isAbortLike(e)) return true;
   if (!hasAxiosResponse(e)) return true;
@@ -200,7 +200,7 @@ function orderCreateRetriable(e: unknown): boolean {
 }
 
 function extractCheckoutSessionIdFromSessionMeta(
-  sessionMeta: Array<{ key: string; value: unknown }>,
+  sessionMeta: Array<{ key: string; value: unknown }>
 ): string {
   for (const row of sessionMeta) {
     const k = String(row?.key || "");
@@ -223,7 +223,7 @@ async function tryRecoverPendingOrderAfterCreateFailure(
   minimalInput: {
     billing?: { email?: string };
     payment_method?: string;
-  },
+  }
 ): Promise<unknown | null> {
   const sid = extractCheckoutSessionIdFromSessionMeta(sessionMeta);
   const email = String(minimalInput.billing?.email || "").trim();
@@ -236,11 +236,11 @@ async function tryRecoverPendingOrderAfterCreateFailure(
   if (id == null) return null;
   return getWooOrder(String(id));
 }
- 
+
 /** Shipping, fees, coupons, meta — phase-2 PUT only. COD → `processing` after extras are applied. */
 export function buildCheckoutExtensionPatch(
   input: WooCreateOrderInput,
-  options?: { omitMeta?: boolean; existingShippingLineId?: number },
+  options?: { omitMeta?: boolean; existingShippingLineId?: number }
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (String(input.payment_method || "").toLowerCase() === "cod") {
@@ -282,13 +282,11 @@ export function buildCheckoutExtensionPatch(
 /** One POST /orders with extension fields (shipping, fees, coupons, meta) — skips phase-2 PUT when Woo accepts it. */
 function buildSingleShotOrderPayload(
   input: WooCreateOrderInput,
-  sessionMeta: Array<{ key: string; value: unknown }>,
+  sessionMeta: Array<{ key: string; value: unknown }>
 ): Record<string, unknown> {
   const patch = buildCheckoutExtensionPatch(input);
   const status =
-    typeof patch.status === "string" && patch.status.trim()
-      ? patch.status
-      : input.status;
+    typeof patch.status === "string" && patch.status.trim() ? patch.status : input.status;
   const body: Record<string, unknown> = {
     payment_method: input.payment_method,
     payment_method_title: input.payment_method_title,
@@ -316,7 +314,7 @@ async function trySingleShotOrderCreate(
   input: WooCreateOrderInput,
   sessionMeta: Array<{ key: string; value: unknown }>,
   timeoutMs: number,
-  requestId?: string,
+  requestId?: string
 ): Promise<unknown | null> {
   const patch = buildCheckoutExtensionPatch(input);
   if (Object.keys(patch).length === 0) {
@@ -335,10 +333,10 @@ async function trySingleShotOrderCreate(
     return null;
   }
 }
- 
+
 export async function applyOrderExtensionWithRetry(
   orderId: number,
-  patch: Record<string, unknown>,
+  patch: Record<string, unknown>
 ): Promise<unknown> {
   const timeouts = [extensionPutFirstTimeoutMs(), extensionPutRetryTimeoutMs()];
   let lastErr: unknown;
@@ -394,24 +392,24 @@ export async function applyOrderExtensionWithRetry(
   }
   throw lastErr;
 }
- 
+
 export type OrderExtensionTiming =
   | { mode: "inline" }
   | { mode: "after_response"; schedule: (task: () => Promise<void>) => void };
- 
+
 export function validateCreatedLineItems(order: unknown): void {
   const lineItems = Array.isArray((order as { line_items?: unknown })?.line_items)
     ? ((order as { line_items: Array<Record<string, unknown>> }).line_items as Array<
         Record<string, unknown>
       >)
     : [];
- 
+
   if (lineItems.length === 0) {
     const err = new Error("Cart is empty");
     (err as { code?: string }).code = "EMPTY_LINE_ITEMS";
     throw err;
   }
- 
+
   logWooOrderLineItems(
     lineItems.map((li) => ({
       product_id: Number(li?.product_id || 0),
@@ -419,13 +417,13 @@ export function validateCreatedLineItems(order: unknown): void {
       name: typeof li?.name === "string" ? li.name : "",
       quantity: Number(li?.quantity || 0),
       subtotal: String(li?.subtotal ?? ""),
-    })),
+    }))
   );
- 
+
   const invalidMap = lineItems.some((li) => Number(li?.product_id || 0) <= 0);
   if (invalidMap) {
     const err = new Error(
-      "Invalid product mapping from WooCommerce. Likely product type or plugin issue.",
+      "Invalid product mapping from WooCommerce. Likely product type or plugin issue."
     );
     (err as { data?: unknown }).data = {
       type: "woo_invalid_product_mapping",
@@ -434,7 +432,7 @@ export function validateCreatedLineItems(order: unknown): void {
     throw err;
   }
 }
- 
+
 /**
  * Phase 1: minimal POST /orders (fast). Phase 2: PUT shipping, fees, meta, coupons.
  * COD can defer phase 2 via {@link OrderExtensionTiming} `after_response` so callers return JSON sooner.
@@ -445,7 +443,7 @@ export async function createValidatedCheckoutOrder(
   options?: {
     checkoutSessionMeta?: Array<{ key: string; value: unknown }>;
     perf?: { wooCreateMs?: number; wooPatchMs?: number; requestId?: string };
-  },
+  }
 ): Promise<unknown> {
   if (!input.line_items?.length) {
     const err = new Error("Cart is empty");
@@ -460,7 +458,7 @@ export async function createValidatedCheckoutOrder(
       product_id: li.product_id,
       variation_id: li.variation_id,
       quantity: li.quantity,
-    })),
+    }))
   );
 
   const sessionMeta = options?.checkoutSessionMeta ?? [];
@@ -472,7 +470,7 @@ export async function createValidatedCheckoutOrder(
   let orderMinimal: unknown;
   let singleShotOrRecoverMs = 0;
 
-  if (Object.keys(patchProbe).length > 0) {
+  if (Object.keys(patchProbe).length > 0 && input.payment_method !== "afterpay") {
     const tShot = Date.now();
     const shot = await trySingleShotOrderCreate(input, sessionMeta, t1, rid);
     if (shot != null) {
@@ -502,7 +500,7 @@ export async function createValidatedCheckoutOrder(
           requestId: rid,
           orderId: extractWooOrderId(orderMinimal),
           payment_method: input.payment_method,
-        },
+        }
       );
     }
   }
@@ -537,15 +535,18 @@ export async function createValidatedCheckoutOrder(
       if (!orderCreateRetriable(firstErr)) throw firstErr;
       const recoveredAfterFail = await tryRecoverPendingOrderAfterCreateFailure(
         sessionMeta,
-        minimalInput,
+        minimalInput
       );
       if (recoveredAfterFail != null) {
         orderMinimal = recoveredAfterFail;
-        console.warn("[checkout] recovered order after create error (likely timeout; skipping retry POST)", {
-          requestId: rid,
-          orderId: extractWooOrderId(orderMinimal),
-          message: firstErr instanceof Error ? firstErr.message : String(firstErr),
-        });
+        console.warn(
+          "[checkout] recovered order after create error (likely timeout; skipping retry POST)",
+          {
+            requestId: rid,
+            orderId: extractWooOrderId(orderMinimal),
+            message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+          }
+        );
       } else {
         console.warn("[checkout] retry attempt", {
           requestId: rid,
@@ -559,7 +560,7 @@ export async function createValidatedCheckoutOrder(
           if (!orderCreateRetriable(secondErr)) throw secondErr;
           const recoveredSecond = await tryRecoverPendingOrderAfterCreateFailure(
             sessionMeta,
-            minimalInput,
+            minimalInput
           );
           if (recoveredSecond != null) {
             orderMinimal = recoveredSecond;
@@ -577,9 +578,7 @@ export async function createValidatedCheckoutOrder(
   }
 
   if (options?.perf) {
-    options.perf.wooCreateMs = skipMinimalCreate
-      ? singleShotOrRecoverMs
-      : Date.now() - tMinStart;
+    options.perf.wooCreateMs = skipMinimalCreate ? singleShotOrRecoverMs : Date.now() - tMinStart;
   }
 
   console.log("[checkout] woo create success", {
@@ -626,9 +625,7 @@ export async function createValidatedCheckoutOrder(
         const lines = current.shipping_lines;
         if (Array.isArray(lines) && lines.length > 0) {
           const want = String(input.shipping_line.method_id || "");
-          const byMethod = want
-            ? lines.find((l) => String(l.method_id || "") === want)
-            : undefined;
+          const byMethod = want ? lines.find((l) => String(l.method_id || "") === want) : undefined;
           const idRaw = (byMethod ?? lines[0])?.id;
           const n = Number(idRaw);
           if (Number.isFinite(n) && n > 0) {
@@ -679,7 +676,7 @@ export async function createValidatedCheckoutOrder(
             message: e instanceof Error ? e.message : String(e),
           });
         }
-      })().then(() => {}),
+      })().then(() => {})
     );
     return orderMinimal;
   }
@@ -691,7 +688,7 @@ export async function createValidatedCheckoutOrder(
   }
   return updated ?? orderMinimal;
 }
- 
+
 /** Append parcel protection fee line (after order exists). */
 export async function appendParcelProtectionFee(orderId: number): Promise<void> {
   const { data } = await wcAPI.get(`/orders/${orderId}`);

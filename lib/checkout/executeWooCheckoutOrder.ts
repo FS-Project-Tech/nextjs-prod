@@ -1,4 +1,7 @@
-import { INSURANCE_OPTION_META_KEY, PARCEL_PROTECTION_FEE_AUD } from "@/lib/checkout-parcel-protection";
+import {
+  INSURANCE_OPTION_META_KEY,
+  PARCEL_PROTECTION_FEE_AUD,
+} from "@/lib/checkout-parcel-protection";
 import {
   extractWooOrderId,
   extractWooOrderKey,
@@ -21,7 +24,7 @@ import {
   flatNdisOrderMetaRowsFromNdisInfoJson,
 } from "@/lib/checkout/ndisHcpPayload";
 import { humanReadableAdditionalCheckoutMeta } from "@/lib/checkout/additionalOrderMetaHuman";
- 
+
 function normalizeCountry(country: string | undefined): string {
   const c = String(country || "")
     .trim()
@@ -30,17 +33,17 @@ function normalizeCountry(country: string | undefined): string {
   if (c === "AUSTRALIA") return "AU";
   return c;
 }
- 
+
 const META_MAX_SHORT = 512;
 const META_MAX_JSON_BLOB = 8_000;
 const META_MAX_NOTES = 4_000;
- 
+
 function trimMetaString(raw: string, max: number): string {
   const t = raw.trim();
   if (!t) return "";
   return t.length > max ? t.slice(0, max) : t;
 }
- 
+
 /** Keep valid JSON compact; otherwise store a capped raw string (never throw). */
 function safeJsonMetaValue(raw: string | undefined, max: number): string | undefined {
   if (raw == null) return undefined;
@@ -54,8 +57,10 @@ function safeJsonMetaValue(raw: string | undefined, max: number): string | undef
     return capped;
   }
 }
- 
-function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: string; value: unknown }> {
+
+function checkoutOrderMeta(
+  payload: CheckoutInitiatePayload
+): Array<{ key: string; value: unknown }> {
   const rows: Array<{ key: string; value: unknown }> = [];
   const ndisType = trimMetaString(payload.ndis_type ?? "", META_MAX_SHORT);
   if (ndisType) rows.push({ key: "ndis_type", value: ndisType });
@@ -98,7 +103,7 @@ function checkoutOrderMeta(payload: CheckoutInitiatePayload): Array<{ key: strin
   rows.push({ key: "headless_payment_method", value: payload.payment_method });
   return rows;
 }
- 
+
 /** Optional timings filled during `/api/checkout` for observability (no API contract change). */
 export type CheckoutRoutePerf = {
   /** Checkout correlation id (crypto.randomUUID from `/api/checkout`). */
@@ -111,7 +116,12 @@ export type CheckoutRoutePerf = {
 };
 
 export type WooCheckoutExecuteResult =
-  | { kind: "cod"; orderIdRaw: string | number | bigint; orderKey: string; wooOrderTotal: string | null }
+  | {
+      kind: "cod";
+      orderIdRaw: string | number | bigint;
+      orderKey: string;
+      wooOrderTotal: string | null;
+    }
   | {
       kind: "afterpay";
       orderIdRaw: string | number | bigint;
@@ -134,7 +144,7 @@ export type WooCheckoutExecuteResult =
       orderKey: string;
       wooOrderTotal: string | null;
     };
- 
+
 /**
  * Creates the WooCommerce order, optional parcel protection fee, then eWAY redirect or COD completion.
  * Used by both synchronous create-order and deferred background sync.
@@ -208,7 +218,7 @@ export async function executeWooCheckoutOrder(input: {
         : undefined,
     meta_data: checkoutOrderMeta(payload),
   };
- 
+
   let order = await upsertValidatedCheckoutOrder({
     payload,
     input: wooInput,
@@ -243,7 +253,7 @@ export async function executeWooCheckoutOrder(input: {
       reason: "eway_handlePayment_requires_woo_order_id_and_key",
     });
   }
- 
+
   /** COD: extension runs off the hot path; wait briefly for Woo to show a payable total after the deferred PATCH. */
   if (orderExtensionTiming.mode === "after_response" && payload.payment_method === "cod") {
     const postIdRaw = extractWooOrderId(order);
@@ -284,23 +294,23 @@ export async function executeWooCheckoutOrder(input: {
       if (lastErr != null) throw lastErr;
     }
   }
- 
+
   const orderIdRaw = extractWooOrderId(order);
   if (orderIdRaw == null) {
     throw new Error("WooCommerce did not return an order ID.");
   }
- 
+
   const postIdNum =
     typeof orderIdRaw === "number" ? orderIdRaw : Number.parseInt(String(orderIdRaw), 10);
   const postId = Number.isFinite(postIdNum) && postIdNum > 0 ? postIdNum : null;
- 
+
   const root = order as Record<string, unknown>;
   const totalRaw = root.total;
   const totalOk =
     (typeof totalRaw === "string" && Number.parseFloat(totalRaw) > 0) ||
     (typeof totalRaw === "number" && Number.isFinite(totalRaw) && totalRaw > 0);
   const keyFromCreate = extractWooOrderKey(order);
- 
+
   let orderForPayment: unknown = order;
   if ((!totalOk || !keyFromCreate) && postId != null) {
     try {
@@ -309,18 +319,16 @@ export async function executeWooCheckoutOrder(input: {
       console.warn("[executeWooCheckout] order refetch failed; using create response", refetchErr);
     }
   }
- 
+
   const orderKey = extractWooOrderKey(orderForPayment);
   if (!orderKey) {
     throw new Error("WooCommerce did not return order_key for this order.");
   }
- 
-  const validatedEwayTotalStr =
-    !isCod && checkoutTotals ? checkoutTotals.total.toFixed(2) : null;
- 
-  const wooOrderTotal =
-    validatedEwayTotalStr ?? readWooOrderTotal(orderForPayment);
- 
+
+  const validatedEwayTotalStr = !isCod && checkoutTotals ? checkoutTotals.total.toFixed(2) : null;
+
+  const wooOrderTotal = validatedEwayTotalStr ?? readWooOrderTotal(orderForPayment);
+
   if (isCod) {
     let wooTotal = readWooOrderTotal(orderForPayment);
     const parsed = wooTotal != null ? Number.parseFloat(wooTotal) : NaN;
@@ -415,7 +423,7 @@ export async function executeWooCheckoutOrder(input: {
     perf.paymentMs = Date.now() - tPay;
     console.log("[checkout] payment init time:", { requestId, ms: perf.paymentMs });
   }
- 
+
   if (paymentResult.type === "error") {
     return {
       kind: "eway_error",
@@ -426,7 +434,7 @@ export async function executeWooCheckoutOrder(input: {
       wooOrderTotal,
     };
   }
- 
+
   return {
     kind: "eway",
     orderIdRaw,
