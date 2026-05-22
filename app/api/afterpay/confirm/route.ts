@@ -27,7 +27,7 @@ export async function OPTIONS(req: NextRequest) {
         Vary: "Origin",
       },
     }),
-    requestId,
+    requestId
   );
 }
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   if (!afterpayConfigured()) {
     return withRequestId(
       NextResponse.json({ success: false, error: "Afterpay is not configured." }, { status: 503 }),
-      requestId,
+      requestId
     );
   }
 
@@ -53,24 +53,29 @@ export async function POST(req: NextRequest) {
   } catch {
     return withRequestId(
       NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 }),
-      requestId,
+      requestId
     );
   }
 
   const token =
-    typeof raw === "object" && raw !== null && typeof (raw as { token?: unknown }).token === "string"
-      ? ((raw as { token: string }).token).trim()
+    typeof raw === "object" &&
+    raw !== null &&
+    typeof (raw as { token?: unknown }).token === "string"
+      ? (raw as { token: string }).token.trim()
       : "";
 
   try {
-    const result = await confirmAfterpayOrder({ req, token });
+    const result = await confirmAfterpayOrder({ req, token, requestId });
     if (result.success === false) {
       return withRequestId(
         corsResponse(
           req,
-          NextResponse.json({ success: false, error: result.error }, { status: result.status ?? 400 }),
+          NextResponse.json(
+            { success: false, error: result.error },
+            { status: result.status ?? 400 }
+          )
         ),
-        requestId,
+        requestId
       );
     }
 
@@ -83,9 +88,9 @@ export async function POST(req: NextRequest) {
           requestId,
           defaultMessage: "Afterpay confirmation failed.",
           logPrefix: "api/afterpay/confirm",
-        }),
+        })
       ),
-      requestId,
+      requestId
     );
   }
 }

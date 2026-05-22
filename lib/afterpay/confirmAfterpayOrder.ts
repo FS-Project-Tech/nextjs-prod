@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
 import { stripEmptyNdisHcpFromInitiatePayload } from "@/lib/checkout/ndisHcpPayload";
 import { resolveCheckoutActor } from "@/utils/checkout-auth";
 import { validateAndRecalculateCheckout } from "@/utils/checkout-pricing";
@@ -30,6 +30,7 @@ import {
 type PendingEnvelope = {
   payload: CheckoutInitiatePayload;
   totals: CheckoutTotals;
+  merchantReference?: string;
 };
 
 function clientIpFromRequest(req: NextRequest): string {
@@ -46,9 +47,67 @@ function clientIpFromRequest(req: NextRequest): string {
 function parseMoneyCurrency(m: unknown): string {
   if (!m || typeof m !== "object") return "AUD";
   const c = (m as { currency?: string }).currency;
-  return String(c || "AUD")
-    .trim()
-    .toUpperCase() || "AUD";
+  return (
+    String(c || "AUD")
+      .trim()
+      .toUpperCase() || "AUD"
+  );
+}
+
+function extractMerchantReference(payment: Record<string, unknown> | null | undefined): string {
+  if (!payment) return "";
+  return typeof payment.merchantReference === "string"
+    ? payment.merchantReference.trim()
+    : typeof payment.orderId === "string"
+      ? payment.orderId.trim()
+      : "";
+}
+
+function isDeclinedPayment(payment: Record<string, unknown> | null | undefined): boolean {
+  if (!payment) return false;
+  const status = String(payment.status ?? "").toUpperCase();
+  const state = String(payment.paymentState ?? "").toUpperCase();
+  return status === "DECLINED" || state.includes("DECLINED");
+}
+
+function afterpayTimingLabel(requestId: string | undefined, phase: string): string {
+  return `[afterpay confirm] ${requestId ? `${requestId} ` : ""}${phase}`;
+}
+
+async function timedAfterpayPhase<T>(
+  requestId: string | undefined,
+  phase: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const label = afterpayTimingLabel(requestId, phase);
+  const started = Date.now();
+  console.time(label);
+  try {
+    return await fn();
+  } finally {
+    console.timeEnd(label);
+    console.log("[afterpay confirm] phase timing", {
+      requestId,
+      phase,
+      ms: Date.now() - started,
+    });
+  }
+}
+
+async function runDeferredAfterpayPhase(
+  requestId: string | undefined,
+  phase: string,
+  fn: () => Promise<void>
+): Promise<void> {
+  try {
+    await timedAfterpayPhase(requestId, phase, fn);
+  } catch (e) {
+    console.warn("[afterpay confirm] deferred phase failed", {
+      requestId,
+      phase,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 export type ConfirmAfterpaySuccess = {
@@ -64,22 +123,83 @@ export type ConfirmAfterpayFailure = {
   status?: number;
 };
 
+function scheduleAfterpayPostResponseTasks(params: {
+  requestId?: string;
+  token: string;
+  merchantReference: string;
+  postIdNum: number | null;
+  paymentStatus: string;
+  paymentRecord: Record<string, unknown>;
+}): void {
+  const { requestId, token, merchantReference, postIdNum, paymentStatus, paymentRecord } = params;
+
+  after(async () => {
+    if (postIdNum != null) {
+      await runDeferredAfterpayPhase(requestId, "woo-update-afterpay-meta", async () => {
+        const full = await getWooOrder(String(postIdNum));
+        const om = full as {
+          meta_data?: Array<{ id?: number; key: string; value: unknown }>;
+        };
+        await updateWooOrder(postIdNum, {
+          meta_data: mergeWooOrderMetaByKey(om.meta_data, [
+            { key: "_afterpay_payment_token", value: token },
+            { key: "Afterpay Payment Status", value: String(paymentStatus) },
+            {
+              key: "Afterpay Payment Id",
+              value: String(paymentRecord.id ?? paymentRecord.paymentId ?? ""),
+            },
+          ]),
+        });
+      });
+    }
+
+    await runDeferredAfterpayPhase(requestId, "redis-cleanup", async () => {
+      await deletePendingCheckoutPayload(token);
+      if (merchantReference && merchantReference !== token) {
+        await deletePendingCheckoutPayload(merchantReference);
+      }
+    });
+  });
+}
+
 /**
  * Validates Afterpay payment, captures funds, creates WooCommerce order via {@link executeWooCheckoutOrder}.
  */
 export async function confirmAfterpayOrder(params: {
   req: NextRequest;
   token: string;
+  requestId?: string;
 }): Promise<ConfirmAfterpaySuccess | ConfirmAfterpayFailure> {
+  const started = Date.now();
+  try {
+    return await confirmAfterpayOrderInner(params);
+  } finally {
+    console.log("[afterpay confirm] total timing", {
+      requestId: params.requestId,
+      ms: Date.now() - started,
+    });
+  }
+}
+
+async function confirmAfterpayOrderInner(params: {
+  req: NextRequest;
+  token: string;
+  requestId?: string;
+}): Promise<ConfirmAfterpaySuccess | ConfirmAfterpayFailure> {
+  const requestId = params.requestId;
   const token = String(params.token || "").trim();
   if (token.length < 8) {
     return { success: false, error: "Missing or invalid Afterpay token.", status: 400 };
   }
 
-  const existingId = await getOrderIdForAfterpayToken(token);
+  const existingId = await timedAfterpayPhase(requestId, "idempotency-lookup", () =>
+    getOrderIdForAfterpayToken(token)
+  );
   if (existingId) {
     try {
-      const order = await getWooOrder(existingId);
+      const order = await timedAfterpayPhase(requestId, "duplicate-order-read", () =>
+        getWooOrder(existingId)
+      );
       const oid = extractWooOrderId(order);
       const ok = extractWooOrderKey(order);
       if (oid != null && ok) {
@@ -95,30 +215,55 @@ export async function confirmAfterpayOrder(params: {
     }
   }
 
-  let payment: Record<string, unknown>;
+  let rawPending = await timedAfterpayPhase(requestId, "pending-payload-read", () =>
+    getPendingCheckoutPayload(token)
+  );
+  let envelope: PendingEnvelope | null = null;
+  if (rawPending) {
+    try {
+      envelope = JSON.parse(rawPending) as PendingEnvelope;
+    } catch {
+      return { success: false, error: "Invalid pending checkout data.", status: 400 };
+    }
+  }
+
+  let payment: Record<string, unknown> | null = null;
+  let lookupError: unknown = null;
   try {
-    payment = await afterpayGetPayment(token);
+    payment = await timedAfterpayPhase(requestId, "afterpay-payment-lookup", () =>
+      afterpayGetPayment(token)
+    );
   } catch (e) {
-    return {
-      success: false,
-      error: e instanceof Error ? e.message : "Afterpay payment lookup failed.",
-      status: 502,
-    };
+    lookupError = e;
   }
 
-  const merchantReference =
-    typeof payment.merchantReference === "string"
-      ? payment.merchantReference.trim()
-      : typeof payment.orderId === "string"
-        ? payment.orderId.trim()
-        : "";
+  let merchantReference =
+    extractMerchantReference(payment) ||
+    (typeof envelope?.merchantReference === "string" ? envelope.merchantReference.trim() : "");
 
-  if (!merchantReference) {
-    return { success: false, error: "Afterpay payment missing merchant reference.", status: 400 };
+  if (!envelope && merchantReference) {
+    rawPending = await timedAfterpayPhase(
+      requestId,
+      "pending-payload-read-merchant-reference",
+      () => getPendingCheckoutPayload(merchantReference)
+    );
+    if (rawPending) {
+      try {
+        envelope = JSON.parse(rawPending) as PendingEnvelope;
+      } catch {
+        return { success: false, error: "Invalid pending checkout data.", status: 400 };
+      }
+    }
   }
-
-  const rawPending = await getPendingCheckoutPayload(merchantReference);
-  if (!rawPending) {
+  if (!envelope) {
+    if (lookupError && !merchantReference) {
+      return {
+        success: false,
+        error:
+          lookupError instanceof Error ? lookupError.message : "Afterpay payment lookup failed.",
+        status: 502,
+      };
+    }
     return {
       success: false,
       error:
@@ -127,11 +272,16 @@ export async function confirmAfterpayOrder(params: {
     };
   }
 
-  let envelope: PendingEnvelope;
-  try {
-    envelope = JSON.parse(rawPending) as PendingEnvelope;
-  } catch {
-    return { success: false, error: "Invalid pending checkout data.", status: 400 };
+  merchantReference =
+    merchantReference ||
+    (typeof envelope.merchantReference === "string" ? envelope.merchantReference.trim() : "");
+
+  if (payment && isDeclinedPayment(payment)) {
+    return {
+      success: false,
+      error: "Afterpay declined this payment. Please choose another payment method.",
+      status: 402,
+    };
   }
 
   let payload = stripEmptyNdisHcpFromInitiatePayload(envelope.payload);
@@ -141,30 +291,34 @@ export async function confirmAfterpayOrder(params: {
   };
 
   const expectedTotals = envelope.totals;
-  const payCurrency = parseMoneyCurrency(payment.originalAmount || payment.openToCaptureAmount);
+  const payCurrency = parseMoneyCurrency(payment?.originalAmount || payment?.openToCaptureAmount);
 
-  const amountObj = (payment.openToCaptureAmount ?? payment.originalAmount) as unknown;
-  if (
-    !moneyMatchesTotal(amountObj, expectedTotals.total, payCurrency) &&
-    !moneyMatchesTotal(amountObj, expectedTotals.total, "AUD")
-  ) {
-    return {
-      success: false,
-      error: "Payment amount does not match checkout total. Order was not created.",
-      status: 409,
-    };
+  const amountObj = (payment?.originalAmount ?? payment?.openToCaptureAmount) as unknown;
+  if (payment) {
+    if (
+      !moneyMatchesTotal(amountObj, expectedTotals.total, payCurrency) &&
+      !moneyMatchesTotal(amountObj, expectedTotals.total, "AUD")
+    ) {
+      return {
+        success: false,
+        error: "Payment amount does not match checkout total. Order was not created.",
+        status: 409,
+      };
+    }
   }
 
-  const statusRaw = String(payment.status ?? payment.paymentState ?? "").toUpperCase();
+  const statusRaw = String(payment?.status ?? payment?.paymentState ?? "").toUpperCase();
   const alreadyCaptured =
-    statusRaw.includes("CAPTURE") ||
-    statusRaw === "CAPTURED" ||
-    statusRaw.includes("COMPLETED");
+    statusRaw.includes("CAPTURE") || statusRaw === "CAPTURED" || statusRaw.includes("COMPLETED");
 
   let captureBody: Record<string, unknown> | null = null;
   if (!alreadyCaptured) {
     try {
-      captureBody = await afterpayCapturePayment(token);
+      captureBody = await timedAfterpayPhase(requestId, "afterpay-capture", () =>
+        afterpayCapturePayment(token, {
+          ...(merchantReference ? { merchantReference } : {}),
+        })
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/already|capture/i.test(msg)) {
@@ -175,16 +329,50 @@ export async function confirmAfterpayOrder(params: {
     }
   }
 
+  if (captureBody && isDeclinedPayment(captureBody)) {
+    return {
+      success: false,
+      error: "Afterpay declined this payment. Please choose another payment method.",
+      status: 402,
+    };
+  }
+
+  const capturedMerchantReference = extractMerchantReference(captureBody);
+  if (!merchantReference && capturedMerchantReference) {
+    merchantReference = capturedMerchantReference;
+  }
+
+  const capturedAmountObj = (captureBody?.originalAmount ??
+    captureBody?.openToCaptureAmount) as unknown;
+  if (captureBody) {
+    const captureCurrency = parseMoneyCurrency(
+      captureBody.originalAmount || captureBody.openToCaptureAmount
+    );
+    if (
+      !moneyMatchesTotal(capturedAmountObj, expectedTotals.total, captureCurrency) &&
+      !moneyMatchesTotal(capturedAmountObj, expectedTotals.total, "AUD")
+    ) {
+      return {
+        success: false,
+        error: "Captured payment amount does not match checkout total. Order was not created.",
+        status: 409,
+      };
+    }
+  }
+
   const paymentStatus =
     typeof captureBody?.status === "string"
       ? captureBody.status
-      : typeof payment.status === "string"
+      : typeof payment?.status === "string"
         ? payment.status
         : "CAPTURED";
+  const paymentRecord = captureBody ?? payment ?? {};
 
   let pricing;
   try {
-    pricing = await validateAndRecalculateCheckout(payload);
+    pricing = await timedAfterpayPhase(requestId, "checkout-pricing-validation", () =>
+      validateAndRecalculateCheckout(payload)
+    );
   } catch (e) {
     return {
       success: false,
@@ -204,10 +392,12 @@ export async function confirmAfterpayOrder(params: {
     };
   }
 
-  const cartCheck = await validateCartForEwayCheckout({
-    cart_items: payload.cart_items!,
-    totals: pricing.totals,
-  });
+  const cartCheck = await timedAfterpayPhase(requestId, "cart-validation", () =>
+    validateCartForEwayCheckout({
+      cart_items: payload.cart_items!,
+      totals: pricing.totals,
+    })
+  );
   if (cartCheck.ok === false) {
     return {
       success: false,
@@ -216,15 +406,9 @@ export async function confirmAfterpayOrder(params: {
     };
   }
 
-  const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
-  try {
-    const wpToken = await getCheckoutWpToken(params.req);
-    await syncCheckoutCustomerAfterOrder(actor, payload, wpToken);
-  } catch (e) {
-    console.warn("[afterpay confirm] customer profile / address book sync failed", {
-      message: e instanceof Error ? e.message : String(e),
-    });
-  }
+  const actor = await timedAfterpayPhase(requestId, "checkout-actor-resolve", () =>
+    resolveCheckoutActor({ skipNdisCustomerLookup: true })
+  );
 
   const checkoutSessionId =
     typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
@@ -233,16 +417,21 @@ export async function confirmAfterpayOrder(params: {
 
   let result;
   try {
-    result = await executeWooCheckoutOrder({
-      payload,
-      wooLineItems: pricing.wooLineItems,
-      shippingLine: pricing.shippingLine,
-      actor,
-      customerIp: clientIpFromRequest(params.req) || undefined,
-      orderExtensionTiming: { mode: "inline" },
-      checkoutSessionId,
-      totals: pricing.totals,
-    });
+    const wooPerf = { requestId };
+    result = await timedAfterpayPhase(requestId, "woo-create-order", () =>
+      executeWooCheckoutOrder({
+        payload,
+        wooLineItems: pricing.wooLineItems,
+        shippingLine: pricing.shippingLine,
+        actor,
+        customerIp: clientIpFromRequest(params.req) || undefined,
+        orderExtensionTiming: { mode: "inline" },
+        checkoutSessionId,
+        totals: pricing.totals,
+        preferMinimalOrderCreate: true,
+        perf: wooPerf,
+      })
+    );
   } catch (e) {
     console.error("[afterpay confirm] WooCommerce order creation failed post-capture", e);
     return {
@@ -264,30 +453,30 @@ export async function confirmAfterpayOrder(params: {
   const orderIdRaw = result.orderIdRaw;
   const orderKey = result.orderKey;
   const postIdNum =
-    typeof orderIdRaw === "number"
-      ? orderIdRaw
-      : Number.parseInt(String(orderIdRaw), 10);
+    typeof orderIdRaw === "number" ? orderIdRaw : Number.parseInt(String(orderIdRaw), 10);
 
-  if (Number.isFinite(postIdNum) && postIdNum > 0) {
-    try {
-      const full = await getWooOrder(String(postIdNum));
-      const om = full as {
-        meta_data?: Array<{ id?: number; key: string; value: unknown }>;
-      };
-      await updateWooOrder(postIdNum, {
-        meta_data: mergeWooOrderMetaByKey(om.meta_data, [
-          { key: "_afterpay_payment_token", value: token },
-          { key: "Afterpay Payment Status", value: String(paymentStatus) },
-          { key: "Afterpay Payment Id", value: String(payment.id ?? payment.paymentId ?? "") },
-        ]),
-      });
-    } catch (e) {
-      console.warn("[afterpay confirm] meta update failed", e);
-    }
-    await rememberOrderForAfterpayToken(token, String(postIdNum));
+  const validPostId = Number.isFinite(postIdNum) && postIdNum > 0 ? postIdNum : null;
+  if (validPostId != null) {
+    await timedAfterpayPhase(requestId, "remember-order-token", () =>
+      rememberOrderForAfterpayToken(token, String(validPostId))
+    );
   }
 
-  await deletePendingCheckoutPayload(merchantReference);
+  after(async () => {
+    await runDeferredAfterpayPhase(requestId, "customer-profile-sync", async () => {
+      const wpToken = await getCheckoutWpToken(params.req);
+      await syncCheckoutCustomerAfterOrder(actor, payload, wpToken);
+    });
+  });
+
+  scheduleAfterpayPostResponseTasks({
+    requestId,
+    token,
+    merchantReference,
+    postIdNum: validPostId,
+    paymentStatus,
+    paymentRecord,
+  });
 
   return {
     success: true,

@@ -23,7 +23,7 @@ function addrBlock(
   state: string | undefined,
   postcode: string,
   country: string,
-  phone?: string,
+  phone?: string
 ) {
   const name = `${first} ${last}`.trim();
   return {
@@ -49,7 +49,7 @@ export function buildAfterpayCreateCheckoutBody(params: {
   merchantReference: string;
   siteUrl: string;
 }): Record<string, unknown> {
-  const { payload, totals, wooLineItems, shippingLine, merchantReference, siteUrl } = params;
+  const { payload, totals, wooLineItems, merchantReference, siteUrl } = params;
   const currency = currencyForCountry(payload.shipping.country || payload.billing.country);
   const b = payload.billing;
   const s = payload.shipping;
@@ -70,7 +70,7 @@ export function buildAfterpayCreateCheckoutBody(params: {
     b.state,
     b.postcode,
     normalizeCountry(b.country),
-    b.phone,
+    b.phone
   );
   const shipping = addrBlock(
     s.first_name,
@@ -81,7 +81,7 @@ export function buildAfterpayCreateCheckoutBody(params: {
     s.state,
     s.postcode,
     normalizeCountry(s.country),
-    s.phone || b.phone,
+    s.phone || b.phone
   );
 
   const items: Array<{
@@ -98,11 +98,8 @@ export function buildAfterpayCreateCheckoutBody(params: {
     const unit = Number((lineTotal / qty).toFixed(2));
     items.push({
       name:
-        (typeof cartLine?.name === "string" && cartLine.name.trim()) ||
-        `Product ${li.product_id}`,
-      sku:
-        (typeof cartLine?.sku === "string" && cartLine.sku.trim()) ||
-        String(li.product_id),
+        (typeof cartLine?.name === "string" && cartLine.name.trim()) || `Product ${li.product_id}`,
+      sku: (typeof cartLine?.sku === "string" && cartLine.sku.trim()) || String(li.product_id),
       quantity: qty,
       price: {
         amount: unit.toFixed(2),
@@ -123,7 +120,6 @@ export function buildAfterpayCreateCheckoutBody(params: {
     });
   }
 
-  const discountAmount = totals.discount.toFixed(2);
   const shippingAmount = totals.shipping.toFixed(2);
   const taxAmount = totals.gst.toFixed(2);
   const totalAmount = totals.total.toFixed(2);
@@ -144,7 +140,16 @@ export function buildAfterpayCreateCheckoutBody(params: {
     merchantReference,
     taxAmount: { amount: taxAmount, currency },
     shippingAmount: { amount: shippingAmount, currency },
-    discountAmount: { amount: discountAmount, currency },
+    ...(totals.discount > 0
+      ? {
+          discounts: [
+            {
+              displayName: "Discount",
+              amount: { amount: totals.discount.toFixed(2), currency },
+            },
+          ],
+        }
+      : {}),
   };
 }
 

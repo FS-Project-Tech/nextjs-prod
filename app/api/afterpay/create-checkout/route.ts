@@ -22,7 +22,7 @@ import { afterpayConfigured, afterpaySiteUrl } from "@/lib/afterpay/env";
 import { parseAfterpayCheckoutBody } from "@/lib/afterpay/schema";
 import { savePendingCheckoutPayload } from "@/lib/afterpay/pendingSession";
 import { buildAfterpayCreateCheckoutBody } from "@/lib/afterpay/buildCheckoutRequest";
-import { afterpayCreateCheckout } from "@/lib/afterpay/afterpayHttp";
+import { afterpayCreateCheckout, isAfterpayApiError } from "@/lib/afterpay/afterpayHttp";
 import {
   assertPayloadMatchesQuoteSnapshot,
   isQuoteSnapshotFresh,
@@ -47,7 +47,7 @@ export async function OPTIONS(req: NextRequest) {
         Vary: "Origin",
       },
     }),
-    requestId,
+    requestId
   );
 }
 
@@ -64,9 +64,9 @@ export async function POST(req: NextRequest) {
     return withRequestId(
       NextResponse.json(
         { success: false, error: "Afterpay is not configured on this store." },
-        { status: 503 },
+        { status: 503 }
       ),
-      requestId,
+      requestId
     );
   }
 
@@ -76,11 +76,12 @@ export async function POST(req: NextRequest) {
       NextResponse.json(
         {
           success: false,
-          error: "AFTERPAY_REDIRECT_BASE_URL (or NEXT_PUBLIC_SITE_URL) is required for Afterpay redirects.",
+          error:
+            "AFTERPAY_REDIRECT_BASE_URL (or NEXT_PUBLIC_SITE_URL) is required for Afterpay redirects.",
         },
-        { status: 503 },
+        { status: 503 }
       ),
-      requestId,
+      requestId
     );
   }
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return withRequestId(
       NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 }),
-      requestId,
+      requestId
     );
   }
 
@@ -99,7 +100,10 @@ export async function POST(req: NextRequest) {
     payload = parseAfterpayCheckoutBody(raw);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Invalid checkout payload";
-    return withRequestId(NextResponse.json({ success: false, error: message }, { status: 400 }), requestId);
+    return withRequestId(
+      NextResponse.json({ success: false, error: message }, { status: 400 }),
+      requestId
+    );
   }
 
   try {
@@ -128,19 +132,28 @@ export async function POST(req: NextRequest) {
       if (!verifyQuoteSignature(snapshot, signature)) {
         return withRequestId(
           NextResponse.json(
-            { success: false, error: "Invalid or expired quote signature. Refresh totals and try again." },
-            { status: 401 },
+            {
+              success: false,
+              error: "Invalid or expired quote signature. Refresh totals and try again.",
+            },
+            { status: 401 }
           ),
-          requestId,
+          requestId
         );
       }
-      if (!isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)) {
+      if (
+        !isQuoteSnapshotFresh(snapshot, Date.now(), quoteSigningConstants.DEFAULT_QUOTE_MAX_AGE_MS)
+      ) {
         return withRequestId(
           NextResponse.json(
-            { success: false, error: "Quote expired. Refresh totals and try again.", code: "QUOTE_EXPIRED" },
-            { status: 410 },
+            {
+              success: false,
+              error: "Quote expired. Refresh totals and try again.",
+              code: "QUOTE_EXPIRED",
+            },
+            { status: 410 }
           ),
-          requestId,
+          requestId
         );
       }
       const match = assertPayloadMatchesQuoteSnapshot(payload, snapshot);
@@ -148,9 +161,9 @@ export async function POST(req: NextRequest) {
         return withRequestId(
           NextResponse.json(
             { success: false, error: match.message, code: "QUOTE_PAYLOAD_MISMATCH" },
-            { status: 409 },
+            { status: 409 }
           ),
-          requestId,
+          requestId
         );
       }
       pricing = {
@@ -174,18 +187,20 @@ export async function POST(req: NextRequest) {
             success: false,
             error: cartCheck.errors[0]?.message ?? "Cart validation failed",
           },
-          { status: 400 },
+          { status: 400 }
         ),
-        requestId,
+        requestId
       );
     }
 
     const merchantReference = randomUUID();
 
-    await savePendingCheckoutPayload(
+    const pendingEnvelopeJson = JSON.stringify({
+      payload,
+      totals: pricing.totals,
       merchantReference,
-      JSON.stringify({ payload, totals: pricing.totals }),
-    );
+    });
+    await savePendingCheckoutPayload(merchantReference, pendingEnvelopeJson);
 
     const checkoutBody = buildAfterpayCreateCheckoutBody({
       payload,
@@ -197,15 +212,20 @@ export async function POST(req: NextRequest) {
     });
 
     const ap = await afterpayCreateCheckout(checkoutBody);
-    const redirectCheckoutUrl = typeof ap.redirectCheckoutUrl === "string" ? ap.redirectCheckoutUrl.trim() : "";
+    const redirectCheckoutUrl =
+      typeof ap.redirectCheckoutUrl === "string" ? ap.redirectCheckoutUrl.trim() : "";
     if (!redirectCheckoutUrl) {
       return withRequestId(
         NextResponse.json(
           { success: false, error: "Afterpay did not return a redirect URL." },
-          { status: 502 },
+          { status: 502 }
         ),
-        requestId,
+        requestId
       );
+    }
+    const afterpayToken = typeof ap.token === "string" ? ap.token.trim() : "";
+    if (afterpayToken) {
+      await savePendingCheckoutPayload(afterpayToken, pendingEnvelopeJson);
     }
 
     return withRequestId(
@@ -215,11 +235,35 @@ export async function POST(req: NextRequest) {
           success: true,
           redirectCheckoutUrl,
           merchantReference,
-        }),
+        })
       ),
-      requestId,
+      requestId
     );
   } catch (error: unknown) {
+    if (isAfterpayApiError(error)) {
+      console.warn("[api/afterpay/create-checkout] afterpay rejected checkout", {
+        requestId,
+        status: error.httpStatus,
+        errorCode: error.errorCode || null,
+        message: error.message,
+      });
+      return withRequestId(
+        corsResponse(
+          req,
+          NextResponse.json(
+            {
+              success: false,
+              error: error.publicMessage,
+              code: error.errorCode || "AFTERPAY_REJECTED",
+              requestId,
+            },
+            { status: error.httpStatus >= 500 ? 502 : 400 }
+          )
+        ),
+        requestId
+      );
+    }
+
     return withRequestId(
       corsResponse(
         req,
@@ -227,9 +271,9 @@ export async function POST(req: NextRequest) {
           requestId,
           defaultMessage: "Unable to start Afterpay checkout.",
           logPrefix: "api/afterpay/create-checkout",
-        }),
+        })
       ),
-      requestId,
+      requestId
     );
   }
 }
