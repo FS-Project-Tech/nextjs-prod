@@ -10,6 +10,8 @@ interface WPJwtResponse {
   user_display_name?: string;
 }
 
+const WP_JWT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
 async function loginWithWordPress(username: string, password: string) {
   const base = process.env.NEXT_PUBLIC_WP_URL;
   if (!base) {
@@ -74,6 +76,10 @@ async function loginWithWordPress(username: string, password: string) {
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt", // NextAuth manages its own JWT; WP JWT is stored inside it
+    maxAge: WP_JWT_SESSION_MAX_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: WP_JWT_SESSION_MAX_AGE_SECONDS,
   },
   providers: [
     Credentials({
@@ -100,13 +106,13 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       // `user` is defined only on initial login
       if (user) {
-        token.wpToken = (user as any).wpToken;
-        token.roles = (user as any).roles || [];
+        token.wpToken = user.wpToken;
+        token.roles = user.roles || [];
         token.name = user.name;
         token.email = user.email;
         token.sub = user.id as string;
         // Guest → customer order linking once per sign-in (do not await — keep login responsive)
-        void linkGuestOrdersAfterLogin((user as any).wpToken as string | undefined);
+        void linkGuestOrdersAfterLogin(user.wpToken);
       }
       return token;
     },
@@ -127,13 +133,13 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.name = token.name ?? session.user.name;
         session.user.email = token.email ?? session.user.email;
-        (session.user as any).id = token.sub ?? undefined;
-        (session.user as any).roles = token.roles ?? [];
-        (session.user as any).hasWpToken = Boolean(token.wpToken);
+        session.user.id = token.sub ?? undefined;
+        session.user.roles = token.roles ?? [];
+        session.user.hasWpToken = Boolean(token.wpToken);
       }
 
       // Expose the WP JWT on the session object so server routes can use it
-      (session as any).wpToken = token.wpToken;
+      session.wpToken = token.wpToken;
 
       return session;
     },

@@ -3,6 +3,7 @@
 
 import { useUser } from "@/hooks/useUser";
 import { useQuery } from "@tanstack/react-query";
+import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
 
 interface DashboardOverviewClientProps {
@@ -20,15 +21,25 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
 
   // Last login from localStorage
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem("lastLogin");
-    if (stored) {
-      setLastLogin(new Date(stored).toLocaleString());
-    } else {
-      const now = new Date();
-      setLastLogin(now.toLocaleString());
-      localStorage.setItem("lastLogin", now.toISOString());
-    }
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      setMounted(true);
+      const stored = localStorage.getItem("lastLogin");
+      if (stored) {
+        setLastLogin(new Date(stored).toLocaleString());
+      } else {
+        const now = new Date();
+        setLastLogin(now.toLocaleString());
+        localStorage.setItem("lastLogin", now.toISOString());
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Customer stats from your existing API
@@ -49,6 +60,10 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
           console.log("Customer stats:", data);
         }
         return data;
+      }
+      if (response.status === 401) {
+        await signOut({ callbackUrl: "/login?reason=session-expired", redirect: true });
+        throw new Error("Session expired. Please login again.");
       }
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || `Failed to fetch stats: ${response.status}`);
@@ -80,11 +95,11 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
         <p className="text-teal-100">Here&apos;s an overview of your account activity</p>
       </div>
 
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+      {/* <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
         <p className="text-sm leading-6 text-amber-900">
-          <strong className="font-semibold">Important Notice:</strong>{" "}
-          We are currently migrating our system, so you may not be able to see all of your orders
-          at the moment. Our team is actively working on syncing your orders into the new system.
+          <strong className="font-semibold">Important Notice:</strong> We are currently migrating
+          our system, so you may not be able to see all of your orders at the moment. Our team is
+          actively working on syncing your orders into the new system.
         </p>
         <p className="mt-2 text-sm leading-6 text-amber-900">
           If you have any questions or need assistance, please feel free to contact our customer
@@ -94,7 +109,7 @@ export default function DashboardOverviewClient({ initialUser }: DashboardOvervi
           </a>
           .
         </p>
-      </div>
+      </div> */}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

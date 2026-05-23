@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { useUser } from "@/hooks/useUser";
 import QueryProvider from "@/components/QueryProvider";
@@ -98,22 +99,73 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout, sessionStatus } = useUser();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [dashboardAuthChecked, setDashboardAuthChecked] = useState(false);
+  const requiresDashboardAuth = pathname !== "/dashboard/wishlist";
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
   useEffect(() => {
     if (!mounted) return;
 
     // Allow wishlist without login
-    if (sessionStatus === "unauthenticated" && pathname !== "/dashboard/wishlist") {
+    if (sessionStatus === "unauthenticated" && requiresDashboardAuth) {
       router.replace("/login");
     }
-  }, [mounted, sessionStatus, pathname, router]);
+  }, [mounted, sessionStatus, requiresDashboardAuth, router]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    if (!requiresDashboardAuth) {
+      setDashboardAuthChecked(true);
+      return;
+    }
+
+    if (sessionStatus !== "authenticated") {
+      setDashboardAuthChecked(false);
+      return;
+    }
+
+    let cancelled = false;
+    setDashboardAuthChecked(false);
+
+    const validateDashboardSession = async () => {
+      try {
+        const response = await fetch("/api/auth/validate", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (cancelled) return;
+
+        if (response.status === 401) {
+          await signOut({ callbackUrl: "/login?reason=session-expired", redirect: true });
+          return;
+        }
+
+        setDashboardAuthChecked(true);
+      } catch {
+        if (!cancelled) {
+          setDashboardAuthChecked(true);
+        }
+      }
+    };
+
+    void validateDashboardSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, sessionStatus, requiresDashboardAuth]);
 
   if (!mounted) return null;
 
-  if (sessionStatus === "loading" && pathname !== "/dashboard/wishlist") {
+  if (
+    requiresDashboardAuth &&
+    (sessionStatus === "loading" || (sessionStatus === "authenticated" && !dashboardAuthChecked))
+  ) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -124,7 +176,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (sessionStatus === "unauthenticated" && pathname !== "/dashboard/wishlist") {
+  if (sessionStatus === "unauthenticated" && requiresDashboardAuth) {
     return null;
   }
 
@@ -146,104 +198,104 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <QueryProvider>
-    <div className="min-h-screen bg-gray-50">
-      {/* Mobile header */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
-        <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
-        >
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
-      </div>
+      <div className="min-h-screen bg-gray-50">
+        {/* Mobile header */}
+        <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+          <h1 className="text-lg font-semibold text-gray-900">Dashboard</h1>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+        </div>
 
-      <div className="flex">
-        {/* Sidebar */}
-        <aside
-          className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:translate-x-0 fixed lg:sticky lg:top-0 inset-y-0 left-0 z-40 lg:z-30 w-64 bg-white border-r border-gray-200 transition-transform duration-200 ease-in-out lg:transition-none h-screen overflow-y-auto`}
-        >
-          <div className="h-full flex flex-col">
-            {/* User info */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-full bg-teal-600 flex items-center justify-center text-white font-semibold">
-                  {mounted && user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {mounted && user?.name ? user.name : "User"}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate">
-                    {mounted && user?.email ? user.email : ""}
-                  </p>
+        <div className="flex">
+          {/* Sidebar */}
+          <aside
+            className={`${
+              sidebarOpen ? "translate-x-0" : "-translate-x-full"
+            } lg:translate-x-0 fixed lg:sticky lg:top-0 inset-y-0 left-0 z-40 lg:z-30 w-64 bg-white border-r border-gray-200 transition-transform duration-200 ease-in-out lg:transition-none h-screen overflow-y-auto`}
+          >
+            <div className="h-full flex flex-col">
+              {/* User info */}
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center space-x-3">
+                  <div className="h-10 w-10 rounded-full bg-teal-600 flex items-center justify-center text-white font-semibold">
+                    {mounted && user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {mounted && user?.name ? user.name : "User"}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {mounted && user?.email ? user.email : ""}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {/* Navigation */}
+              <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+                {tabs.map((tab) => {
+                  const isActive = activeTab.id === tab.id;
+                  return (
+                    <Link
+                      key={tab.id}
+                      href={tab.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        isActive ? "bg-teal-50 text-teal-700" : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <TabIcon iconId={tab.iconId} />
+                      <span>{tab.label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              {/* Logout */}
+              <div className="p-4 border-t border-gray-200">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
+                  </svg>
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
+          </aside>
 
-            {/* Navigation */}
-            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-              {tabs.map((tab) => {
-                const isActive = activeTab.id === tab.id;
-                return (
-                  <Link
-                    key={tab.id}
-                    href={tab.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                      isActive ? "bg-teal-50 text-teal-700" : "text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    <TabIcon iconId={tab.iconId} />
-                    <span>{tab.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+          {/* Overlay for mobile */}
+          {sidebarOpen && (
+            <div
+              className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
 
-            {/* Logout */}
-            <div className="p-4 border-t border-gray-200">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                  />
-                </svg>
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* Overlay for mobile */}
-        {sidebarOpen && (
-          <div
-            className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Main content */}
-        <main className="flex-1 lg:ml-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</div>
-        </main>
+          {/* Main content */}
+          <main className="flex-1 lg:ml-0">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
     </QueryProvider>
   );
 }

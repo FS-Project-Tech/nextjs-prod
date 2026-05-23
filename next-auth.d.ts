@@ -3,6 +3,7 @@ import "next-auth";
 
 declare module "next-auth" {
   interface Session {
+    wpToken?: string;
     user: {
       id?: string | null;
       name?: string | null;
