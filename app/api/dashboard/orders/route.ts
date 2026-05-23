@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProtectedApiHandler, API_TIMEOUT } from "@/lib/api-middleware";
 import { sanitizeObject } from "@/lib/sanitize";
-import { fetchWooOrdersForDashboardCached } from "@/lib/dashboard/orders-upstream-cache";
-import { extractLineItemSku } from "@/lib/dashboard/format-dashboard-order-detail";
 import {
-  orderCreatedMsForSort,
-  orderDateYmdInStoreTz,
-} from "@/lib/order/order-created-date";
+  fetchWooOrdersForDashboardCached,
+  fetchWooOrdersPageForDashboardCached,
+} from "@/lib/dashboard/orders-upstream-cache";
+import { extractLineItemSku } from "@/lib/dashboard/format-dashboard-order-detail";
+import { orderCreatedMsForSort, orderDateYmdInStoreTz } from "@/lib/order/order-created-date";
 import { extractMachshipTrackingTokenFromOrderMeta } from "@/lib/machship/tracking";
 
 const ALLOWED_ORDER_STATUSES = new Set([
@@ -42,6 +42,10 @@ type NormalizedOrder = {
   billing: Record<string, string>;
   shipping: Record<string, string>;
   machship_tracking_token?: string;
+};
+
+type DashboardOrdersUser = {
+  id?: string | number | null;
 };
 
 function parseListStatus(raw: string | null): string | undefined {
@@ -84,7 +88,7 @@ function normalizeOrderNamePart(s: string): string {
 function orderMatchesBillingOrShippingName(
   o: NormalizedOrder,
   wantFirst: string,
-  wantLast: string,
+  wantLast: string
 ): boolean {
   const wf = normalizeOrderNamePart(wantFirst);
   const wl = normalizeOrderNamePart(wantLast);
@@ -208,7 +212,7 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
       };
       if (sku) row.sku = sku;
       return row;
-    },
+    }
   );
   const { billing, shipping } = orderBillingShippingFromPayload(order);
   const date_created = String(order.date_created ?? "");
@@ -216,7 +220,7 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
     extractMachshipTrackingTokenFromOrderMeta(
       Array.isArray(order.meta_data)
         ? (order.meta_data as Array<{ key?: string; value?: unknown }>)
-        : undefined,
+        : undefined
     ) ?? undefined;
   return {
     id,
@@ -235,22 +239,25 @@ function normalizeWooOrder(order: Record<string, unknown>): NormalizedOrder | nu
 
 /**
  * GET /api/dashboard/orders
- * WooCommerce customer orders only (paginated upstream, merged in memory, sorted, paginated for response).
+ * WooCommerce customer orders.
+ * Fast path: status-only/default lists use WooCommerce pagination directly.
+ * Filter path: date/search/name filters run in memory over the cached Woo list.
  *
  * Query: page, per_page (max 50, default 5), status, date_from, date_to (YYYY-MM-DD, inclusive, store TZ), search,
  *   first_name + last_name (both required): keep orders whose billing OR shipping contact matches those names (case-insensitive).
  *
- * Performance: Woo list is cached with `unstable_cache` (see `lib/dashboard/orders-upstream-cache.ts`).
- * Tune with DASHBOARD_ORDERS_CACHE_SECONDS (default 60, max 300). Date/status/search/name filters run in-memory on the cached list.
+ * Performance: Woo list/page requests are cached with `unstable_cache`
+ * (see `lib/dashboard/orders-upstream-cache.ts`). Tune with
+ * DASHBOARD_ORDERS_CACHE_SECONDS (default 60, max 300).
  */
-async function getOrders(req: NextRequest, context: { user: any; token: string }) {
+async function getOrders(req: NextRequest, context: { user: DashboardOrdersUser; token: string }) {
   try {
     const { user } = context;
 
     if (!user || !user.id) {
       return NextResponse.json(
         { error: "Unable to determine current user for orders" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -270,11 +277,43 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
     const nameFirst = parseOrderNameParam(searchParams.get("first_name"));
     const nameLast = parseOrderNameParam(searchParams.get("last_name"));
     const nameProfileActive = Boolean(nameFirst && nameLast);
-
     const statusCacheKey = statusFilter ?? "";
     const searchCacheKey = searchFilter ?? "";
+    const canUseWooPagedFastPath = !dateFrom && !dateTo && !searchFilter && !nameProfileActive;
 
-    const wooRaw = await fetchWooOrdersForDashboardCached(customerId, statusCacheKey, searchCacheKey);
+    if (canUseWooPagedFastPath) {
+      const wooPage = await fetchWooOrdersPageForDashboardCached(
+        customerId,
+        statusCacheKey,
+        page,
+        perPage
+      );
+      const pageSlice = wooPage.orders
+        .map((row) => normalizeWooOrder(row))
+        .filter((order): order is NormalizedOrder => order != null);
+      const sanitizedOrders = pageSlice.map((order) =>
+        sanitizeObject(order as Record<string, unknown>)
+      );
+
+      return NextResponse.json({
+        orders: sanitizedOrders,
+        total: wooPage.total,
+        page,
+        per_page: perPage,
+        pagination: {
+          page,
+          per_page: perPage,
+          total: wooPage.total,
+          total_pages: wooPage.totalPages,
+        },
+      });
+    }
+
+    const wooRaw = await fetchWooOrdersForDashboardCached(
+      customerId,
+      statusCacheKey,
+      searchCacheKey
+    );
 
     const merged: NormalizedOrder[] = [];
     for (const row of wooRaw) {
@@ -305,7 +344,7 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
         (o) =>
           String(o.id).includes(q) ||
           String(o.order_number).toLowerCase().includes(q) ||
-          o.line_items.some((li) => li.name.toLowerCase().includes(q)),
+          o.line_items.some((li) => li.name.toLowerCase().includes(q))
       );
     }
     if (nameProfileActive) {
@@ -313,7 +352,7 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
     }
 
     filtered.sort(
-      (a, b) => orderCreatedMsForSort(b.date_created) - orderCreatedMsForSort(a.date_created),
+      (a, b) => orderCreatedMsForSort(b.date_created) - orderCreatedMsForSort(a.date_created)
     );
 
     const total = filtered.length;
@@ -321,7 +360,9 @@ async function getOrders(req: NextRequest, context: { user: any; token: string }
     const pageSlice = filtered.slice(start, start + perPage);
     const totalPages = total === 0 ? 0 : Math.ceil(total / perPage);
 
-    const sanitizedOrders = pageSlice.map((order) => sanitizeObject(order as Record<string, unknown>));
+    const sanitizedOrders = pageSlice.map((order) =>
+      sanitizeObject(order as Record<string, unknown>)
+    );
 
     return NextResponse.json({
       orders: sanitizedOrders,
