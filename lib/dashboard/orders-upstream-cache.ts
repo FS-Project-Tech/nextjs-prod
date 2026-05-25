@@ -163,6 +163,19 @@ export function fetchWooOrdersPageForDashboardCached(
 }
 
 /**
+ * Uncached page fetch for status-sensitive refreshes, e.g. pending eWAY orders
+ * immediately after payment verification.
+ */
+export function fetchWooOrdersPageForDashboardUncached(
+  customerId: number,
+  statusKey: string,
+  page: number,
+  perPage: number
+): Promise<WooOrdersPageResult> {
+  return fetchWooOrdersPageUncached(customerId, statusKey, page, perPage);
+}
+
+/**
  * Cached legacy order list for dashboard merge (per customer + session email key).
  */
 export function fetchLegacyOrdersForDashboardCached(

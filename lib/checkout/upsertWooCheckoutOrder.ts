@@ -163,12 +163,42 @@ export async function upsertValidatedCheckoutOrder(params: {
     const tExt = Date.now();
     let afterWrite: unknown = phase1Response;
     if (Object.keys(extPatch).length > 0) {
-      afterWrite = await applyOrderExtensionWithRetry(existingId, extPatch);
+      if (timing.mode === "after_response") {
+        timing.schedule(async () => {
+          console.log("[checkout] async update start", {
+            requestId: perf?.requestId,
+            orderId: existingId,
+            deferred: true,
+            reusedPendingOrder: true,
+          });
+          try {
+            await applyOrderExtensionWithRetry(existingId, extPatch);
+            console.log("[checkout] async update success", {
+              requestId: perf?.requestId,
+              orderId: existingId,
+              deferred: true,
+              reusedPendingOrder: true,
+            });
+          } catch (e) {
+            console.error("[checkout] async update fail", {
+              requestId: perf?.requestId,
+              orderId: existingId,
+              deferred: true,
+              reusedPendingOrder: true,
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+        });
+      } else {
+        afterWrite = await applyOrderExtensionWithRetry(existingId, extPatch);
+      }
     }
-    if (perf) perf.wooPatchMs = Date.now() - tExt;
+    if (perf) perf.wooPatchMs = timing.mode === "after_response" ? 0 : Date.now() - tExt;
 
     validateCreatedLineItems(afterWrite);
-    assertWooOrderPayable(afterWrite);
+    if (timing.mode === "inline") {
+      assertWooOrderPayable(afterWrite);
+    }
     return afterWrite;
   }
 

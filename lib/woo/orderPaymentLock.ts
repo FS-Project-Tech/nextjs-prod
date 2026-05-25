@@ -1,5 +1,6 @@
 import {
   HEADLESS_EWAY_PAYMENT_ORDER_TOTAL_META_KEY,
+  HEADLESS_EWAY_RETURN_MODE_META_KEY,
   HEADLESS_EWAY_PAYMENT_URL_META_KEY,
   HEADLESS_PAYMENT_INITIATED_META_KEY,
   HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY,
@@ -10,7 +11,10 @@ const PAYMENT_META_KEYS = new Set([
   HEADLESS_PAYMENT_INITIATED_META_KEY,
   HEADLESS_EWAY_PAYMENT_URL_META_KEY,
   HEADLESS_EWAY_PAYMENT_ORDER_TOTAL_META_KEY,
+  HEADLESS_EWAY_RETURN_MODE_META_KEY,
 ]);
+
+const EWAY_SERVER_RETURN_MODE = "server_verify_v1";
 
 function parseWooMoneyToCents(raw: string | null | undefined): number | null {
   if (raw == null) return null;
@@ -67,12 +71,19 @@ export function readStoredPaymentUrl(order: unknown): string | null {
   return v.trim();
 }
 
+function hasServerSideReturnMode(order: unknown): boolean {
+  const meta = (order as { meta_data?: Array<{ key?: string; value?: unknown }> })?.meta_data;
+  const v = readWooMetaValue(meta, HEADLESS_EWAY_RETURN_MODE_META_KEY);
+  return v === EWAY_SERVER_RETURN_MODE;
+}
+
 /**
  * Idempotent eWAY: reuse hosted URL only if payment was started and the order total has not changed
  * since the URL was created (otherwise the gateway page shows a stale amount).
  */
 export function shouldReuseEwayPayment(order: unknown): boolean {
   if (!isOrderPaymentInitiated(order)) return false;
+  if (!hasServerSideReturnMode(order)) return false;
   const url = readStoredPaymentUrl(order);
   if (!url) return false;
   const current = readCanonicalCheckoutPaymentTotalString(order);
@@ -101,6 +112,7 @@ export function mergeEwayPaymentSessionMeta(
   return mergeWooOrderMetaByKey(existing, [
     { key: HEADLESS_EWAY_PAYMENT_URL_META_KEY, value: paymentUrl },
     { key: HEADLESS_PAYMENT_INITIATED_META_KEY, value: "true" },
+    { key: HEADLESS_EWAY_RETURN_MODE_META_KEY, value: EWAY_SERVER_RETURN_MODE },
     ...(totalTrim
       ? [{ key: HEADLESS_EWAY_PAYMENT_ORDER_TOTAL_META_KEY, value: totalTrim }]
       : []),

@@ -13,7 +13,6 @@ import type { CheckoutActor, CheckoutInitiatePayload, CheckoutTotals } from "@/t
 import { readWooOrderTotal } from "@/lib/checkout/readWooOrderTotal";
 import {
   upsertValidatedCheckoutOrder,
-  assertWooOrderPayable,
 } from "@/lib/checkout/upsertWooCheckoutOrder";
 import type { WooCreateOrderInput, WooLineItem } from "@/services/woocommerce";
 import { updateWooOrder } from "@/services/woocommerce";
@@ -160,7 +159,7 @@ export async function executeWooCheckoutOrder(input: {
   };
   actor: CheckoutActor;
   customerIp?: string;
-  /** COD: extension PATCH can be deferred (see handleCheckoutPost); eWAY: always inline before payment URL. */
+  /** Shipping/coupon/meta extension PATCH can be deferred so redirects/confirmations are not blocked by Woo writes. */
   orderExtensionTiming: OrderExtensionTiming;
   checkoutSessionId: string;
   /** Validated quote totals: required for eWAY; used for COD response when Woo `total` is not yet populated. */
@@ -219,7 +218,7 @@ export async function executeWooCheckoutOrder(input: {
     meta_data: checkoutOrderMeta(payload),
   };
 
-  let order = await upsertValidatedCheckoutOrder({
+  const order = await upsertValidatedCheckoutOrder({
     payload,
     input: wooInput,
     timing: orderExtensionTiming,
@@ -252,47 +251,6 @@ export async function executeWooCheckoutOrder(input: {
       mode: "sequential",
       reason: "eway_handlePayment_requires_woo_order_id_and_key",
     });
-  }
-
-  /** COD: extension runs off the hot path; wait briefly for Woo to show a payable total after the deferred PATCH. */
-  if (orderExtensionTiming.mode === "after_response" && payload.payment_method === "cod") {
-    const postIdRaw = extractWooOrderId(order);
-    const postIdNum =
-      typeof postIdRaw === "number" ? postIdRaw : Number.parseInt(String(postIdRaw), 10);
-    if (Number.isFinite(postIdNum) && postIdNum > 0) {
-      let lastErr: unknown = null;
-      try {
-        assertWooOrderPayable(order);
-        lastErr = null;
-      } catch (e) {
-        lastErr = e;
-      }
-      if (lastErr != null) {
-        await new Promise<void>((resolve) => {
-          if (typeof globalThis.setImmediate === "function") {
-            globalThis.setImmediate(() => resolve());
-          } else {
-            setTimeout(() => resolve(), 0);
-          }
-        });
-        const gapsMs = [0, 35, 50, 70, 90, 120, 160, 200];
-        for (let i = 0; i < gapsMs.length; i++) {
-          if (i > 0) {
-            await new Promise<void>((r) => setTimeout(r, gapsMs[i]!));
-          }
-          try {
-            const refreshed = await getWooOrder(String(postIdNum));
-            assertWooOrderPayable(refreshed);
-            order = refreshed;
-            lastErr = null;
-            break;
-          } catch (e) {
-            lastErr = e;
-          }
-        }
-      }
-      if (lastErr != null) throw lastErr;
-    }
   }
 
   const orderIdRaw = extractWooOrderId(order);
@@ -373,24 +331,6 @@ export async function executeWooCheckoutOrder(input: {
     throw new Error("Invalid payment method.");
   }
 
-  if (postId != null && validatedEwayTotalStr) {
-    const om = orderForPayment as {
-      meta_data?: Array<{ id?: number; key: string; value: unknown }>;
-    };
-    try {
-      const patched = await updateWooOrder(postId, {
-        meta_data: mergeWooOrderMetaByKey(om.meta_data, [
-          { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: validatedEwayTotalStr },
-        ]),
-      });
-      if (patched != null && typeof patched === "object") {
-        orderForPayment = patched;
-      }
-    } catch (e) {
-      console.warn("[executeWooCheckout] failed to persist headless_validated_checkout_total", e);
-    }
-  }
-
   if (checkoutTotals) {
     const wooStr = readWooOrderTotal(orderForPayment);
     const wooNum = Number.parseFloat(String(wooStr ?? "0"));
@@ -417,6 +357,7 @@ export async function executeWooCheckoutOrder(input: {
     actorUserId: typeof actor.userId === "number" ? actor.userId : undefined,
     validatedCheckoutTotalStr: validatedEwayTotalStr ?? undefined,
     requestId,
+    deferPaymentSessionMeta: orderExtensionTiming.mode === "after_response",
   });
 
   if (perf) {

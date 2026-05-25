@@ -16,6 +16,9 @@ export const HEADLESS_EWAY_PAYMENT_URL_META_KEY = "payment_url";
  */
 export const HEADLESS_EWAY_PAYMENT_ORDER_TOTAL_META_KEY = "headless_eway_order_total";
 
+/** Woo order meta: identifies eWAY sessions whose RedirectUrl verifies payment server-side. */
+export const HEADLESS_EWAY_RETURN_MODE_META_KEY = "headless_eway_return_mode";
+
 /**
  * Woo order meta: server-validated grand total (Zustand cart → validate-cart rules + shipping/GST quote).
  * eWAY charges this amount, not a recomputed Woo session/cart total that may drift.

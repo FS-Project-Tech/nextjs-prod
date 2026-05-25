@@ -142,7 +142,9 @@ export function useOrdersInfinite(filters: OrdersListFilters) {
         pagination: (result.pagination as PaginationInfo) || null,
       };
     },
-    staleTime: 60 * 1000,
+    staleTime: 15 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     gcTime: 5 * 60 * 1000,
     retry: process.env.NODE_ENV === "production" ? 1 : 0,
     placeholderData: (previousData) => previousData,

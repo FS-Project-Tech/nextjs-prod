@@ -3,6 +3,7 @@
  * Charge amount comes from validated checkout totals when provided; Woo `order.total` is fallback only.
  */
 import type { CheckoutInitiatePayload } from "@/types/checkout";
+import { after } from "next/server";
 import {
   createEwayHostedPayment,
   isEwayConfigured,
@@ -17,6 +18,9 @@ import {
   updateWooOrder,
 } from "@/lib/services/wooService";
 import {
+  HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY,
+} from "@/lib/checkout/checkoutSessionConstants";
+import {
   mergeEwayPaymentSessionMeta,
   readCanonicalCheckoutPaymentTotalString,
   readCurrentWooOrderTotalString,
@@ -24,6 +28,7 @@ import {
   readStoredPaymentUrl,
   shouldReuseEwayPayment,
 } from "@/lib/woo/orderPaymentLock";
+import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
 
 export type HandlePaymentContext = {
   method: "eway";
@@ -35,6 +40,8 @@ export type HandlePaymentContext = {
   validatedCheckoutTotalStr?: string;
   /** Checkout correlation id from `/api/checkout` for log stitching. */
   requestId?: string;
+  /** When true, returns the gateway URL before persisting eWAY session meta to Woo. */
+  deferPaymentSessionMeta?: boolean;
 };
 
 /** @deprecated use HandlePaymentContext */
@@ -57,6 +64,10 @@ async function resolvePostId(order: unknown): Promise<number | null> {
   const n = Number.parseInt(s, 10);
   if (Number.isFinite(n) && n > 0 && String(n) === s) return n;
   return resolveOrderPostId(s);
+}
+
+function orderHasMetaData(order: unknown): boolean {
+  return Array.isArray((order as { meta_data?: unknown })?.meta_data);
 }
 
 /**
@@ -91,14 +102,22 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
   }
 
   let latest: unknown = ctx.order;
-  try {
-    latest = await getWooOrder(String(postId));
-  } catch (e) {
-    console.warn("[payment] getWooOrder before eWAY failed; using ctx.order", {
-      requestId,
-      postId,
-      message: e instanceof Error ? e.message : String(e),
-    });
+  const hasOrderKey = Boolean(extractWooOrderKey(latest));
+  const hasUsableTotal =
+    Boolean(ctx.validatedCheckoutTotalStr?.trim()) ||
+    Boolean(readCanonicalCheckoutPaymentTotalString(latest)) ||
+    Boolean(readCurrentWooOrderTotalString(latest));
+  const hasMetaData = orderHasMetaData(latest);
+  if (!hasOrderKey || !hasUsableTotal || !hasMetaData) {
+    try {
+      latest = await getWooOrder(String(postId));
+    } catch (e) {
+      console.warn("[payment] getWooOrder before eWAY failed; using ctx.order", {
+        requestId,
+        postId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
 
   const existingPayUrl = readStoredPaymentUrl(latest);
@@ -174,11 +193,36 @@ export async function handlePayment(ctx: HandlePaymentContext): Promise<HandlePa
     return { type: "error", message: eway.error, action: "resume_payment" };
   }
 
-  try {
-    const fresh = await getWooOrder(String(postId));
+  const persistPaymentSessionMeta = async () => {
+    const sourceForMeta = orderHasMetaData(latest) ? latest : await getWooOrder(String(postId));
+    const ewaySessionMeta = mergeEwayPaymentSessionMeta(sourceForMeta, eway.sharedPaymentUrl, total);
+    const meta_data = fromValidated
+      ? mergeWooOrderMetaByKey(ewaySessionMeta, [
+          { key: HEADLESS_VALIDATED_CHECKOUT_TOTAL_META_KEY, value: fromValidated },
+        ])
+      : ewaySessionMeta;
     await updateWooOrder(postId, {
-      meta_data: mergeEwayPaymentSessionMeta(fresh, eway.sharedPaymentUrl, total),
+      meta_data,
     });
+  };
+
+  try {
+    if (ctx.deferPaymentSessionMeta) {
+      after(async () => {
+        try {
+          await persistPaymentSessionMeta();
+          console.log("[payment] eWAY session meta stored after response", { requestId, postId });
+        } catch (e) {
+          console.error("[payment] deferred eWAY session meta update failed", {
+            requestId,
+            postId,
+            e,
+          });
+        }
+      });
+    } else {
+      await persistPaymentSessionMeta();
+    }
   } catch (e) {
     console.error("[payment] failed to store payment_url / payment_initiated on order", {
       requestId,

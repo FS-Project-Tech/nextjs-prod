@@ -232,6 +232,13 @@ function PaymentSectionInner({
         </fieldset>
       </div>
 
+      <p className="mt-6 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+        Please note that orders classified as either bulky or shipped to regional locations may incur
+        additional charges. These charges are determined by our carrier services database and will be
+        added to your order total later at dispatchment, regardless of the order amount. We apologize
+        for any inconvenience this may cause.
+      </p>
+
       <div className="mt-6 border-t border-gray-200 pt-4">
         <label className="flex cursor-pointer items-start gap-2 text-gray-900" htmlFor="checkout-terms">
           <Controller

@@ -4,6 +4,7 @@ import { sanitizeObject } from "@/lib/sanitize";
 import {
   fetchWooOrdersForDashboardCached,
   fetchWooOrdersPageForDashboardCached,
+  fetchWooOrdersPageForDashboardUncached,
 } from "@/lib/dashboard/orders-upstream-cache";
 import { extractLineItemSku } from "@/lib/dashboard/format-dashboard-order-detail";
 import { orderCreatedMsForSort, orderDateYmdInStoreTz } from "@/lib/order/order-created-date";
@@ -282,15 +283,27 @@ async function getOrders(req: NextRequest, context: { user: DashboardOrdersUser;
     const canUseWooPagedFastPath = !dateFrom && !dateTo && !searchFilter && !nameProfileActive;
 
     if (canUseWooPagedFastPath) {
-      const wooPage = await fetchWooOrdersPageForDashboardCached(
+      let wooPage = await fetchWooOrdersPageForDashboardCached(
         customerId,
         statusCacheKey,
         page,
         perPage
       );
-      const pageSlice = wooPage.orders
+      let pageSlice = wooPage.orders
         .map((row) => normalizeWooOrder(row))
         .filter((order): order is NormalizedOrder => order != null);
+      const hasPendingOrder = pageSlice.some((order) => order.status.toLowerCase() === "pending");
+      if (hasPendingOrder) {
+        wooPage = await fetchWooOrdersPageForDashboardUncached(
+          customerId,
+          statusCacheKey,
+          page,
+          perPage
+        );
+        pageSlice = wooPage.orders
+          .map((row) => normalizeWooOrder(row))
+          .filter((order): order is NormalizedOrder => order != null);
+      }
       const sanitizedOrders = pageSlice.map((order) =>
         sanitizeObject(order as Record<string, unknown>)
       );

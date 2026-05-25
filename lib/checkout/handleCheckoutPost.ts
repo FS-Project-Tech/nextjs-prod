@@ -410,7 +410,7 @@ export async function handleCheckoutPost(
         : randomUUID();
 
     const orderExtensionTiming: OrderExtensionTiming =
-      payload.payment_method === "cod"
+      payload.payment_method === "cod" || payload.payment_method === "eway"
         ? {
             mode: "after_response",
             schedule: (task) => {

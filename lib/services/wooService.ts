@@ -435,7 +435,7 @@ export function validateCreatedLineItems(order: unknown): void {
 
 /**
  * Phase 1: minimal POST /orders (fast). Phase 2: PUT shipping, fees, meta, coupons.
- * COD can defer phase 2 via {@link OrderExtensionTiming} `after_response` so callers return JSON sooner.
+ * `after_response` skips single-shot create and any pre-extension read so callers return quickly.
  */
 export async function createValidatedCheckoutOrder(
   input: WooCreateOrderInput,
@@ -470,7 +470,11 @@ export async function createValidatedCheckoutOrder(
   let orderMinimal: unknown;
   let singleShotOrRecoverMs = 0;
 
-  if (Object.keys(patchProbe).length > 0 && input.payment_method !== "afterpay") {
+  if (
+    timing.mode === "inline" &&
+    Object.keys(patchProbe).length > 0 &&
+    input.payment_method !== "afterpay"
+  ) {
     const tShot = Date.now();
     const shot = await trySingleShotOrderCreate(input, sessionMeta, t1, rid);
     if (shot != null) {
@@ -505,6 +509,9 @@ export async function createValidatedCheckoutOrder(
     }
   }
 
+  const minimalMeta =
+    timing.mode === "after_response" ? [...sessionMeta, ...(input.meta_data ?? [])] : sessionMeta;
+
   const minimalInput = {
     payment_method: input.payment_method,
     payment_method_title: input.payment_method_title,
@@ -514,7 +521,7 @@ export async function createValidatedCheckoutOrder(
     line_items: input.line_items,
     billing: input.billing,
     shipping: input.shipping,
-    ...(sessionMeta.length ? { meta_data: sessionMeta } : {}),
+    ...(minimalMeta.length ? { meta_data: minimalMeta } : {}),
   };
 
   console.log("[checkout] start", {
@@ -617,7 +624,7 @@ export async function createValidatedCheckoutOrder(
         existingShippingLineIdFromOrder = n;
       }
     }
-    if (existingShippingLineIdFromOrder == null) {
+    if (existingShippingLineIdFromOrder == null && timing.mode === "inline") {
       try {
         const current = (await getWooOrder(String(postIdNum))) as {
           shipping_lines?: Array<{ id?: unknown; method_id?: unknown }>;
@@ -642,6 +649,7 @@ export async function createValidatedCheckoutOrder(
   }
 
   const patch = buildCheckoutExtensionPatch(input, {
+    omitMeta: timing.mode === "after_response",
     existingShippingLineId: existingShippingLineIdFromOrder,
   });
   const keys = Object.keys(patch);
