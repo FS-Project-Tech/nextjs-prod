@@ -42,7 +42,7 @@ export async function fetchProductsByIdsForServer(productIds: number[]): Promise
       ids.map(async (id) => {
         const { data } = await wcGet<unknown>(`/products/${id}`, undefined, "product");
         return data;
-      }),
+      })
     );
     return products;
   }
@@ -69,7 +69,7 @@ export async function getProductsByBrandForServer(brandId: number): Promise<unkn
   const { data } = await wcGet<unknown[]>(
     "/products",
     { product_brand: brandId, per_page: 20, status: "publish" },
-    "products",
+    "products"
   );
   return data;
 }
@@ -78,7 +78,7 @@ export async function getFeaturedProductsSampleForServer(): Promise<unknown> {
   const { data } = await wcGet<unknown[]>(
     "/products",
     { per_page: 5, status: "publish", _fields: "id,name,slug,price,images" },
-    "products",
+    "products"
   );
   return data;
 }
@@ -86,35 +86,40 @@ export async function getFeaturedProductsSampleForServer(): Promise<unknown> {
 export async function validateCartLineStock(
   items: CartItem[]
 ): Promise<{ valid: boolean; errors: Array<{ itemId: string; message: string }> }> {
-  const errors: Array<{ itemId: string; message: string }> = [];
+  const results = await Promise.all(
+    items.map(async (line) => {
+      try {
+        const endpoint = line.variationId
+          ? `/products/${line.productId}/variations/${line.variationId}`
+          : `/products/${line.productId}`;
 
-  for (const line of items) {
-    try {
-      const endpoint = line.variationId
-        ? `/products/${line.productId}/variations/${line.variationId}`
-        : `/products/${line.productId}`;
+        const { data: product } = await wcGet<{
+          stock_status?: string;
+          manage_stock?: boolean;
+          stock_quantity?: number | null;
+          backorders_allowed?: boolean;
+        }>(endpoint, undefined, "noStore");
 
-      const { data: product } = await wcGet<{
-        stock_status?: string;
-        manage_stock?: boolean;
-        stock_quantity?: number | null;
-        backorders_allowed?: boolean;
-      }>(endpoint, undefined, "noStore");
-
-      if (product.stock_status === "outofstock") {
-        errors.push({ itemId: line.id, message: `${line.name} is out of stock` });
-      } else if (product.manage_stock && product.stock_quantity != null) {
-        if (product.stock_quantity < line.qty) {
-          const msg = product.backorders_allowed
-            ? `${line.name} (only ${product.stock_quantity} available, backorders allowed)`
-            : `${line.name} (only ${product.stock_quantity} available)`;
-          errors.push({ itemId: line.id, message: msg });
+        if (product.stock_status === "outofstock") {
+          return { itemId: line.id, message: `${line.name} is out of stock` };
+        } else if (product.manage_stock && product.stock_quantity != null) {
+          if (product.stock_quantity < line.qty) {
+            const msg = product.backorders_allowed
+              ? `${line.name} (only ${product.stock_quantity} available, backorders allowed)`
+              : `${line.name} (only ${product.stock_quantity} available)`;
+            return { itemId: line.id, message: msg };
+          }
         }
+        return null;
+      } catch {
+        return { itemId: line.id, message: `Unable to validate ${line.name}` };
       }
-    } catch {
-      errors.push({ itemId: line.id, message: `Unable to validate ${line.name}` });
-    }
-  }
+    })
+  );
+
+  const errors = results.filter(
+    (result): result is { itemId: string; message: string } => result != null
+  );
 
   return { valid: errors.length === 0, errors };
 }

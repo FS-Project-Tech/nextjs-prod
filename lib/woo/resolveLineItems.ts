@@ -34,7 +34,17 @@ type ResolveResult =
       unavailableItems: UnavailableRow[];
     };
 
-type OneResult = { kind: "resolved"; line: ResolvedLineItem } | { kind: "unavailable"; row: UnavailableRow };
+type OneResult =
+  | { kind: "resolved"; line: ResolvedLineItem }
+  | { kind: "unavailable"; row: UnavailableRow };
+
+function isStrictSkuResolutionEnabled(): boolean {
+  return process.env.CHECKOUT_STRICT_SKU_RESOLUTION === "true";
+}
+
+function isStrictProductValidationEnabled(): boolean {
+  return process.env.CHECKOUT_STRICT_PRODUCT_RESOLUTION === "true";
+}
 
 /** Dedupe parallel variation-list reads when multiple lines share a variable parent. */
 function createVariationsListLoader(): (parentId: number) => Promise<unknown[]> {
@@ -47,7 +57,7 @@ function createVariationsListLoader(): (parentId: number) => Promise<unknown[]> 
           const { data: varData } = await wcGet<unknown[]>(
             `/products/${parentId}/variations`,
             { per_page: 100 },
-            "noStore",
+            "noStore"
           );
           return Array.isArray(varData) ? varData : [];
         } catch {
@@ -62,7 +72,7 @@ function createVariationsListLoader(): (parentId: number) => Promise<unknown[]> 
 
 async function resolveOneWooLineItem(
   item: RequestedLineItem,
-  loadVariations: (parentId: number) => Promise<unknown[]>,
+  loadVariations: (parentId: number) => Promise<unknown[]>
 ): Promise<OneResult> {
   const quantity = Number(item.quantity || 0);
   const skuTrim = typeof item.sku === "string" ? item.sku.trim() : "";
@@ -81,7 +91,24 @@ async function resolveOneWooLineItem(
     };
   }
 
-  if (skuTrim) {
+  /**
+   * Normal cart lines already carry Woo product/variation IDs from catalog pages. Avoid repeating
+   * SKU/product REST validation here; the following checkout catalog batch still verifies published
+   * catalog rows/prices before totals and order payload are built. Enable strict env flags to restore
+   * legacy pre-resolution checks when investigating catalog mismatches.
+   */
+  if (productId > 0 && !isStrictSkuResolutionEnabled() && !isStrictProductValidationEnabled()) {
+    return {
+      kind: "resolved",
+      line: {
+        product_id: productId,
+        ...(requestedVariationId > 0 ? { variation_id: requestedVariationId } : {}),
+        quantity,
+      },
+    };
+  }
+
+  if (skuTrim && isStrictSkuResolutionEnabled()) {
     const fromSku = await resolveProductRefBySku(skuTrim, productId > 0 ? productId : undefined);
     if (isSkuResolveFailure(fromSku)) {
       if (productId <= 0) {
@@ -111,6 +138,17 @@ async function resolveOneWooLineItem(
         variation_id: requestedVariationId || null,
         sku: skuTrim || null,
         reason: "Missing product_id and resolvable SKU.",
+      },
+    };
+  }
+
+  if (!isStrictProductValidationEnabled()) {
+    return {
+      kind: "resolved",
+      line: {
+        product_id: productId,
+        ...(requestedVariationId > 0 ? { variation_id: requestedVariationId } : {}),
+        quantity,
       },
     };
   }
@@ -186,7 +224,7 @@ async function resolveOneWooLineItem(
             String((v as { sku?: string })?.sku ?? "").trim() === skuTrim &&
             String((v as { status?: string })?.status || "") === "publish" &&
             Boolean((v as { purchasable?: boolean })?.purchasable) &&
-            String((v as { price?: string })?.price ?? "").trim(),
+            String((v as { price?: string })?.price ?? "").trim()
         ) as Record<string, unknown> | null) || null;
     }
     if (!firstValid) {
@@ -243,7 +281,7 @@ export async function resolveWooLineItems(items: RequestedLineItem[]): Promise<R
 
   const loadVariations = createVariationsListLoader();
   const results = await Promise.all(
-    effectiveItems.map((item) => resolveOneWooLineItem(item, loadVariations)),
+    effectiveItems.map((item) => resolveOneWooLineItem(item, loadVariations))
   );
 
   const unavailable: UnavailableRow[] = [];

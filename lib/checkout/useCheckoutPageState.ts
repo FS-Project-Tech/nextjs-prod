@@ -48,7 +48,7 @@ import {
 } from "./checkoutFormPersistence";
 
 /** Debounce before POST /api/checkout/quote-totals (ms). Lower = snappier; too low = excess API calls on address typing. */
-const QUOTE_TOTALS_DEBOUNCE_MS = 120;
+const QUOTE_TOTALS_DEBOUNCE_MS = 300;
 
 export function useCheckoutPageState() {
   const router = useRouter();
@@ -108,7 +108,7 @@ export function useCheckoutPageState() {
   const [recoveryChecking, setRecoveryChecking] = useState(false);
   const recoveryAbortRef = useRef<AbortController | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"eway" | "cod" | "afterpay">(
-    "eway",
+    "eway"
   );
   const selectedPaymentMethodRef = useRef(selectedPaymentMethod);
   selectedPaymentMethodRef.current = selectedPaymentMethod;
@@ -176,34 +176,42 @@ export function useCheckoutPageState() {
   const watchedBillingState = useWatch({ control, name: "billing_state", defaultValue: "" });
   const watchedBillingPostcode = useWatch({ control, name: "billing_postcode", defaultValue: "" });
   const watchedBillingCity = useWatch({ control, name: "billing_city", defaultValue: "" });
-  const watchedShippingCountry = useWatch({ control, name: "shipping_country", defaultValue: "AU" });
+  const watchedShippingCountry = useWatch({
+    control,
+    name: "shipping_country",
+    defaultValue: "AU",
+  });
   const watchedShippingState = useWatch({ control, name: "shipping_state", defaultValue: "" });
-  const watchedShippingPostcode = useWatch({ control, name: "shipping_postcode", defaultValue: "" });
+  const watchedShippingPostcode = useWatch({
+    control,
+    name: "shipping_postcode",
+    defaultValue: "",
+  });
   const watchedShippingCity = useWatch({ control, name: "shipping_city", defaultValue: "" });
-  const watchedCustNdis = useWatch({ control, name: "cust_woo_ndis_number", defaultValue: "" }) ?? "";
+  const watchedCustNdis =
+    useWatch({ control, name: "cust_woo_ndis_number", defaultValue: "" }) ?? "";
   const watchedLegacyNdis = useWatch({ control, name: "ndis_number", defaultValue: "" }) ?? "";
 
   const canUseOnAccount = useMemo(() => {
     const roles = Array.isArray(user?.roles)
-      ? user.roles.map((r: unknown) => String(r || "").trim().toLowerCase())
+      ? user.roles.map((r: unknown) =>
+          String(r || "")
+            .trim()
+            .toLowerCase()
+        )
       : [];
     const isAdmin = roles.includes("administrator");
     const isNdisApprovedRole = roles.includes("ndis-approved");
     const isB2bUser = roles.includes("b2b_user");
     const isB2b30Days = roles.includes("b2b30days");
     const isSupportCoordinator = roles.includes("support_co_ordinator");
-    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days || isSupportCoordinator) return true;
+    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days || isSupportCoordinator)
+      return true;
     if (user) return false;
     if (sessionStatus !== "unauthenticated") return false;
     const digits = `${watchedCustNdis}${watchedLegacyNdis}`.replace(/\D/g, "");
     return digits.length >= 9;
-  }, [
-    user,
-    user?.roles,
-    sessionStatus,
-    watchedCustNdis,
-    watchedLegacyNdis,
-  ]);
+  }, [user, user?.roles, sessionStatus, watchedCustNdis, watchedLegacyNdis]);
 
   useEffect(() => {
     if (!canUseOnAccount && selectedPaymentMethod === "cod") {
@@ -325,13 +333,13 @@ export function useCheckoutPageState() {
       checkoutDraftHydratedForFingerprintRef.current = fp;
       return;
     }
-    const draftSavedAt = typeof draft.savedAt === "number" && Number.isFinite(draft.savedAt) ? draft.savedAt : 0;
+    const draftSavedAt =
+      typeof draft.savedAt === "number" && Number.isFinite(draft.savedAt) ? draft.savedAt : 0;
     const tid = window.setTimeout(() => {
       const patch = mergeCheckoutFormDraft(draft.form);
       const merged = { ...CHECKOUT_FORM_DEFAULTS, ...patch } as CheckoutFormData;
       form.reset(merged);
-      const userPickedPaymentAfterDraft =
-        paymentMethodTouchedAtRef.current > draftSavedAt;
+      const userPickedPaymentAfterDraft = paymentMethodTouchedAtRef.current > draftSavedAt;
       if (
         !userPickedPaymentAfterDraft &&
         (draft.selectedPaymentMethod === "eway" ||
@@ -643,49 +651,49 @@ export function useCheckoutPageState() {
         credentials: "include",
         cache: "no-store",
       })
-      .then(async (res) => {
-        if (ac.signal.aborted) return;
-        if (quoteEpochRef.current !== epoch) return;
-        if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
-      
-        const json = (await res.json().catch(() => ({}))) as {
-          success?: boolean;
-          totals?: CheckoutTotals;
-          error?: string;
-          shippingAdjusted?: boolean;
-          shippingLine?: {
-            method_id: string;
-            method_title: string;
+        .then(async (res) => {
+          if (ac.signal.aborted) return;
+          if (quoteEpochRef.current !== epoch) return;
+          if (cartLinesFingerprint(cartLinesRef.current) !== fingerprintAtSend) return;
+
+          const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            totals?: CheckoutTotals;
+            error?: string;
+            shippingAdjusted?: boolean;
+            shippingLine?: {
+              method_id: string;
+              method_title: string;
+            };
+            quote_signature?: string;
+            quote_snapshot?: CheckoutQuoteSnapshotV1;
           };
-          quote_signature?: string;
-          quote_snapshot?: CheckoutQuoteSnapshotV1;
-        };
 
-        if (!res.ok || !json.success || !json.totals) {
-          if (quoteEpochRef.current === epoch) setServerTotals(null);
-          return;
-        }
+          if (!res.ok || !json.success || !json.totals) {
+            if (quoteEpochRef.current === epoch) setServerTotals(null);
+            return;
+          }
 
-        if (json.quote_signature && json.quote_snapshot) {
-          lastSignedQuoteRef.current = {
-            signature: json.quote_signature,
-            snapshot: json.quote_snapshot,
-          };
-        } else {
-          lastSignedQuoteRef.current = null;
-        }
+          if (json.quote_signature && json.quote_snapshot) {
+            lastSignedQuoteRef.current = {
+              signature: json.quote_signature,
+              snapshot: json.quote_snapshot,
+            };
+          } else {
+            lastSignedQuoteRef.current = null;
+          }
 
-        if (json.shippingAdjusted && json.shippingLine?.method_id) {
-          success("Shipping method updated automatically"); // your toast
-      
-          setValue("shippingMethod", {
-            id: json.shippingLine.method_id,
-            label: json.shippingLine.method_title,
-          });
-        }
-      
-        setServerTotals(json.totals);
-      })
+          if (json.shippingAdjusted && json.shippingLine?.method_id) {
+            success("Shipping method updated automatically"); // your toast
+
+            setValue("shippingMethod", {
+              id: json.shippingLine.method_id,
+              label: json.shippingLine.method_title,
+            });
+          }
+
+          setServerTotals(json.totals);
+        })
         .catch(() => {
           if (!ac.signal.aborted && quoteEpochRef.current === epoch) setServerTotals(null);
         })

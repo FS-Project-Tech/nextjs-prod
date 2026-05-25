@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyEwayAndMarkWooPaid } from "@/lib/services/paymentService";
 import { getWooOrder } from "@/lib/services/wooService";
 import { keysMatchWooOrder } from "@/lib/order/orderKeyVerify";
 
@@ -46,8 +45,8 @@ function redirectToOrderReview(params: {
 }
 
 /**
- * Primary eWAY return URL. Verifies the AccessCode server-side, updates WooCommerce,
- * then sends the customer to the order review page without relying on client-side verification.
+ * Primary eWAY return URL. Validate the signed Woo order link, then hand off immediately
+ * to order review; the first order-review API call schedules eWAY verification after response.
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -69,49 +68,24 @@ export async function GET(req: NextRequest) {
     return redirectToCheckout(base, "missing_access_code");
   }
 
-  console.log("[payment/success] GET verify", {
+  console.log("[payment/success] GET handoff", {
     hasOrderRef: Boolean(orderRef),
   });
 
-  const canTrustOrderRef = orderRef ? await orderKeyMatches(orderRef, orderKey) : false;
-  const orderRefForVerify = canTrustOrderRef ? orderRef : null;
-  const safeOrderKey = canTrustOrderRef ? orderKey : "";
+  if (!orderRef) {
+    return redirectToCheckout(base, "missing_order_id");
+  }
 
-  const r = await verifyEwayAndMarkWooPaid({
+  const canTrustOrderRef = await orderKeyMatches(orderRef, orderKey);
+  if (!canTrustOrderRef) {
+    return redirectToCheckout(base, "verify_failed", "invalid_order_key");
+  }
+
+  return redirectToOrderReview({
+    base,
+    orderRef,
+    orderKey,
+    payment: "pending",
     accessCode,
-    orderRef: orderRefForVerify,
   });
-
-  if (!r.ok) {
-    if (orderRefForVerify) {
-      return redirectToOrderReview({
-        base,
-        orderRef: orderRefForVerify,
-        orderKey: safeOrderKey,
-        payment: r.paymentVerifiedButWooUpdateFailed ? "woo_update_failed" : "verify_failed",
-        accessCode: r.paymentVerifiedButWooUpdateFailed ? accessCode : undefined,
-      });
-    }
-    return redirectToCheckout(base, "verify_failed", r.error || "error");
-  }
-
-  if (r.paid && r.orderPostId) {
-    return redirectToOrderReview({
-      base,
-      orderRef: String(r.orderPostId),
-      orderKey: safeOrderKey,
-    });
-  }
-
-  const ref = orderRefForVerify || String(r.orderPostId || "");
-  if (ref) {
-    return redirectToOrderReview({
-      base,
-      orderRef: ref,
-      orderKey: safeOrderKey,
-      payment: "pending",
-    });
-  }
-
-  return redirectToCheckout(base, "pending");
 }

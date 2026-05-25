@@ -82,6 +82,7 @@ export async function upsertValidatedCheckoutOrder(params: {
       checkoutSessionId,
       billingEmail: payload.billing.email || "",
       paymentMethod: payload.payment_method,
+      includeProcessing: false,
     }),
     resolveExistingPendingCheckoutOrderId({
       customerId: actor.userId,

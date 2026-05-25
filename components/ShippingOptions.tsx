@@ -37,8 +37,11 @@ type RatesApiJson = {
 };
 
 function toCustomerFriendlyShippingError(raw: string): string {
-  const msg = String(raw || "").trim().toLowerCase();
-  if (!msg) return "Shipping options are temporarily unavailable. Please check your address and try again.";
+  const msg = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (!msg)
+    return "Shipping options are temporarily unavailable. Please check your address and try again.";
   if (msg.includes("missing required fields")) {
     return "Please Add your address to view available shipping.";
   }
@@ -86,7 +89,10 @@ export default function ShippingOptions({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const onRateChangeRef = useRef(onRateChange);
-  onRateChangeRef.current = onRateChange;
+
+  useEffect(() => {
+    onRateChangeRef.current = onRateChange;
+  }, [onRateChange]);
 
   const cartProductIds = useMemo(() => {
     const ids = items
@@ -97,14 +103,18 @@ export default function ShippingOptions({
 
   const queryKey = useMemo(
     () => `${country}|${postcode}|${state}|${city}|${subtotal}|${cartProductIds.join(",")}`,
-    [country, postcode, state, city, subtotal, cartProductIds],
+    [country, postcode, state, city, subtotal, cartProductIds]
   );
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setNotice(null);
+    const ac = new AbortController();
+    const loadingTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      setNotice(null);
+    }, 0);
 
     const usp = new URLSearchParams();
     usp.set("country", country || "AU");
@@ -119,6 +129,7 @@ export default function ShippingOptions({
     void fetch(`/api/shipping/rates?${usp.toString()}`, {
       cache: "no-store",
       credentials: "same-origin",
+      signal: ac.signal,
     })
       .then(async (res) => {
         const data = (await res.json()) as RatesApiJson;
@@ -136,13 +147,16 @@ export default function ShippingOptions({
       })
       .then(({ rates: list, notice: nextNotice }) => {
         if (!cancelled) {
+          window.clearTimeout(loadingTimer);
           setRates(Array.isArray(list) ? list : []);
           setNotice(nextNotice);
           setLoading(false);
         }
       })
       .catch((e: unknown) => {
+        if (ac.signal.aborted) return;
         if (!cancelled) {
+          window.clearTimeout(loadingTimer);
           setError(e instanceof Error ? e.message : "Shipping unavailable");
           setRates([]);
           setLoading(false);
@@ -151,6 +165,8 @@ export default function ShippingOptions({
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimer);
+      ac.abort();
     };
   }, [queryKey, country, postcode, state, city, subtotal, cartProductIds]);
 
@@ -200,9 +216,7 @@ export default function ShippingOptions({
 
   return (
     <div className={className}>
-      {showLabel ? (
-        <p className="mb-2 text-sm font-medium text-gray-700">Shipping method</p>
-      ) : null}
+      {showLabel ? <p className="mb-2 text-sm font-medium text-gray-700">Shipping method</p> : null}
       {notice ? (
         <p className="mb-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
           {notice}

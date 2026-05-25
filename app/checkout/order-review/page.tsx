@@ -1,5 +1,5 @@
 "use client";
- 
+
 import { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -25,31 +25,31 @@ function OrderReviewContent() {
   const accessCodeFromUrl = searchParams.get("AccessCode") || searchParams.get("accessCode");
   useEffect(() => {
     let cancelled = false;
- 
+
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
- 
+
     const run = async () => {
       setLoading(true);
       setError(null);
- 
+
       const orderId = orderIdFromUrl;
- 
+
       if (cancelled) return;
- 
+
       if (!orderId) {
         setError("Order ID is required");
         setLoading(false);
         return;
       }
- 
+
       if (accessCodeFromUrl?.trim() && !orderKeyFromUrl?.trim()) {
         setError(
-          "This payment return is missing the order key. Use the full return link from checkout (it includes key=…), or open the order from your account.",
+          "This payment return is missing the order key. Use the full return link from checkout (it includes key=…), or open the order from your account."
         );
         setLoading(false);
         return;
       }
- 
+
       try {
         const hasKey = Boolean(orderKeyFromUrl?.trim());
         const acTrim = accessCodeFromUrl?.trim() || "";
@@ -58,17 +58,19 @@ function OrderReviewContent() {
           : `/api/orders/${encodeURIComponent(orderId)}`;
         /** First hit with AccessCode schedules one deferred eWAY verify; polls use base URL only to avoid duplicate verify work. */
         const orderApiUrlFirst =
-          hasKey && acTrim ? `${orderApiBase}&AccessCode=${encodeURIComponent(acTrim)}` : orderApiBase;
- 
-        const maxAttempts = acTrim ? 14 : hasKey ? 2 : 3;
+          hasKey && acTrim
+            ? `${orderApiBase}&AccessCode=${encodeURIComponent(acTrim)}`
+            : orderApiBase;
+
+        const maxAttempts = hasKey ? 2 : 3;
         let data: { order?: OrderReviewOrder } | null = null;
         let lastError: Error | null = null;
- 
+
         for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt++) {
           if (attempt > 0) {
             await sleep(180 + attempt * 220);
           }
- 
+
           const orderApiUrl = attempt === 0 ? orderApiUrlFirst : orderApiBase;
           const res = await fetch(orderApiUrl, {
             cache: "no-store",
@@ -76,7 +78,7 @@ function OrderReviewContent() {
           });
           const responseText = (await res.text()).replace(/^\uFEFF/, "");
           const trimmed = responseText.trim();
- 
+
           if (!res.ok) {
             let msg = `Unable to load order (HTTP ${res.status}).`;
             if (trimmed) {
@@ -99,14 +101,14 @@ function OrderReviewContent() {
             }
             throw new Error(msg);
           }
- 
+
           if (!trimmed) {
             lastError = new Error(
               "Order service returned an empty response. Try refreshing the page."
             );
             continue;
           }
- 
+
           let parsed: { order?: OrderReviewOrder };
           try {
             parsed = JSON.parse(trimmed) as { order?: OrderReviewOrder };
@@ -115,34 +117,20 @@ function OrderReviewContent() {
             lastError = new Error(hint);
             continue;
           }
- 
+
           if (!parsed.order || typeof parsed.order !== "object") {
             lastError = new Error("Order details were missing from the server response.");
             continue;
           }
- 
-          const ord = parsed.order;
-          const st = String(ord.status || "").toLowerCase();
-          const pm = String(ord.payment_method || "").toLowerCase();
-          const waitForEwayConfirm =
-            Boolean(acTrim) &&
-            st === "pending" &&
-            pm === "eway" &&
-            attempt < maxAttempts - 1;
- 
-          if (waitForEwayConfirm) {
-            await sleep(320 + attempt * 180);
-            continue;
-          }
- 
+
           data = parsed;
           break;
         }
- 
+
         if (!data?.order) {
           throw lastError || new Error("Failed to load order after several attempts.");
         }
- 
+
         if (!cancelled) {
           setOrder(data.order);
           try {
@@ -174,9 +162,9 @@ function OrderReviewContent() {
             /* ignore */
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setError(err.message || "Failed to load order");
+          setError(err instanceof Error ? err.message : "Failed to load order");
         }
       } finally {
         if (!cancelled) {
@@ -184,24 +172,23 @@ function OrderReviewContent() {
         }
       }
     };
- 
+
     run();
     return () => {
       cancelled = true;
     };
   }, [orderIdFromUrl, orderKeyFromUrl, accessCodeFromUrl, clear]);
- 
+
   useEffect(() => {
     if (!order || loading || error) return;
     const dedupeKey = String(order.id);
     if (purchaseTrackedForOrderRef.current === dedupeKey) return;
     purchaseTrackedForOrderRef.current = dedupeKey;
- 
+
     const revenue = parseFloat(String(order.total || "0")) || 0;
     const tax = parseFloat(String(order.total_tax ?? order.tax_total ?? "0")) || 0;
-    const shipping =
-      parseFloat(String(order.shipping_total ?? order.total_shipping ?? "0")) || 0;
- 
+    const shipping = parseFloat(String(order.shipping_total ?? order.total_shipping ?? "0")) || 0;
+
     const items = order.line_items.map((li) => {
       const ext = li as typeof li & { product_id?: number };
       const unit = parseFloat(String(li.price ?? "0")) || 0;
@@ -213,7 +200,7 @@ function OrderReviewContent() {
         sku: li.sku,
       };
     });
- 
+
     trackPurchase({
       id: order.number ?? order.order_number ?? order.id,
       revenue,
@@ -222,7 +209,7 @@ function OrderReviewContent() {
       items,
     });
   }, [order, loading, error]);
- 
+
   useEffect(() => {
     if (!order || typeof window === "undefined") return;
     const currentOrderRef = orderIdFromUrl ? String(orderIdFromUrl).trim() : "";
@@ -241,21 +228,20 @@ function OrderReviewContent() {
     const next = `${window.location.pathname}?${sp.toString()}`;
     window.history.replaceState(null, "", next);
   }, [order, orderIdFromUrl]);
- 
+
   const handleDownloadPDF = useCallback(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
     root.classList.add("invoice-print-mode");
-    let timeoutId: number | undefined;
     const done = () => {
       root.classList.remove("invoice-print-mode");
-      if (timeoutId != null) window.clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId);
     };
     window.addEventListener("afterprint", done, { once: true });
-    timeoutId = window.setTimeout(done, 120_000);
+    const timeoutId = window.setTimeout(done, 120_000);
     window.print();
   }, []);
- 
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-10 flex items-center justify-center">
@@ -266,7 +252,7 @@ function OrderReviewContent() {
       </div>
     );
   }
- 
+
   if (error || !order) {
     return (
       <div className="min-h-screen bg-gray-50 py-10">
@@ -287,7 +273,7 @@ function OrderReviewContent() {
       </div>
     );
   }
- 
+
   const getNDISNumber = (): string | null => {
     const ndisInfo = order.meta_data?.find((m) => m.key === "ndis_info")?.value;
     if (typeof ndisInfo === "string" && ndisInfo.trim()) {
@@ -302,41 +288,42 @@ function OrderReviewContent() {
     if (legacy == null || String(legacy).trim() === "") return null;
     return String(legacy);
   };
- 
+
   const getMetaValue = (key: string) => {
     const meta = order.meta_data?.find((m) => m.key === key);
     return meta?.value ?? null;
   };
- 
+
   const getDeliveryAuthority = () => {
     const value = getMetaValue("delivery_authority") ?? getMetaValue("Signature Required");
     return value === "yes" ? "With Signature" : null;
   };
- 
+
   const getDeliveryInstructions = () => {
     return getMetaValue("delivery_notes") ?? getMetaValue("Delivery Instructions");
   };
- 
+
   const getDoNotSendPaperwork = () => {
-    const value = getMetaValue("no_paperwork") ?? getMetaValue("Do not Send Paperwork With Delivery");
+    const value =
+      getMetaValue("no_paperwork") ?? getMetaValue("Do not Send Paperwork With Delivery");
     return value === "yes";
   };
- 
+
   const getDiscreetPackaging = () => {
     const value = getMetaValue("discreet_packaging") ?? getMetaValue("Discreet Packaging");
     return value === "yes";
   };
- 
+
   const getNewsletterSubscription = () => {
     const value = getMetaValue("newsletter") ?? getMetaValue("Newsletter Subscription");
     return value === "yes";
   };
- 
+
   const isPaid = order.status === "processing" || order.status === "completed";
   const offlinePaymentMethods = ["cod", "bacs", "bank_transfer", "cheque"];
- 
+
   const paymentMethodDisplay = getOrderPaymentMethodDisplay(order);
- 
+
   /** Receipt label: on-account orders show **Done** when Woo is processing (or completed). */
   const orderStatusLabel = (() => {
     const s = String(order.status || "").toLowerCase();
@@ -356,7 +343,7 @@ function OrderReviewContent() {
     if (s === "failed") return "Failed";
     return order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "—";
   })();
- 
+
   const orderStatusToneClass = (() => {
     const s = String(order.status || "").toLowerCase();
     const pm = String(order.payment_method || "").toLowerCase();
@@ -365,7 +352,7 @@ function OrderReviewContent() {
     if (s === "processing") return "text-blue-700";
     return "text-amber-800";
   })();
- 
+
   // Calculate totals
   // Subtotal: use order.subtotal if present, otherwise sum line items (WooCommerce may omit subtotal)
   const subtotalFromLineItems =
@@ -380,7 +367,7 @@ function OrderReviewContent() {
     order.subtotal != null && order.subtotal !== ""
       ? parseFloat(order.subtotal)
       : subtotalFromLineItems;
- 
+
   const shipping =
     (order.shipping_total ?? order.total_shipping)
       ? parseFloat(String(order.shipping_total ?? order.total_shipping))
@@ -390,7 +377,7 @@ function OrderReviewContent() {
   if (!Number.isFinite(tax)) tax = 0;
   const discount = order.discount_total ? parseFloat(order.discount_total) : 0;
   const total = parseFloat(order.total);
- 
+
   // Format subtotalFromLineItems
   const orderDate = order.date_created
     ? new Date(order.date_created).toLocaleDateString("en-US", {
@@ -403,7 +390,7 @@ function OrderReviewContent() {
         month: "long",
         day: "numeric",
       });
- 
+
   const ndisNumber = getNDISNumber();
   const hcpDetails = hcpDisplayFromOrderMeta(order.meta_data);
   const deliveryAuthority = getDeliveryAuthority();
@@ -411,7 +398,7 @@ function OrderReviewContent() {
   const doNotSendPaperwork = getDoNotSendPaperwork();
   const discreetPackaging = getDiscreetPackaging();
   const newsletterSubscription = getNewsletterSubscription();
- 
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 sm:py-10">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
@@ -438,7 +425,7 @@ function OrderReviewContent() {
             newsletterSubscription={newsletterSubscription}
           />
         </OrderReviewSummary>
- 
+
         {/* Action Buttons */}
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
           <button
@@ -446,7 +433,13 @@ function OrderReviewContent() {
             onClick={handleDownloadPDF}
             className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -470,7 +463,7 @@ function OrderReviewContent() {
     </div>
   );
 }
- 
+
 export default function OrderReviewPage() {
   return (
     <Suspense

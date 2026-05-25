@@ -27,19 +27,16 @@ export type HeadlessSessionDedupResult =
       total: string | null;
     };
 
-function orderMatchesHeadlessSession(
-  meta: unknown,
-  checkoutSessionId: string,
-): boolean {
+function orderMatchesHeadlessSession(meta: unknown, checkoutSessionId: string): boolean {
   const sid = String(checkoutSessionId || "").trim();
   if (!sid) return false;
   const a = readWooMetaValue(
     meta as Array<{ key?: string; value?: unknown }>,
-    HEADLESS_CHECKOUT_SESSION_META_KEY,
+    HEADLESS_CHECKOUT_SESSION_META_KEY
   );
   const b = readWooMetaValue(
     meta as Array<{ key?: string; value?: unknown }>,
-    CHECKOUT_SESSION_ID_ORDER_META_KEY,
+    CHECKOUT_SESSION_ID_ORDER_META_KEY
   );
   return a === sid || b === sid;
 }
@@ -51,7 +48,7 @@ function rowMatchesSessionAndPm(
     payment_method?: string;
   },
   sid: string,
-  pm: string,
+  pm: string
 ): boolean {
   if (typeof row.id !== "number" || row.id <= 0) return false;
   const rowPm = String(row.payment_method || "").toLowerCase();
@@ -66,14 +63,15 @@ export async function findHeadlessSessionOrderDedup(opts: {
   checkoutSessionId: string;
   billingEmail: string;
   paymentMethod: string;
+  includeProcessing?: boolean;
 }): Promise<HeadlessSessionDedupResult> {
   const sid = String(opts.checkoutSessionId || "").trim();
   const emailRaw = String(opts.billingEmail || "").trim();
   if (!sid || !emailRaw) return { state: "none" };
   const pm = String(opts.paymentMethod || "").toLowerCase();
+  const includeProcessing = opts.includeProcessing !== false;
 
   try {
-    const afterIso = new Date(Date.now() - dedupWindowMs()).toISOString();
     const pendingParams = {
       search: emailRaw,
       status: "pending" as const,
@@ -82,6 +80,18 @@ export async function findHeadlessSessionOrderDedup(opts: {
       order: "desc" as const,
       _fields: PENDING_LIST_FIELDS,
     };
+    const { data: pendingList } = await wcAPI.get("/orders", { params: pendingParams });
+    const pending = Array.isArray(pendingList) ? pendingList : [];
+    for (const row of pending) {
+      if (!rowMatchesSessionAndPm(row, sid, pm)) continue;
+      return { state: "pending", orderId: row.id as number };
+    }
+
+    if (!includeProcessing) {
+      return { state: "none" };
+    }
+
+    const afterIso = new Date(Date.now() - dedupWindowMs()).toISOString();
     const processingParams = {
       search: emailRaw,
       status: "processing" as const,
@@ -91,24 +101,14 @@ export async function findHeadlessSessionOrderDedup(opts: {
       order: "desc" as const,
       _fields: PENDING_LIST_FIELDS,
     };
-    const [{ data: pendingList }, { data: procList }] = await Promise.all([
-      wcAPI.get("/orders", { params: pendingParams }),
-      wcAPI.get("/orders", { params: processingParams }),
-    ]);
-    const pending = Array.isArray(pendingList) ? pendingList : [];
-    for (const row of pending) {
-      if (!rowMatchesSessionAndPm(row, sid, pm)) continue;
-      return { state: "pending", orderId: row.id as number };
-    }
-
+    const { data: procList } = await wcAPI.get("/orders", { params: processingParams });
     const processing = Array.isArray(procList) ? procList : [];
     for (const row of processing) {
       if (!rowMatchesSessionAndPm(row, sid, pm)) continue;
       const ok = typeof row.order_key === "string" && row.order_key.trim();
       if (!ok) continue;
       const t = row.total;
-      const totalStr =
-        t == null ? null : typeof t === "string" ? t : String(t);
+      const totalStr = t == null ? null : typeof t === "string" ? t : String(t);
       return {
         state: "processing",
         orderId: row.id as number,
@@ -154,7 +154,7 @@ function reuseLatestPendingEnabled(): boolean {
 function orderHasHeadlessSessionMeta(meta: unknown): boolean {
   const v = readWooMetaValue(
     meta as Array<{ key?: string; value?: unknown }>,
-    HEADLESS_CHECKOUT_SESSION_META_KEY,
+    HEADLESS_CHECKOUT_SESSION_META_KEY
   );
   return Boolean(v && String(v).trim());
 }
@@ -178,7 +178,7 @@ export async function resolveExistingPendingCheckoutOrderId(opts: {
     try {
       const { data: order } = await wcAPI.get(
         `/orders/${encodeURIComponent(String(opts.resume.order_id))}`,
-        { params: { _fields: "id,status,order_key,billing,customer_id" } },
+        { params: { _fields: "id,status,order_key,billing,customer_id" } }
       );
       const o = order as {
         id?: number;
@@ -196,9 +196,7 @@ export async function resolveExistingPendingCheckoutOrderId(opts: {
         .toLowerCase();
       const emailOk = emailNorm && billEmail === emailNorm;
       const customerOk =
-        !opts.customerId ||
-        opts.customerId <= 0 ||
-        Number(o.customer_id || 0) === opts.customerId;
+        !opts.customerId || opts.customerId <= 0 || Number(o.customer_id || 0) === opts.customerId;
       if (keyOk && pending && emailOk && customerOk && typeof o.id === "number" && o.id > 0) {
         return o.id;
       }
@@ -244,12 +242,14 @@ export async function resolveExistingPendingCheckoutOrderId(opts: {
 
     if (!reuseLatestPendingEnabled() || orders.length === 0) return null;
 
-    const candidates = orders.filter((row: { id?: number; payment_method?: string; meta_data?: unknown }) => {
-      if (typeof row.id !== "number" || row.id <= 0) return false;
-      const rowPm = String(row.payment_method || "").toLowerCase();
-      if (rowPm && rowPm !== pm) return false;
-      return orderHasHeadlessSessionMeta(row.meta_data);
-    });
+    const candidates = orders.filter(
+      (row: { id?: number; payment_method?: string; meta_data?: unknown }) => {
+        if (typeof row.id !== "number" || row.id <= 0) return false;
+        const rowPm = String(row.payment_method || "").toLowerCase();
+        if (rowPm && rowPm !== pm) return false;
+        return orderHasHeadlessSessionMeta(row.meta_data);
+      }
+    );
 
     const latest = candidates[0] as { id?: number } | undefined;
     if (!latest || typeof latest.id !== "number" || latest.id <= 0) return null;
