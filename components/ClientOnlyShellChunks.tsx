@@ -12,6 +12,7 @@ const PriceMatchDrawer = dynamic(() => import("@/components/price-match/PriceMat
 });
 const BottomNav = dynamic(() => import("@/components/BottomNav"), { ssr: false });
 const PWARegister = dynamic(() => import("@/components/PWARegister"), { ssr: false });
+const AIOrderAssistant = dynamic(() => import("@/components/AIOrderAssistant"), { ssr: false });
 
 export function ClientNavigationProgress() {
   return <NavigationProgress />;
@@ -25,6 +26,7 @@ export function ClientCartNavPWA() {
       <PriceMatchDrawer />
       <BottomNav />
       <PWARegister />
+      <AIOrderAssistant />
     </>
   );
 }

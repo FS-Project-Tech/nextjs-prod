@@ -9,11 +9,25 @@ import {
   TS_FIELDS,
   TYPESENSE_DEFAULT_QUERY_BY,
   mapSortToTypesense,
+  tsEscapeFilterValue,
   typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
+import {
+  MAX_SKU_SEARCH_QUERY_LEN,
+  isExactSkuSearchQuery,
+  isLikelySkuToken,
+  parseSkuTokens,
+  toTypesenseExactArray,
+} from "@/lib/sku-search-tokens";
 import { rateLimitMemory, validateTrustedBrowserOrigin } from "@/lib/api-security";
 import { createApiErrorResponse, getRequestId, withRequestId } from "@/lib/utils/api-safe";
 import { readJsonBody, zodFail } from "@/utils/api-parse";
+import wcAPI from "@/lib/woocommerce";
+import { resolveOrderPostId } from "@/lib/services/wooService";
+import {
+  buildMachshipTrackingUrl,
+  extractMachshipTrackingTokenFromOrderMeta,
+} from "@/lib/machship/tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +40,7 @@ const AssistantActionSchema = z
     "top_selling",
     "on_sale",
     "shipping_info",
+    "order_tracking",
     "page_suggest",
     "similar_category",
     "similar_brand",
@@ -82,6 +97,7 @@ type ProductCandidate = {
   categoryName?: string;
   brandSlug?: string;
   brandName?: string;
+  popularity?: number;
 };
 
 type AssistantItem = ProductCandidate & {
@@ -95,15 +111,34 @@ type PageSuggestion = {
   title: string;
   description: string;
   href: string;
-  kind: "page" | "category" | "brand" | "search" | "shipping";
+  kind: "page" | "category" | "brand" | "search" | "shipping" | "tracking";
+};
+
+type OrderTrackingSummary = {
+  orderNumber: string;
+  status: string;
+  statusLabel: string;
+  dateCreated?: string;
+  dateModified?: string;
+  paymentMethod?: string;
+  itemCount?: number;
+  total?: string;
+  currency?: string;
+  trackingToken?: string;
+  trackingUrl?: string;
+};
+
+type TypesenseHit = {
+  document?: Record<string, unknown>;
+  text_match?: number;
 };
 
 type TypesenseSearchResult = {
-  hits?: Array<{ document?: Record<string, unknown> }>;
-  grouped_hits?: Array<{ hits?: Array<{ document?: Record<string, unknown> }> }>;
+  hits?: TypesenseHit[];
+  grouped_hits?: Array<{ hits?: TypesenseHit[] }>;
 };
 
-function flattenHits(result: TypesenseSearchResult): Array<{ document?: Record<string, unknown> }> {
+function flattenHits(result: TypesenseSearchResult): TypesenseHit[] {
   if (Array.isArray(result.grouped_hits) && result.grouped_hits.length > 0) {
     return result.grouped_hits.flatMap((group) => group.hits ?? []);
   }
@@ -162,6 +197,7 @@ function candidateFromDocument(doc: Record<string, unknown>): ProductCandidate |
   const categoryName = firstStringish(doc.category_name, doc.categoryName, doc.category_title);
   const brandSlug = firstStringish(doc.brand_slug, doc.brandSlug, doc.brand);
   const brandName = firstStringish(doc.brand_name, doc.brandName, doc.brand_title);
+  const popularity = Number(doc.popularity ?? doc.total_sales ?? 0);
 
   return {
     candidateId,
@@ -180,6 +216,7 @@ function candidateFromDocument(doc: Record<string, unknown>): ProductCandidate |
     categoryName: categoryName || (categorySlug ? labelFromSlug(categorySlug) : undefined),
     brandSlug: brandSlug || undefined,
     brandName: brandName || (brandSlug ? labelFromSlug(brandSlug) : undefined),
+    popularity: Number.isFinite(popularity) && popularity > 0 ? popularity : undefined,
   };
 }
 
@@ -193,23 +230,124 @@ function uniqPush(out: string[], value: string): void {
   out.push(cleaned.slice(0, 160));
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  "a",
+  "about",
+  "and",
+  "are",
+  "best",
+  "buy",
+  "can",
+  "could",
+  "exact",
+  "find",
+  "for",
+  "get",
+  "help",
+  "i",
+  "im",
+  "in",
+  "is",
+  "item",
+  "items",
+  "looking",
+  "me",
+  "my",
+  "need",
+  "of",
+  "or",
+  "order",
+  "please",
+  "product",
+  "products",
+  "recommend",
+  "result",
+  "results",
+  "search",
+  "show",
+  "suggest",
+  "the",
+  "to",
+  "want",
+  "what",
+  "with",
+  "you",
+]);
+
+function normalizeComparable(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractCoreProductQuery(message: string): string {
+  const cleaned = message
+    .replace(/[?!.]/g, " ")
+    .replace(
+      /\b(?:i am|i'm|im|we are|we're|looking for|look for|do you have|can you|could you|help me find|help me|show me|find me|search for|suggest|recommend|please|products?|items?)\b/gi,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const terms = cleaned
+    .split(/[^a-z0-9._/-]+/i)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term.toLowerCase()));
+
+  return terms.join(" ").slice(0, 160);
+}
+
+function searchTerms(value: string): string[] {
+  return normalizeComparable(value)
+    .split(/\s+/)
+    .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term));
+}
+
+function extractSkuSearchTokens(message: string): string[] {
+  const raw = String(message || "")
+    .trim()
+    .slice(0, MAX_SKU_SEARCH_QUERY_LEN);
+  const parsedTokens = parseSkuTokens(raw);
+  const out: string[] = [];
+
+  if (isExactSkuSearchQuery(raw, parsedTokens)) {
+    for (const token of parsedTokens) uniqPush(out, token);
+  }
+
+  const inlineTokens = raw.match(/[a-z0-9][a-z0-9._/-]{2,}[a-z0-9]/gi) ?? [];
+  for (const token of inlineTokens) {
+    if (isLikelySkuToken(token)) uniqPush(out, token);
+  }
+
+  return out.slice(0, 8);
+}
+
 function buildSearchQueries(message: string, fallbackQuery = ""): string[] {
   const queries: string[] = [];
-  uniqPush(queries, message);
+  const coreQuery = extractCoreProductQuery(message);
+
+  for (const token of extractSkuSearchTokens(message)) {
+    uniqPush(queries, token);
+  }
+
+  uniqPush(queries, coreQuery);
+
+  for (const part of message.split(/[,;\n\r]+|\b(?:and|or)\b/i).slice(0, 6)) {
+    uniqPush(queries, extractCoreProductQuery(part));
+  }
+
+  const terms = searchTerms(coreQuery);
+  if (terms.length > 1 && terms.length <= 5) {
+    for (const term of terms) uniqPush(queries, term);
+  }
+
   uniqPush(queries, fallbackQuery);
+  uniqPush(queries, message);
 
-  const skuLikeTokens = message.match(/[a-z0-9][a-z0-9._-]{2,}/gi) ?? [];
-  for (const token of skuLikeTokens.slice(0, 4)) {
-    if (/[0-9]/.test(token) || /[-_.]/.test(token)) {
-      uniqPush(queries, token);
-    }
-  }
-
-  for (const part of message.split(/[,;\n\r]+/).slice(0, 4)) {
-    uniqPush(queries, part);
-  }
-
-  return queries.slice(0, 5);
+  return queries.slice(0, 10);
 }
 
 function buildOnSaleFilter(): string {
@@ -219,6 +357,80 @@ function buildOnSaleFilter(): string {
   if (onSaleField) return `${onSaleField}:=true`;
   if (salePriceField) return `${salePriceField}:>0`;
   return "";
+}
+
+function combineFilters(...parts: string[]): string {
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" && ");
+}
+
+function candidateSearchHaystack(candidate: ProductCandidate): string {
+  return normalizeComparable(
+    [
+      candidate.name,
+      candidate.sku || "",
+      candidate.categoryName || "",
+      candidate.categorySlug || "",
+      candidate.brandName || "",
+      candidate.brandSlug || "",
+      ...Object.values(candidate.attributes ?? {}),
+    ].join(" ")
+  );
+}
+
+function rankCandidate(params: {
+  candidate: ProductCandidate;
+  message: string;
+  query: string;
+  queryIndex: number;
+  hitIndex: number;
+  textMatch?: number;
+  baseBoost?: number;
+}): number {
+  const { candidate, message, query, queryIndex, hitIndex, textMatch = 0, baseBoost = 0 } = params;
+  const coreQuery = extractCoreProductQuery(message);
+  const coreComparable = normalizeComparable(coreQuery || message);
+  const queryComparable = normalizeComparable(query);
+  const nameComparable = normalizeComparable(candidate.name);
+  const skuComparable = normalizeComparable(candidate.sku || "");
+  const haystack = candidateSearchHaystack(candidate);
+  const messageTerms = searchTerms(coreQuery || message);
+  const queryTerms = searchTerms(query);
+
+  let score = baseBoost;
+  score += Math.max(0, 1200 - queryIndex * 100);
+  score += Math.max(0, 180 - hitIndex * 8);
+  score += Math.min(500, Math.max(0, textMatch) / 10_000);
+  score += Math.min(900, Math.max(0, candidate.popularity ?? 0) * 6);
+
+  for (const skuToken of extractSkuSearchTokens(message)) {
+    const skuTokenComparable = normalizeComparable(skuToken);
+    if (!skuTokenComparable || !skuComparable) continue;
+    if (skuComparable === skuTokenComparable) score += 20_000;
+    else if (skuComparable.includes(skuTokenComparable)) score += 8_000;
+  }
+
+  if (coreComparable) {
+    if (nameComparable === coreComparable) score += 6_000;
+    else if (nameComparable.startsWith(coreComparable)) score += 3_500;
+    else if (nameComparable.includes(coreComparable)) score += 2_500;
+
+    if (haystack.includes(coreComparable)) score += 1_200;
+  }
+
+  if (queryComparable && nameComparable.includes(queryComparable)) score += 1_000;
+
+  const matchedMessageTerms = messageTerms.filter((term) => haystack.includes(term));
+  const matchedNameTerms = messageTerms.filter((term) => nameComparable.includes(term));
+  if (messageTerms.length > 0 && matchedNameTerms.length === messageTerms.length) score += 1_800;
+  if (messageTerms.length > 0 && matchedMessageTerms.length === messageTerms.length) score += 1_000;
+  score += matchedNameTerms.length * 180;
+  score += matchedMessageTerms.length * 90;
+  score += queryTerms.filter((term) => haystack.includes(term)).length * 120;
+
+  return score;
 }
 
 type ProductSearchOptions = {
@@ -236,52 +448,305 @@ async function searchProductCandidates(
 
   const client = getTypesenseClient();
   const collection = getTypesenseCollectionName();
-  const byId = new Map<string, ProductCandidate>();
+  const ranked = new Map<string, { candidate: ProductCandidate; score: number; order: number }>();
+  let order = 0;
   const queries =
     options.action === "top_selling" || options.action === "on_sale"
       ? ["*"]
       : buildSearchQueries(message, options.fallbackQuery);
   const onSaleFilter = options.onSaleOnly ? buildOnSaleFilter() : "";
+  const sort_by = mapSortToTypesense(options.sortBy || "relevance");
 
-  for (const query of queries) {
+  const addHit = (
+    hit: TypesenseHit,
+    query: string,
+    queryIndex: number,
+    hitIndex: number,
+    baseBoost = 0
+  ) => {
+    if (!hit.document) return;
+    const candidate = candidateFromDocument(hit.document);
+    if (!candidate || !candidate.inStock) return;
+    const score = rankCandidate({
+      candidate,
+      message,
+      query,
+      queryIndex,
+      hitIndex,
+      textMatch: hit.text_match,
+      baseBoost,
+    });
+    const existing = ranked.get(candidate.candidateId);
+    if (!existing) {
+      ranked.set(candidate.candidateId, { candidate, score, order: order++ });
+      return;
+    }
+    if (score > existing.score) {
+      ranked.set(candidate.candidateId, {
+        candidate,
+        score,
+        order: existing.order,
+      });
+    }
+  };
+
+  const runSearch = async (
+    query: string,
+    queryIndex: number,
+    filter_by: string,
+    baseBoost = 0,
+    queryBy = process.env.TYPESENSE_QUERY_BY || TYPESENSE_DEFAULT_QUERY_BY
+  ) => {
     const result = (await client
       .collections(collection)
       .documents()
       .search({
         q: query,
+        query_by: queryBy,
+        per_page: 10,
+        page: 1,
+        sort_by,
+        ...(filter_by ? { filter_by } : {}),
+      })) as TypesenseSearchResult;
+
+    flattenHits(result).forEach((hit, hitIndex) =>
+      addHit(hit, query, queryIndex, hitIndex, baseBoost)
+    );
+  };
+
+  const exactSkuSearchTokens = extractSkuSearchTokens(message);
+  if (exactSkuSearchTokens.length > 0 && options.action === "suggestions") {
+    const skuFilter = `sku:=${toTypesenseExactArray(exactSkuSearchTokens)}`;
+    await runSearch("*", -1, combineFilters(onSaleFilter, skuFilter), 10_000, "name,sku");
+  }
+
+  for (let i = 0; i < queries.length; i += 1) {
+    await runSearch(queries[i], i, onSaleFilter);
+  }
+
+  const sortedCandidates = Array.from(ranked.values())
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, MAX_CANDIDATES)
+    .map((item) => item.candidate);
+
+  const exactSkuTokens = exactSkuSearchTokens.map(normalizeComparable).filter(Boolean);
+  if (exactSkuTokens.length > 0) {
+    const exactSkuMatches = sortedCandidates.filter((candidate) => {
+      const sku = normalizeComparable(candidate.sku || "");
+      return sku && exactSkuTokens.includes(sku);
+    });
+    if (exactSkuMatches.length > 0) return exactSkuMatches;
+  }
+
+  return sortedCandidates;
+}
+
+function productCandidateToAssistantItem(
+  candidate: ProductCandidate,
+  reason: string
+): AssistantItem {
+  return {
+    ...candidate,
+    qty: 1,
+    reason,
+  };
+}
+
+async function searchRelatedProductCandidates(
+  primaryItems: AssistantItem[],
+  candidates: ProductCandidate[]
+): Promise<AssistantItem[]> {
+  if (!isTypesenseConfigured()) return [];
+  const seeds =
+    primaryItems.length > 0
+      ? primaryItems
+      : candidates
+          .slice(0, 3)
+          .map((candidate) =>
+            productCandidateToAssistantItem(candidate, "Relevant product match.")
+          );
+  if (seeds.length === 0) return [];
+
+  const exclude = new Set([...primaryItems, ...candidates].map((item) => item.candidateId));
+  const filters: string[] = [];
+  for (const seed of seeds.slice(0, 3)) {
+    if (seed.categorySlug) {
+      filters.push(`${TS_FIELDS.categorySlug}:=${tsEscapeFilterValue(seed.categorySlug)}`);
+    }
+    if (seed.brandSlug) {
+      filters.push(`${TS_FIELDS.brandSlug}:=${tsEscapeFilterValue(seed.brandSlug)}`);
+    }
+  }
+
+  const uniqueFilters = Array.from(new Set(filters)).slice(0, 4);
+  if (uniqueFilters.length === 0) return [];
+
+  const client = getTypesenseClient();
+  const collection = getTypesenseCollectionName();
+  const byId = new Map<string, AssistantItem>();
+
+  for (const filter_by of uniqueFilters) {
+    const result = (await client
+      .collections(collection)
+      .documents()
+      .search({
+        q: "*",
         query_by: process.env.TYPESENSE_QUERY_BY || TYPESENSE_DEFAULT_QUERY_BY,
         per_page: 8,
         page: 1,
-        sort_by: mapSortToTypesense(options.sortBy || "relevance"),
-        ...(onSaleFilter ? { filter_by: onSaleFilter } : {}),
+        sort_by: mapSortToTypesense("popularity"),
+        filter_by,
       })) as TypesenseSearchResult;
 
     for (const hit of flattenHits(result)) {
       if (!hit.document) continue;
       const candidate = candidateFromDocument(hit.document);
-      if (!candidate || !candidate.inStock) continue;
+      if (!candidate || !candidate.inStock || exclude.has(candidate.candidateId)) continue;
       if (!byId.has(candidate.candidateId)) {
-        byId.set(candidate.candidateId, candidate);
+        byId.set(
+          candidate.candidateId,
+          productCandidateToAssistantItem(candidate, "Related product customers often consider.")
+        );
       }
-      if (byId.size >= MAX_CANDIDATES) break;
+      if (byId.size >= 6) break;
     }
-
-    if (byId.size >= MAX_CANDIDATES) break;
+    if (byId.size >= 6) break;
   }
 
   return Array.from(byId.values());
 }
 
+function extractOrderReference(message: string): string {
+  const cleaned = String(message || "").trim();
+  const labeled = cleaned.match(
+    /\b(?:order|order id|order number|tracking)\s*#?\s*([a-z0-9-]{3,32})\b/i
+  );
+  if (labeled?.[1]) return labeled[1].trim();
+  const hash = cleaned.match(/#\s*([a-z0-9-]{3,32})/i);
+  if (hash?.[1]) return hash[1].trim();
+  const numeric = cleaned.match(/\b\d{4,12}\b/);
+  return numeric?.[0] || "";
+}
+
+function isOrderTrackingIntent(message: string): boolean {
+  return /\b(track|tracking|order status|where is my order|where's my order)\b/i.test(message);
+}
+
+function orderStatusLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    pending: "Pending payment",
+    processing: "Processing",
+    "on-hold": "On hold",
+    completed: "Completed",
+    cancelled: "Cancelled",
+    refunded: "Refunded",
+    failed: "Failed",
+  };
+  return labels[normalized] || labelFromSlug(normalized || "unknown");
+}
+
+function trackingReply(summary: OrderTrackingSummary): string {
+  const trackingText = summary.trackingUrl
+    ? " A carrier tracking link is available below."
+    : " I could not find a carrier tracking link yet, but the order status is shown below.";
+  return `Order ${summary.orderNumber} is currently ${summary.statusLabel}.${trackingText}`;
+}
+
+async function fetchOrderTrackingSummary(message: string): Promise<{
+  reply: string;
+  tracking?: OrderTrackingSummary;
+  questions: string[];
+  pages: PageSuggestion[];
+}> {
+  const orderRef = extractOrderReference(message);
+  if (!orderRef) {
+    return {
+      reply: "Please enter your order ID or order number and I can check the latest status.",
+      questions: ["Track order #12345", "Where do I find my order ID?"],
+      pages: [],
+    };
+  }
+
+  const postId = await resolveOrderPostId(orderRef);
+  if (!postId) {
+    return {
+      reply:
+        "I could not find that order number. Please check the order ID from your confirmation email and try again.",
+      questions: ["Track another order", "Contact support"],
+      pages: [
+        {
+          title: "Contact JOYA",
+          description: "Ask our team to help locate your order.",
+          href: "/contact",
+          kind: "tracking",
+        },
+      ],
+    };
+  }
+
+  const { data } = await wcAPI.get(`/orders/${postId}`, {
+    params: {
+      _fields:
+        "id,number,order_number,status,total,currency,date_created,date_modified,payment_method_title,line_items,meta_data",
+    },
+    timeout: 15_000,
+  });
+  const order = data as Record<string, unknown>;
+  const status = String(order.status ?? "");
+  const trackingToken = extractMachshipTrackingTokenFromOrderMeta(
+    Array.isArray(order.meta_data)
+      ? (order.meta_data as Array<{ key?: string; value?: unknown }>)
+      : undefined
+  );
+  const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
+  const tracking: OrderTrackingSummary = {
+    orderNumber: String(order.number ?? order.order_number ?? order.id ?? orderRef),
+    status,
+    statusLabel: orderStatusLabel(status),
+    dateCreated: firstStringish(order.date_created),
+    dateModified: firstStringish(order.date_modified),
+    paymentMethod: firstStringish(order.payment_method_title),
+    itemCount: lineItems.length,
+    total: firstStringish(order.total),
+    currency: firstStringish(order.currency) || "AUD",
+    ...(trackingToken
+      ? {
+          trackingToken,
+          trackingUrl: buildMachshipTrackingUrl(trackingToken),
+        }
+      : {}),
+  };
+
+  return {
+    reply: trackingReply(tracking),
+    tracking,
+    questions: ["Track another order", "Show shipping information", "Contact support"],
+    pages: tracking.trackingUrl
+      ? [
+          {
+            title: "Carrier tracking",
+            description: "Open the live carrier tracking page for this order.",
+            href: tracking.trackingUrl,
+            kind: "tracking",
+          },
+        ]
+      : [],
+  };
+}
+
 function productCatalogForPrompt(candidates: ProductCandidate[]): string {
   if (candidates.length === 0) return "No matching product candidates were found.";
   return candidates
-    .map((item) => ({
+    .map((item, index) => ({
+      rank: index + 1,
       candidateId: item.candidateId,
       productId: item.productId,
       variationId: item.variationId ?? null,
       name: item.name,
       sku: item.sku ?? "",
       price: item.price,
+      popularity: item.popularity ?? 0,
       attributes: item.attributes ?? {},
     }))
     .map((item) => JSON.stringify(item))
@@ -332,6 +797,18 @@ function pageSuggestionsForAction(
     });
   }
 
+  if (
+    action === "order_tracking" ||
+    /\b(track|tracking|order status|where is my order)\b/.test(lower)
+  ) {
+    pushUniquePage(pages, {
+      title: "Contact JOYA",
+      description: "Need help with an order? Our team can check details for you.",
+      href: "/contact",
+      kind: "tracking",
+    });
+  }
+
   if (action === "top_selling") {
     pushUniquePage(pages, {
       title: "Top Selling Products",
@@ -354,7 +831,7 @@ function pageSuggestionsForAction(
     pushUniquePage(pages, {
       title: "All Products",
       description: "Search and filter the full product catalogue.",
-      href: `/products?query=${encodeURIComponent(message)}`,
+      href: `/products?query=${encodeURIComponent(extractCoreProductQuery(message) || message)}`,
       kind: "search",
     });
     pushUniquePage(pages, {
@@ -368,6 +845,16 @@ function pageSuggestionsForAction(
       description: "Browse products by manufacturer or brand.",
       href: "/brands",
       kind: "page",
+    });
+  }
+
+  if (action === "suggestions" && candidates.length > 0) {
+    const query = extractCoreProductQuery(message) || message;
+    pushUniquePage(pages, {
+      title: "All matching products",
+      description: "Open the full product search page for this request.",
+      href: `/products?query=${encodeURIComponent(query)}`,
+      kind: "search",
     });
   }
 
@@ -397,7 +884,9 @@ function pageSuggestionsForAction(
 }
 
 function ruleBasedItems(action: AssistantAction, candidates: ProductCandidate[]): AssistantItem[] {
-  if (action === "shipping_info" || action === "page_suggest") return [];
+  if (action === "shipping_info" || action === "order_tracking" || action === "page_suggest") {
+    return [];
+  }
   return candidates.slice(0, 6).map((candidate) => ({
     ...candidate,
     qty: 1,
@@ -432,6 +921,15 @@ function ruleBasedResponse(
     };
   }
 
+  if (action === "order_tracking") {
+    return {
+      reply: "Share your order ID or order number and I can check the latest status.",
+      items,
+      questions: ["Track order #12345", "Where do I find my order ID?", "Contact support"],
+      pages,
+    };
+  }
+
   if (action === "page_suggest") {
     return {
       reply:
@@ -458,6 +956,7 @@ function ruleBasedResponse(
         ? "Here are on-sale products and the clearance page."
         : "I could not find on-sale matches right now. You can still browse clearance.",
     shipping_info: "",
+    order_tracking: "",
     page_suggest: "",
     similar_category:
       items.length > 0
@@ -543,7 +1042,7 @@ async function callOpenAI(params: {
           {
             role: "system",
             content:
-              "You are an order assistance agent for a medical supplies ecommerce site. Help customers find suitable products, quantities, and next steps. You are not a clinician and must not provide diagnosis or medical advice. Only propose products from the provided candidate list, using candidateId exactly. If candidates are weak or missing, ask a concise clarification question. Do not claim stock, delivery, final price, tax, payment, or eligibility is guaranteed; checkout validates those.",
+              "You are a friendly ecommerce shopping assistant for a medical supplies website. Help customers find products, compare options, track orders, and choose next steps in a conversational way. You are not a clinician and must not provide diagnosis or medical advice. Only propose products from the provided candidate list, using candidateId exactly. The candidate list is ranked by catalogue search quality and popularity, so prefer the lowest rank numbers and top-selling matches, especially exact SKU or name matches. Only say 'exact match' when the customer gave an exact SKU or the product name exactly matches; for broad category requests say 'relevant match' or 'category match'. If candidates are weak or missing, ask a concise clarification question instead of guessing. Do not claim stock, delivery, final price, tax, payment, or eligibility is guaranteed; checkout validates those.",
           },
           ...params.history.map((message) => ({
             role: message.role,
@@ -557,6 +1056,8 @@ async function callOpenAI(params: {
               "",
               "Allowed product candidates:",
               productCatalogForPrompt(params.candidates),
+              "",
+              "Selection rule: choose only the strongest ranked products that directly match the customer request. If no candidate directly matches, return no proposedItems and ask one clarification question.",
               "",
               "Customer request:",
               params.message,
@@ -589,6 +1090,7 @@ function sanitizeModelResponse(
   candidates: ProductCandidate[]
 ): { reply: string; items: AssistantItem[]; questions: string[] } {
   const byId = new Map(candidates.map((item) => [item.candidateId, item]));
+  const rankById = new Map(candidates.map((item, index) => [item.candidateId, index]));
   const items: AssistantItem[] = [];
 
   for (const proposal of modelResponse.proposedItems) {
@@ -600,6 +1102,12 @@ function sanitizeModelResponse(
       reason: proposal.reason,
     });
   }
+
+  items.sort(
+    (a, b) =>
+      (rankById.get(a.candidateId) ?? Number.MAX_SAFE_INTEGER) -
+      (rankById.get(b.candidateId) ?? Number.MAX_SAFE_INTEGER)
+  );
 
   return {
     reply: modelResponse.reply,
@@ -629,6 +1137,25 @@ export async function POST(req: NextRequest) {
     }
 
     const action = parsed.data.action;
+
+    if (
+      action === "order_tracking" ||
+      (action === "suggestions" && isOrderTrackingIntent(parsed.data.message))
+    ) {
+      const trackingPayload = await fetchOrderTrackingSummary(parsed.data.message);
+      return withRequestId(
+        NextResponse.json({
+          success: true,
+          requestId,
+          candidates: [],
+          items: [],
+          relatedItems: [],
+          ...trackingPayload,
+        }),
+        requestId
+      );
+    }
+
     const fallbackQuery = parsed.data.cartItems
       .map((item) => item.name)
       .filter(Boolean)
@@ -670,11 +1197,17 @@ export async function POST(req: NextRequest) {
       payload = ruleBasedResponse(action, parsed.data.message, candidates);
     }
 
+    const relatedItems =
+      action === "suggestions" && payload.items.length > 0
+        ? await searchRelatedProductCandidates(payload.items, candidates)
+        : [];
+
     return withRequestId(
       NextResponse.json({
         success: true,
         requestId,
         candidates,
+        relatedItems,
         ...payload,
       }),
       requestId

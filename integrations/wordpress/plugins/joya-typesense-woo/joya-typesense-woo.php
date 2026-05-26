@@ -3,7 +3,7 @@
  * Plugin Name:       Joya Typesense Woo
  * Plugin URI:        https://github.com/joya-medical/nextjs-prod
  * Description:       WooCommerce REST feed for Typesense, real-time sync to Next.js, manual sync in admin, and an activity log under WooCommerce.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Joya Medical Supplies
@@ -22,7 +22,7 @@ if (defined('JOYA_TYPESENSE_WOO_PLUGIN_FILE')) {
     return;
 }
 define('JOYA_TYPESENSE_WOO_PLUGIN_FILE', __FILE__);
-define('JOYA_TYPESENSE_WOO_VERSION', '1.1.0');
+define('JOYA_TYPESENSE_WOO_VERSION', '1.2.0');
 
 /**
  * Load sync core once WooCommerce is available (and avoid double-include with legacy require).

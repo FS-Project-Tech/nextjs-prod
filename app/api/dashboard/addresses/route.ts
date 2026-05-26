@@ -8,23 +8,11 @@ import {
   normalizeAddressPersistBody,
   persistCustomerAddress,
 } from "@/lib/addresses-server";
-import { mergeAddressListWithWooPrimaries } from "@/lib/wc-primary-addresses";
+import {
+  fetchWpUserJsonForAddresses,
+  mergeAddressListWithWooPrimaries,
+} from "@/lib/wc-primary-addresses";
 import { getToken } from "next-auth/jwt";
-
-async function getWpUserMe(token: string): Promise<{ id: string | null; email: string | null }> {
-  const wpBase = getWpBaseUrl();
-  if (!wpBase) return { id: null, email: null };
-  const userResponse = await fetch(`${wpBase}/wp-json/wp/v2/users/me`, {
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    cache: "no-store",
-  });
-  if (!userResponse.ok) return { id: null, email: null };
-  const user = await userResponse.json();
-  return {
-    id: user?.id != null ? String(user.id) : (user?.slug ?? null),
-    email: user?.email != null ? String(user.email) : null,
-  };
-}
 
 /** Get all fallback addresses (memory + file) so they persist after refresh / different process */
 function getFallbackAddresses(userId: string): Record<string, unknown>[] {
@@ -64,6 +52,27 @@ async function fetchWpAddressList(
   } catch {
     return { ok: false, status: 0, list: [] };
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function getAuthString(auth: unknown, key: "sub" | "wpToken"): string {
+  const value = asRecord(auth)?.[key];
+  return value == null ? "" : String(value);
+}
+
+function getWpUserId(wpUser: unknown): string | null {
+  const record = asRecord(wpUser);
+  if (record?.id != null) return String(record.id);
+  if (record?.slug != null) return String(record.slug);
+  return null;
+}
+
+function getWpUserEmail(wpUser: unknown): string | null {
+  const value = asRecord(wpUser)?.email;
+  return value == null ? null : String(value);
 }
 
 /** Stable id when Address Book API omits `id` (avoid unstable list order). */
@@ -125,7 +134,7 @@ export async function GET(req: NextRequest) {
       req,
       secret: process.env.NEXTAUTH_SECRET,
     });
-    const token = (nextAuthToken as any)?.wpToken;
+    const token = getAuthString(nextAuthToken, "wpToken");
     if (!token) {
       if (process.env.NODE_ENV === "development")
         console.log("[addresses] GET – 401 Not authenticated (no wpToken)");
@@ -137,14 +146,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const { id: userId, email: userEmail } = await getWpUserMe(token);
+    const [wpUser, bookRes, secondaryRes] = await Promise.all([
+      fetchWpUserJsonForAddresses(token),
+      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses", token),
+      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses-secondary", token),
+    ]);
+    const userId = getWpUserId(wpUser);
+    const userEmail = getWpUserEmail(wpUser);
     // Use userId (WordPress) as primary key; fallback to token.sub so save/load use same key after refresh
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
         ? String(userId)
-        : (nextAuthToken as any)?.sub != null
-          ? String((nextAuthToken as any).sub)
-          : "";
+        : getAuthString(nextAuthToken, "sub");
     if (!fileStoreKey) {
       if (process.env.NODE_ENV === "development") console.log("[addresses] GET – no userId or sub");
       return NextResponse.json({ error: "Failed to get user data" }, { status: 401 });
@@ -154,15 +167,10 @@ export async function GET(req: NextRequest) {
 
     const noStore = { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } };
     const finalize = (merged: Record<string, unknown>[]) =>
-      mergeAddressListWithWooPrimaries(merged, userEmail, token);
+      mergeAddressListWithWooPrimaries(merged, userEmail, token, wpUser);
 
     const fallbackList = getFallbackAddresses(fileStoreKey);
     const deleted = getDeletedIds(fileStoreKey);
-
-    const [bookRes, secondaryRes] = await Promise.all([
-      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses", token),
-      fetchWpAddressList(wpBase, "/wp-json/customers/v1/addresses-secondary", token),
-    ]);
 
     if (process.env.NODE_ENV === "development") {
       console.log(
@@ -203,7 +211,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const nextAuthToken = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-    const token = (nextAuthToken as any)?.wpToken;
+    const token = getAuthString(nextAuthToken, "wpToken");
     if (!token) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -214,13 +222,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "WordPress URL not configured" }, { status: 500 });
     }
 
-    const { id: userId } = await getWpUserMe(token);
+    const wpUser = await fetchWpUserJsonForAddresses(token);
+    const userId = getWpUserId(wpUser);
     const fileStoreKey =
       userId != null && String(userId).trim() !== ""
         ? String(userId)
-        : (nextAuthToken as any)?.sub != null
-          ? String((nextAuthToken as any).sub)
-          : "";
+        : getAuthString(nextAuthToken, "sub");
     if (!fileStoreKey) {
       return NextResponse.json({ error: "Failed to get user data" }, { status: 401 });
     }

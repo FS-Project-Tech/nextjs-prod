@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -28,6 +29,7 @@ type AssistantAction =
   | "top_selling"
   | "on_sale"
   | "shipping_info"
+  | "order_tracking"
   | "page_suggest"
   | "similar_category"
   | "similar_brand";
@@ -44,6 +46,11 @@ type AssistantItem = {
   attributes?: Record<string, string>;
   tax_class?: string;
   tax_status?: string;
+  inStock?: boolean;
+  categorySlug?: string;
+  categoryName?: string;
+  brandSlug?: string;
+  brandName?: string;
   qty: number;
   reason: string;
 };
@@ -53,16 +60,20 @@ type ChatEntry = {
   role: ChatRole;
   content: string;
   items?: AssistantItem[];
+  relatedItems?: AssistantItem[];
   questions?: string[];
   pages?: PageSuggestion[];
+  tracking?: OrderTrackingSummary;
 };
 
 type AssistantResponse = {
   success?: boolean;
   reply?: string;
   items?: AssistantItem[];
+  relatedItems?: AssistantItem[];
   questions?: string[];
   pages?: PageSuggestion[];
+  tracking?: OrderTrackingSummary;
   error?: string;
 };
 
@@ -70,7 +81,21 @@ type PageSuggestion = {
   title: string;
   description: string;
   href: string;
-  kind: "page" | "category" | "brand" | "search" | "shipping";
+  kind: "page" | "category" | "brand" | "search" | "shipping" | "tracking";
+};
+
+type OrderTrackingSummary = {
+  orderNumber: string;
+  status: string;
+  statusLabel: string;
+  dateCreated?: string;
+  dateModified?: string;
+  paymentMethod?: string;
+  itemCount?: number;
+  total?: string;
+  currency?: string;
+  trackingToken?: string;
+  trackingUrl?: string;
 };
 
 type QuickOption = {
@@ -81,9 +106,10 @@ type QuickOption = {
 };
 
 const starterPrompts = [
-  "I need gloves and wipes for a small clinic",
-  "Help me reorder 2 cartons of continence products",
-  "Find dressings and tape for wound care",
+  "I am looking for gloves and wipes",
+  "Track order #12345",
+  "Help me find continence products",
+  "Show dressings and tape for wound care",
 ];
 
 const quickOptions: QuickOption[] = [
@@ -109,6 +135,12 @@ const quickOptions: QuickOption[] = [
     label: "Shipping info",
     action: "shipping_info",
     prompt: "Show shipping information",
+    Icon: Truck,
+  },
+  {
+    label: "Track order",
+    action: "order_tracking",
+    prompt: "Track my order",
     Icon: Truck,
   },
   {
@@ -159,6 +191,344 @@ function toCartInput(item: AssistantItem): Omit<CartItem, "id"> {
   };
 }
 
+const PRODUCT_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Crect fill='%23f8fafc' width='320' height='320'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-family='Arial,sans-serif' font-size='16'%3ENo image%3C/text%3E%3C/svg%3E";
+
+function priceLabel(price: string): string {
+  const n = Number(price || 0);
+  return Number.isFinite(n) && n > 0 ? `$${n.toFixed(2)}` : "Price on product page";
+}
+
+type ProductAttributeEntry = {
+  key: string;
+  label: string;
+  value: string;
+  isPackaging: boolean;
+};
+
+function prettyAttributeLabel(key: string): string {
+  const normalized = key.trim().toLowerCase();
+  if (/(^|[-_])(pkt|pack|package|packaging|box|ctn|carton|each|unit)([-_]|$)/.test(normalized)) {
+    return "Packaging";
+  }
+  return key
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isPackagingAttribute(key: string, value: string): boolean {
+  const normalizedKey = key.trim().toLowerCase();
+  const normalizedValue = value.trim().toLowerCase();
+  if (normalizedKey === "size") return false;
+  return (
+    /(^|[-_])(pkt|pack|package|packaging|box|ctn|carton|each|unit)([-_]|$)/.test(normalizedKey) ||
+    /\b(pack|box|ctn|carton|each|unit|pair|pcs|pieces)\b/.test(normalizedValue)
+  );
+}
+
+function attributeEntries(item: AssistantItem): ProductAttributeEntry[] {
+  return Object.entries(item.attributes ?? {})
+    .map(([key, value]) => {
+      const cleanValue = String(value || "").trim();
+      return {
+        key,
+        label: prettyAttributeLabel(key),
+        value: cleanValue,
+        isPackaging: isPackagingAttribute(key, cleanValue),
+      };
+    })
+    .filter((entry) => Boolean(entry.label && entry.value));
+}
+
+function packagingValue(item: AssistantItem): string {
+  return attributeEntries(item).find((entry) => entry.isPackaging)?.value || "";
+}
+
+function normalizeOption(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function packagingOptionsForItem(item: AssistantItem, relatedItems: AssistantItem[]) {
+  const sameProductItems = relatedItems.filter(
+    (candidate) => candidate.productId === item.productId || candidate.slug === item.slug
+  );
+  const options = [
+    item,
+    ...sameProductItems.filter((candidate) => candidate.candidateId !== item.candidateId),
+  ];
+  const seen = new Set<string>();
+
+  return options
+    .map((candidate) => ({
+      candidate,
+      label: packagingValue(candidate) || "Default packaging",
+    }))
+    .filter((option) => {
+      const key = normalizeOption(option.label);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function ProductResultCard({
+  item,
+  relatedItems,
+  onAdd,
+}: {
+  item: AssistantItem;
+  relatedItems: AssistantItem[];
+  onAdd: (item: AssistantItem) => void;
+}) {
+  const packagingOptions = packagingOptionsForItem(item, relatedItems);
+  const [selectedCandidateId, setSelectedCandidateId] = useState(item.candidateId);
+  const [qty, setQty] = useState(Math.max(1, item.qty || 1));
+  const activeItem =
+    packagingOptions.find((option) => option.candidate.candidateId === selectedCandidateId)
+      ?.candidate || item;
+  const [imageError, setImageError] = useState(false);
+  const imageSrc =
+    !imageError && activeItem.imageUrl ? activeItem.imageUrl : PRODUCT_IMAGE_PLACEHOLDER;
+  const attrs = attributeEntries(activeItem).filter((entry) => !entry.isPackaging);
+  const selectedPackaging = packagingValue(activeItem) || "Default packaging";
+
+  const handleQtyChange = (value: string) => {
+    const nextQty = Number.parseInt(value, 10);
+    if (!Number.isFinite(nextQty)) {
+      setQty(1);
+      return;
+    }
+    setQty(Math.min(999, Math.max(1, nextQty)));
+  };
+
+  return (
+    <article className="overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-sm transition hover:border-teal-200 hover:shadow-md">
+      <div className="grid gap-4 p-4 sm:grid-cols-[150px_1fr]">
+        <Link
+          href={productHref(activeItem)}
+          prefetch={false}
+          className="relative block aspect-square overflow-hidden rounded-2xl bg-gray-50"
+        >
+          <Image
+            src={imageSrc}
+            alt={activeItem.name}
+            fill
+            sizes="(max-width: 640px) 45vw, 150px"
+            className="object-contain p-3"
+            onError={() => setImageError(true)}
+          />
+        </Link>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            {activeItem.brandName ? (
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
+                {activeItem.brandName}
+              </span>
+            ) : null}
+            {activeItem.categoryName ? (
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                {activeItem.categoryName}
+              </span>
+            ) : null}
+            {activeItem.inStock === false ? (
+              <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700">
+                Out of stock
+              </span>
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700">
+                In stock
+              </span>
+            )}
+          </div>
+
+          <Link
+            href={productHref(activeItem)}
+            className="mt-3 block text-base font-semibold leading-6 text-gray-950 hover:text-teal-700"
+            prefetch={false}
+          >
+            {activeItem.name}
+          </Link>
+
+          {activeItem.reason ? (
+            <p className="mt-2 text-sm leading-6 text-gray-600">{activeItem.reason}</p>
+          ) : null}
+
+          <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+            <div>
+              <span className="text-gray-500">Price: </span>
+              <span className="font-semibold text-gray-950">{priceLabel(activeItem.price)}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">SKU: </span>
+              <span className="font-medium text-gray-950">{activeItem.sku || "N/A"}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Packaging
+              </span>
+              <select
+                value={selectedCandidateId}
+                onChange={(event) => {
+                  setSelectedCandidateId(event.target.value);
+                  setImageError(false);
+                }}
+                className="w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                disabled={packagingOptions.length <= 1}
+              >
+                {packagingOptions.map((option) => (
+                  <option key={option.candidate.candidateId} value={option.candidate.candidateId}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {packagingOptions.length <= 1 ? (
+                <span className="mt-1 block text-xs text-gray-500">{selectedPackaging}</span>
+              ) : null}
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Qty
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={999}
+                value={qty}
+                onChange={(event) => handleQtyChange(event.target.value)}
+                className="w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+            </label>
+          </div>
+
+          {attrs.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {attrs.map(({ key, label, value }) => (
+                <span
+                  key={`${key}-${value}`}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+                >
+                  {label}: {value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onAdd({ ...activeItem, qty })}
+              className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+            >
+              <ShoppingCart className="h-4 w-4" aria-hidden />
+              Add to cart
+            </button>
+            <Link
+              href={productHref(activeItem)}
+              prefetch={false}
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800"
+            >
+              View product
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function formatDateLabel(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function OrderTrackingCard({ tracking }: { tracking: OrderTrackingSummary }) {
+  return (
+    <article className="rounded-[1.75rem] border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
+            Order tracking
+          </p>
+          <h3 className="mt-2 text-xl font-semibold text-gray-950">
+            Order #{tracking.orderNumber}
+          </h3>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700">
+          {tracking.statusLabel}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-4">
+        {tracking.dateCreated ? (
+          <div className="rounded-2xl bg-gray-50 p-3">
+            <span className="block text-xs font-medium text-gray-500">Placed</span>
+            <span className="mt-1 block font-semibold text-gray-950">
+              {formatDateLabel(tracking.dateCreated)}
+            </span>
+          </div>
+        ) : null}
+        {tracking.dateModified ? (
+          <div className="rounded-2xl bg-gray-50 p-3">
+            <span className="block text-xs font-medium text-gray-500">Last updated</span>
+            <span className="mt-1 block font-semibold text-gray-950">
+              {formatDateLabel(tracking.dateModified)}
+            </span>
+          </div>
+        ) : null}
+        {tracking.itemCount != null ? (
+          <div className="rounded-2xl bg-gray-50 p-3">
+            <span className="block text-xs font-medium text-gray-500">Items</span>
+            <span className="mt-1 block font-semibold text-gray-950">{tracking.itemCount}</span>
+          </div>
+        ) : null}
+        {tracking.total ? (
+          <div className="rounded-2xl bg-gray-50 p-3">
+            <span className="block text-xs font-medium text-gray-500">Order total</span>
+            <span className="mt-1 block font-semibold text-gray-950">
+              {tracking.currency || "AUD"} {tracking.total}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {tracking.paymentMethod ? (
+        <p className="mt-4 text-sm text-gray-600">Payment method: {tracking.paymentMethod}</p>
+      ) : null}
+
+      {tracking.trackingUrl ? (
+        <Link
+          href={tracking.trackingUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          Open carrier tracking
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </Link>
+      ) : (
+        <p className="mt-5 rounded-2xl bg-blue-50 p-3 text-sm leading-6 text-blue-800">
+          Carrier tracking is not available yet. If your order has just been placed, tracking may
+          appear once dispatch is booked.
+        </p>
+      )}
+    </article>
+  );
+}
+
 export default function AIOrderAssistant() {
   const featureDisabled = process.env.NEXT_PUBLIC_AI_ORDER_ASSISTANT_ENABLED === "false";
   const router = useRouter();
@@ -172,7 +542,7 @@ export default function AIOrderAssistant() {
       id: makeId(),
       role: "assistant",
       content:
-        "Tell me what you are ordering, a product name, SKU, or care setting. I can suggest matching items and add them to your cart for review.",
+        "Hi, I can help you find products, compare options, show related items, or track an order. What would you like to do?",
     },
   ]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -199,17 +569,16 @@ export default function AIOrderAssistant() {
 
   const addSuggestedItem = (item: AssistantItem) => {
     addItem(toCartInput(item));
+    setIsOpen(false);
     open();
     toast.success(`Added ${item.name} to cart`);
   };
 
-  const addAllSuggestedItems = (items: AssistantItem[]) => {
-    for (const item of items) addItem(toCartInput(item));
-    open();
-    toast.success(`Added ${items.length} suggested item${items.length === 1 ? "" : "s"} to cart`);
-  };
-
   const openPage = (href: string) => {
+    if (/^https?:\/\//i.test(href)) {
+      window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
     setIsOpen(false);
     router.push(href);
   };
@@ -253,8 +622,10 @@ export default function AIOrderAssistant() {
           role: "assistant",
           content: data.reply || "I found a few possible matches.",
           items: data.items || [],
+          relatedItems: data.relatedItems || [],
           questions: data.questions || [],
           pages: data.pages || [],
+          tracking: data.tracking,
         },
       ]);
     } catch (error) {
@@ -280,10 +651,12 @@ export default function AIOrderAssistant() {
 
   const runQuickOption = (option: QuickOption) => {
     const context = input.trim();
-    const prompt =
-      context && option.action !== "top_selling" && option.action !== "on_sale"
-        ? `${option.prompt}: ${context}`
-        : option.prompt;
+    const shouldAppendContext =
+      context &&
+      option.action !== "top_selling" &&
+      option.action !== "on_sale" &&
+      option.action !== "order_tracking";
+    const prompt = shouldAppendContext ? `${option.prompt}: ${context}` : option.prompt;
     void submitPrompt(prompt, option.action);
   };
 
@@ -292,221 +665,255 @@ export default function AIOrderAssistant() {
       <button
         type="button"
         onClick={openAssistant}
-        className="fixed bottom-5 left-5 z-[80] inline-flex items-center gap-2 rounded-full bg-teal-700 px-4 py-3 text-sm font-semibold text-white shadow-xl shadow-teal-900/20 transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+        className="fixed bottom-24 left-4 z-[80] inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-2xl shadow-gray-900/15 transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-teal-900/20 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 md:bottom-5 md:left-5"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
+        aria-label="Open AI shopping assistant"
       >
-        <Sparkles className="h-4 w-4" aria-hidden />
-        AI Order Help
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-emerald-500 text-white shadow-md">
+          <Sparkles className="h-5 w-5" aria-hidden />
+        </span>
+        <span className="text-left leading-tight">
+          <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-600">
+            Joya Assistant
+          </span>
+          <span className="block">What are you looking for?</span>
+        </span>
       </button>
 
       {isOpen ? (
         <div
-          className="fixed inset-0 z-[90] flex items-end justify-start bg-black/25 p-3 sm:items-end sm:p-5"
+          className="fixed inset-0 z-[200] bg-[#f8fbff]"
           role="dialog"
           aria-modal="true"
-          aria-label="AI order assistant"
+          aria-label="AI shopping assistant"
         >
-          <div className="flex h-[min(760px,calc(100vh-2rem))] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
-            <div className="flex items-center justify-between border-b border-gray-100 bg-gradient-to-r from-teal-700 to-teal-600 px-4 py-3 text-white">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
-                  <Bot className="h-5 w-5" aria-hidden />
+          <div className="flex h-dvh flex-col overflow-hidden">
+            <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white/85 px-4 py-3 backdrop-blur md:px-8">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.focus()}
+                className="inline-flex items-center gap-3 rounded-full px-1 py-1 text-left"
+              >
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-emerald-500 text-white shadow-sm">
+                  <Sparkles className="h-5 w-5" aria-hidden />
                 </span>
-                <div>
-                  <h2 className="text-sm font-semibold">AI Order Assistant</h2>
-                  <p className="text-xs text-teal-50">
-                    Suggestions are reviewed in your cart before checkout.
-                  </p>
-                </div>
-              </div>
+                <span>
+                  <span className="block text-sm font-semibold text-gray-950">Joya Assistance</span>
+                  <span className="block text-xs text-gray-500">
+                    Product answers with catalogue links
+                  </span>
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="rounded-full p-2 text-white/90 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
-                aria-label="Close AI order assistant"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+                aria-label="Close AI shopping assistant"
               >
                 <X className="h-5 w-5" aria-hidden />
               </button>
-            </div>
+            </header>
 
-            <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50 px-4 py-4">
-              {messages.map((message) => {
-                const isAssistant = message.role === "assistant";
-                return (
-                  <div key={message.id} className={isAssistant ? "pr-6" : "pl-10"}>
-                    <div
-                      className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                        isAssistant
-                          ? "rounded-tl-sm border border-gray-200 bg-white text-gray-800"
-                          : "rounded-tr-sm bg-teal-700 text-white"
-                      }`}
-                    >
-                      <p className="whitespace-pre-line leading-6">{message.content}</p>
+            <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+              <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+                {messages.length <= 1 ? (
+                  <section className="pt-4 text-center md:pt-12">
+                    <div className="mx-auto mb-5 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-emerald-500 text-white shadow-lg">
+                      <Bot className="h-7 w-7" aria-hidden />
                     </div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-600">
+                      Joya AI Mode
+                    </p>
+                    <h2 className="mt-3 text-3xl font-semibold tracking-tight text-gray-950 md:text-5xl">
+                      What are you looking for?
+                    </h2>
+                    <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-gray-600">
+                      Ask for a product, SKU, category, brand, care need, or order number. I can
+                      search the catalogue, show related products, and help track orders.
+                    </p>
+                  </section>
+                ) : null}
 
-                    {message.items && message.items.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {message.items.map((item) => (
-                          <div
-                            key={`${message.id}-${item.candidateId}`}
-                            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <Link
-                                  href={productHref(item)}
-                                  className="line-clamp-2 text-sm font-semibold text-gray-900 hover:text-teal-700"
-                                  prefetch={false}
-                                >
-                                  {item.name}
-                                </Link>
-                                <p className="mt-1 text-xs text-gray-500">
-                                  {item.sku ? `SKU: ${item.sku} · ` : ""}
-                                  Qty {item.qty} · ${Number(item.price || 0).toFixed(2)}
-                                </p>
-                                {item.reason ? (
-                                  <p className="mt-2 text-xs leading-5 text-gray-600">
-                                    {item.reason}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => addSuggestedItem(item)}
-                                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-teal-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
-                              >
-                                <ShoppingCart className="h-3.5 w-3.5" aria-hidden />
-                                Add
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => addAllSuggestedItems(message.items || [])}
-                          className="w-full rounded-full border border-teal-700 px-3 py-2 text-xs font-semibold text-teal-800 transition hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+                {messages.map((message) => {
+                  const isAssistant = message.role === "assistant";
+
+                  return (
+                    <section key={message.id} className="space-y-4">
+                      <div className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}>
+                        <div
+                          className={`max-w-3xl rounded-[1.5rem] px-5 py-4 text-sm shadow-sm md:text-base ${
+                            isAssistant
+                              ? "border border-gray-200 bg-white text-gray-800"
+                              : "bg-gray-950 text-white"
+                          }`}
                         >
-                          Add all suggestions to cart
-                        </button>
+                          <p className="whitespace-pre-line leading-7">{message.content}</p>
+                        </div>
                       </div>
-                    ) : null}
 
-                    {message.pages && message.pages.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {message.pages.map((page) => (
-                          <div
-                            key={`${message.id}-${page.href}`}
-                            className="rounded-xl border border-teal-100 bg-white p-3 shadow-sm"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-gray-900">{page.title}</p>
-                                <p className="mt-1 text-xs leading-5 text-gray-600">
-                                  {page.description}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openPage(page.href)}
-                                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-teal-700 px-3 py-2 text-xs font-semibold text-teal-800 transition hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
-                              >
-                                Open
-                                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-                              </button>
-                            </div>
+                      {message.tracking ? <OrderTrackingCard tracking={message.tracking} /> : null}
+
+                      {message.items && message.items.length > 0 ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-lg font-semibold text-gray-950">Product results</h3>
                           </div>
-                        ))}
-                      </div>
-                    ) : null}
+                          <div className="grid gap-4">
+                            {message.items.map((item) => (
+                              <ProductResultCard
+                                key={`${message.id}-${item.candidateId}`}
+                                item={item}
+                                relatedItems={message.items || []}
+                                onAdd={addSuggestedItem}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
 
-                    {message.questions && message.questions.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {message.questions.map((question) => (
-                          <button
-                            key={question}
-                            type="button"
-                            onClick={() => setInput(question)}
-                            className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 transition hover:border-teal-300 hover:text-teal-800"
-                          >
-                            {question}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
+                      {message.relatedItems && message.relatedItems.length > 0 ? (
+                        <div className="space-y-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-950">
+                              Frequently bought or related products
+                            </h3>
+                            <p className="mt-1 text-sm text-gray-600">
+                              These are popular related items from similar categories or brands.
+                            </p>
+                          </div>
+                          <div className="grid gap-4">
+                            {message.relatedItems.map((item) => (
+                              <ProductResultCard
+                                key={`${message.id}-related-${item.candidateId}`}
+                                item={item}
+                                relatedItems={message.relatedItems || []}
+                                onAdd={addSuggestedItem}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {message.pages && message.pages.length > 0 ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {message.pages.map((page) => (
+                            <button
+                              key={`${message.id}-${page.href}`}
+                              type="button"
+                              onClick={() => openPage(page.href)}
+                              className="rounded-[1.5rem] border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-teal-200 hover:shadow-md"
+                            >
+                              <span className="text-sm font-semibold text-gray-950">
+                                {page.title}
+                              </span>
+                              <span className="mt-1 block text-sm leading-6 text-gray-600">
+                                {page.description}
+                              </span>
+                              <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
+                                Open link
+                                <ArrowRight className="h-4 w-4" aria-hidden />
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {message.questions && message.questions.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {message.questions.map((question) => (
+                            <button
+                              key={question}
+                              type="button"
+                              onClick={() => setInput(question)}
+                              className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                              {question}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
+
+                {isLoading ? (
+                  <div className="flex max-w-3xl items-center gap-3 rounded-[1.5rem] border border-gray-200 bg-white px-5 py-4 text-sm text-gray-600 shadow-sm">
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" aria-hidden />
+                    Searching catalogue and building product links...
                   </div>
-                );
-              })}
-
-              {isLoading ? (
-                <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
-                  <Loader2 className="h-4 w-4 animate-spin text-teal-700" aria-hidden />
-                  Finding suitable products...
-                </div>
-              ) : null}
-            </div>
-
-            <div className="border-t border-gray-100 bg-white p-3">
-              <div className="mb-3 grid grid-cols-2 gap-2">
-                {quickOptions.map(({ label, action, Icon, prompt }) => (
-                  <button
-                    key={action}
-                    type="button"
-                    onClick={() => runQuickOption({ label, action, Icon, prompt })}
-                    disabled={isLoading}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Icon className="h-3.5 w-3.5" aria-hidden />
-                    {label}
-                  </button>
-                ))}
+                ) : null}
               </div>
+            </main>
 
-              {messages.length <= 1 ? (
+            <footer className="shrink-0 border-t border-gray-200 bg-white/90 px-4 py-4 backdrop-blur md:px-8">
+              <div className="mx-auto w-full max-w-5xl">
                 <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                  {starterPrompts.map((prompt) => (
+                  {quickOptions.map(({ label, action, Icon, prompt }) => (
                     <button
-                      key={prompt}
+                      key={action}
                       type="button"
-                      onClick={() => void submitPrompt(prompt)}
-                      className="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-xs text-gray-700 transition hover:bg-teal-50 hover:text-teal-800"
+                      onClick={() => runQuickOption({ label, action, Icon, prompt })}
+                      disabled={isLoading}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {prompt}
+                      <Icon className="h-4 w-4" aria-hidden />
+                      {label}
                     </button>
                   ))}
                 </div>
-              ) : null}
 
-              <form onSubmit={onSubmit} className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <MessageCircle className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input
-                    ref={inputRef}
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    placeholder="Ask for products, SKUs, or reorder help..."
-                    className="w-full rounded-full border border-gray-200 py-3 pl-9 pr-4 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                    disabled={isLoading}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isLoading || !input.trim()}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-teal-700 text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300"
-                  aria-label="Send message"
+                {messages.length <= 1 ? (
+                  <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                    {starterPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => void submitPrompt(prompt)}
+                        className="shrink-0 rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-700 transition hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <form
+                  onSubmit={onSubmit}
+                  className="flex items-center gap-2 rounded-[2rem] border border-gray-200 bg-white p-2 shadow-lg shadow-gray-900/10 focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100"
                 >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden />
-                  )}
-                </button>
-              </form>
-              <p className="mt-2 text-center text-[11px] leading-4 text-gray-500">
-                AI suggestions can be wrong. Prices, stock, shipping, and eligibility are confirmed
-                at checkout.
-              </p>
-            </div>
+                  <div className="relative flex-1">
+                    <MessageCircle className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      ref={inputRef}
+                      value={input}
+                      onChange={(event) => setInput(event.target.value)}
+                      placeholder="Ask for a product, related items, or track order #..."
+                      className="w-full rounded-full border-0 bg-transparent py-3 pl-11 pr-4 text-base text-gray-950 outline-none placeholder:text-gray-400"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !input.trim()}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-gray-950 text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    aria-label="Send message"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                    ) : (
+                      <Send className="h-5 w-5" aria-hidden />
+                    )}
+                  </button>
+                </form>
+
+                <p className="mt-2 text-center text-[11px] leading-4 text-gray-500">
+                  AI answers can be wrong. Check product pages and checkout for final prices, stock,
+                  shipping, and eligibility.
+                </p>
+              </div>
+            </footer>
           </div>
         </div>
       ) : null}

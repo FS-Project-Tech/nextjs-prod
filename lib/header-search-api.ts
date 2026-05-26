@@ -5,7 +5,7 @@
  */
 
 import { TS_FIELDS } from "@/lib/typesense-products";
-import { isLikelySkuToken, parseSkuTokens } from "@/lib/sku-search-tokens";
+import { isExactSkuSearchQuery, isLikelySkuToken, parseSkuTokens } from "@/lib/sku-search-tokens";
 
 export type HeaderSearchFacetCount = { value: string; count: number };
 export type HeaderSearchFacetGroup = { field_name: string; counts: HeaderSearchFacetCount[] };
@@ -65,9 +65,9 @@ export async function fetchHeaderSearchSuggestions(
   signal: AbortSignal
 ): Promise<HeaderSearchApiResult> {
   const skuTokens = parseSkuTokens(queryTrimmed);
-  const useSkuFilterSearch =
-    skuTokens.length > 1 &&
-    (/[,&;\n\r\t]/.test(queryTrimmed) || skuTokens.every((t) => isLikelySkuToken(t)));
+  const useSkuFilterSearch = isExactSkuSearchQuery(queryTrimmed, skuTokens);
+  const singleSkuAutocompleteQuery =
+    skuTokens.length === 1 && isLikelySkuToken(skuTokens[0]) && /[\d._/-]/.test(skuTokens[0]);
 
   const formattedQuery = queryTrimmed
     .split(/[,\/&\s]+/)
@@ -76,7 +76,7 @@ export async function fetchHeaderSearchSuggestions(
     .join(" || ");
 
   /** API parses SKU tokens from raw `q`; OR-query uses formatted string for keyword search. */
-  const qParam = useSkuFilterSearch
+  const qParam = useSkuFilterSearch || singleSkuAutocompleteQuery
     ? queryTrimmed
     : formattedQuery.trim() || queryTrimmed;
 

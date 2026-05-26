@@ -9,6 +9,7 @@ import Script from "next/script";
 import { getProductBySlugCached } from "@/app/product/[slug]/product-fetch-cache";
 import { categoryTrailToBreadcrumbSegments } from "@/lib/category-breadcrumb-trail";
 import { fetchCategoryTrailFromLeaf } from "@/lib/woocommerce/category-trail";
+import type { CategoryTrailItem, WooCommerceProduct } from "@/lib/woocommerce";
 import ProductMainColumn from "@/app/product/[slug]/ProductMainColumn";
 import ProductSidebarColumn from "@/app/product/[slug]/ProductSidebarColumn";
 import ProductAccordionOnlySection from "@/app/product/[slug]/ProductAccordionOnlySection";
@@ -44,6 +45,27 @@ type YoastHeadJson = {
   twitter_description?: string;
   twitter_image?: string;
 };
+
+async function resolvePrimaryCategoryTrail(
+  product: WooCommerceProduct,
+): Promise<CategoryTrailItem[]> {
+  const categories = Array.isArray(product.categories) ? product.categories : [];
+  if (categories.length === 0) return [];
+
+  const trails = await Promise.all(
+    categories.map(async (category) => {
+      const trail = await fetchCategoryTrailFromLeaf(category.id);
+      return trail.length > 0
+        ? trail
+        : [{ id: category.id, name: category.name, slug: category.slug }];
+    }),
+  );
+
+  return trails.reduce<CategoryTrailItem[]>(
+    (best, trail) => (trail.length > best.length ? trail : best),
+    [],
+  );
+}
 
 export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
@@ -139,10 +161,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
     notFound();
   }
 
-  const primaryCategory = product.categories?.[0];
-  const categoryTrail = primaryCategory
-    ? await fetchCategoryTrailFromLeaf(primaryCategory.id)
-    : [];
+  const categoryTrail = await resolvePrimaryCategoryTrail(product);
 
   const { default: ProductRelatedSections } = await import(
     "@/app/product/[slug]/ProductRelatedSections"

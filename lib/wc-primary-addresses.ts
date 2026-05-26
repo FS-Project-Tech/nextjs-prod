@@ -160,7 +160,7 @@ export function mergeCustomerWithWpUserMeta(customer: unknown, wpUser: unknown):
   return { ...c, billing: bill, shipping: ship };
 }
 
-async function fetchWpUserJsonForAddresses(token: string): Promise<unknown | null> {
+export async function fetchWpUserJsonForAddresses(token: string): Promise<unknown | null> {
   const wpBase = getWpBaseUrl();
   if (!wpBase) return null;
   const headers = {
@@ -230,9 +230,11 @@ export function primaryAddressesFromCustomer(customer: unknown): Record<string, 
 export async function mergeAddressListWithWooPrimaries(
   bookAddresses: Record<string, unknown>[],
   userEmail: string | null | undefined,
-  token: string
+  token: string,
+  wpUserSnapshot?: unknown | null
 ): Promise<Record<string, unknown>[]> {
-  const wpUser = await fetchWpUserJsonForAddresses(token);
+  const wpUser =
+    wpUserSnapshot === undefined ? await fetchWpUserJsonForAddresses(token) : wpUserSnapshot;
   const emailFromWp =
     wpUser && typeof wpUser === "object" && "email" in wpUser
       ? String((wpUser as { email?: string }).email ?? "").trim()
@@ -261,7 +263,7 @@ export async function mergeAddressListWithWooPrimaries(
   );
   const secFp = new Set([...bookFp, ...abMetaExtra.map(addressFingerprint)]);
   const secondaryExtra = fromSecondaryMeta.filter((a) => !secFp.has(addressFingerprint(a)));
-  let combined = [...secondaryExtra, ...abMetaExtra, ...bookAddresses];
+  const combined = [...secondaryExtra, ...abMetaExtra, ...bookAddresses];
 
   if (!email) {
     return combined;

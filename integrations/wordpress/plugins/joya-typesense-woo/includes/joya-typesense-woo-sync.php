@@ -9,6 +9,299 @@ if (defined('JOYA_TYPESENSE_WOO_SYNC_INCLUDED')) {
 }
 define('JOYA_TYPESENSE_WOO_SYNC_INCLUDED', true);
 
+function joya_ts_schema_fields(): array {
+    return [
+        'id' => ['type' => 'string', 'required' => true, 'label' => 'Document ID'],
+        'name' => ['type' => 'string', 'required' => true, 'label' => 'Product name'],
+        'slug' => ['type' => 'string', 'required' => true, 'label' => 'Product slug'],
+        'custom_badge' => ['type' => 'string', 'required' => false, 'label' => 'Custom badge'],
+        'sku' => ['type' => 'string[]', 'required' => false, 'label' => 'SKU values'],
+        'type' => ['type' => 'string', 'required' => true, 'label' => 'Document type'],
+        'parent_id' => ['type' => 'string', 'required' => true, 'label' => 'Parent product ID'],
+        'attributes' => ['type' => 'object', 'required' => false, 'label' => 'Variation attributes'],
+        'description' => ['type' => 'string', 'required' => false, 'label' => 'Description'],
+        'short_description' => ['type' => 'string', 'required' => false, 'label' => 'Short description'],
+        'variation_dropdown_json' => ['type' => 'string', 'required' => false, 'label' => 'Variation dropdown JSON'],
+        'price' => ['type' => 'float', 'required' => true, 'label' => 'Price'],
+        'regular_price' => ['type' => 'float', 'required' => false, 'label' => 'Regular price'],
+        'sale_price' => ['type' => 'float', 'required' => false, 'label' => 'Sale price'],
+        'on_sale' => ['type' => 'bool', 'required' => false, 'label' => 'On sale'],
+        'tax_class' => ['type' => 'string', 'required' => false, 'label' => 'Tax class'],
+        'tax_status' => ['type' => 'string', 'required' => false, 'label' => 'Tax status'],
+        'gst_free' => ['type' => 'bool', 'required' => false, 'label' => 'GST free'],
+        'category' => ['type' => 'string[]', 'required' => false, 'label' => 'Category slugs'],
+        'brand' => ['type' => 'string[]', 'required' => false, 'label' => 'Brand slugs'],
+        'tags' => ['type' => 'string[]', 'required' => false, 'label' => 'Tag slugs'],
+        'in_stock' => ['type' => 'bool', 'required' => false, 'label' => 'In stock'],
+        'image' => ['type' => 'string', 'required' => false, 'label' => 'Image URL'],
+        'average_rating' => ['type' => 'float', 'required' => false, 'label' => 'Average rating'],
+        'rating_count' => ['type' => 'int32', 'required' => false, 'label' => 'Rating count'],
+        'popularity' => ['type' => 'int32', 'required' => false, 'label' => 'Popularity'],
+        'date_created' => ['type' => 'int64', 'required' => false, 'label' => 'Created timestamp'],
+        'updated_at' => ['type' => 'int64', 'required' => true, 'label' => 'Updated timestamp'],
+    ];
+}
+
+function joya_ts_default_field_mappings(): array {
+    $mappings = [];
+    foreach (joya_ts_schema_fields() as $field => $schema) {
+        $mappings[$field] = [
+            'source' => 'core',
+            'key' => '',
+        ];
+    }
+
+    return $mappings;
+}
+
+function joya_ts_field_mapping_sources(): array {
+    return [
+        'core' => __('Computed WooCommerce value', 'joya-typesense-woo'),
+        'meta' => __('Product meta key', 'joya-typesense-woo'),
+        'taxonomy' => __('Taxonomy slugs', 'joya-typesense-woo'),
+        'attribute' => __('Product attribute', 'joya-typesense-woo'),
+        'none' => __('Do not sync this optional field', 'joya-typesense-woo'),
+    ];
+}
+
+function joya_ts_get_field_mappings(): array {
+    $defaults = joya_ts_default_field_mappings();
+    $saved = get_option('joya_ts_field_mappings', []);
+    if (!is_array($saved)) {
+        return $defaults;
+    }
+
+    $sources = array_keys(joya_ts_field_mapping_sources());
+    foreach ($defaults as $field => $default) {
+        $row = isset($saved[$field]) && is_array($saved[$field]) ? $saved[$field] : [];
+        $source = isset($row['source']) ? sanitize_key((string) $row['source']) : $default['source'];
+        $defaults[$field]['source'] = in_array($source, $sources, true) ? $source : $default['source'];
+        $defaults[$field]['key'] = isset($row['key']) ? sanitize_text_field((string) $row['key']) : '';
+    }
+
+    return $defaults;
+}
+
+function joya_ts_sanitize_field_mappings($raw): array {
+    $defaults = joya_ts_default_field_mappings();
+    $sources = array_keys(joya_ts_field_mapping_sources());
+    $raw = is_array($raw) ? $raw : [];
+
+    foreach (joya_ts_schema_fields() as $field => $schema) {
+        $row = isset($raw[$field]) && is_array($raw[$field]) ? $raw[$field] : [];
+        $source = isset($row['source']) ? sanitize_key((string) wp_unslash($row['source'])) : 'core';
+        $key = isset($row['key']) ? sanitize_text_field((string) wp_unslash($row['key'])) : '';
+
+        if (!in_array($source, $sources, true)) {
+            $source = 'core';
+        }
+        if (!empty($schema['required']) && $source === 'none') {
+            $source = 'core';
+        }
+
+        $defaults[$field] = [
+            'source' => $source,
+            'key' => $key,
+        ];
+    }
+
+    return $defaults;
+}
+
+function joya_ts_custom_badge_for_product($product, $parent = null): string {
+    $ids = [];
+    if ($product instanceof \WC_Product) {
+        $ids[] = (int) $product->get_id();
+    }
+    if ($parent instanceof \WC_Product) {
+        $ids[] = (int) $parent->get_id();
+    }
+
+    $meta_keys = apply_filters('joya_ts_custom_badge_meta_keys', [
+        'custom_badge',
+        '_custom_badge',
+        'product_badge',
+        '_product_badge',
+        'badge',
+        '_badge',
+    ]);
+
+    foreach (array_values(array_unique(array_filter($ids))) as $id) {
+        foreach ($meta_keys as $meta_key) {
+            $value = get_post_meta($id, (string) $meta_key, true);
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                return trim(wp_strip_all_tags((string) $value));
+            }
+        }
+    }
+
+    return '';
+}
+
+function joya_ts_cast_mapped_value($value, string $type) {
+    if ($value === null) {
+        return null;
+    }
+
+    if ($type === 'string[]') {
+        if (is_string($value)) {
+            $value = preg_split('/\s*,\s*/', $value);
+        }
+        if (!is_array($value)) {
+            $value = [$value];
+        }
+        $items = [];
+        foreach ($value as $item) {
+            if (is_scalar($item)) {
+                $item = trim((string) $item);
+                if ($item !== '') {
+                    $items[] = $item;
+                }
+            }
+        }
+        return array_values(array_unique($items));
+    }
+
+    if ($type === 'object') {
+        if (is_array($value) || is_object($value)) {
+            return empty((array) $value) ? new \stdClass() : $value;
+        }
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded) || is_object($decoded)) {
+                return empty((array) $decoded) ? new \stdClass() : $decoded;
+            }
+        }
+        return new \stdClass();
+    }
+
+    if ($type === 'bool') {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_numeric($value)) {
+            return ((float) $value) > 0;
+        }
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'instock'], true);
+    }
+
+    if ($type === 'float') {
+        if ($value === '' || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        return (float) $value;
+    }
+
+    if ($type === 'int32' || $type === 'int64') {
+        if ($value === '' || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        return (int) $value;
+    }
+
+    if (is_array($value) || is_object($value)) {
+        return wp_json_encode($value);
+    }
+
+    return trim((string) $value);
+}
+
+function joya_ts_resolve_mapped_value(string $field, array $mapping, $product, $parent, $core_value) {
+    $source = isset($mapping['source']) ? (string) $mapping['source'] : 'core';
+    $key = isset($mapping['key']) ? trim((string) $mapping['key']) : '';
+
+    if ($source === 'core') {
+        return $core_value;
+    }
+
+    if ($source === 'none') {
+        return null;
+    }
+
+    $product_id = $product instanceof \WC_Product ? (int) $product->get_id() : 0;
+    $parent_id = $parent instanceof \WC_Product ? (int) $parent->get_id() : 0;
+
+    if ($source === 'meta' && $key !== '') {
+        $value = $product_id > 0 ? get_post_meta($product_id, $key, true) : '';
+        if (($value === '' || $value === null) && $parent_id > 0) {
+            $value = get_post_meta($parent_id, $key, true);
+        }
+        return $value;
+    }
+
+    if ($source === 'taxonomy' && $key !== '') {
+        $lookup_id = $parent_id > 0 ? $parent_id : $product_id;
+        if ($lookup_id <= 0 || !taxonomy_exists($key)) {
+            return [];
+        }
+        $terms = wp_get_post_terms($lookup_id, $key, ['fields' => 'slugs']);
+        return is_wp_error($terms) ? [] : $terms;
+    }
+
+    if ($source === 'attribute' && $key !== '' && $product instanceof \WC_Product) {
+        $value = $product->get_attribute($key);
+        if (($value === '' || $value === null) && $parent instanceof \WC_Product) {
+            $value = $parent->get_attribute($key);
+        }
+        return $value;
+    }
+
+    return $core_value;
+}
+
+function joya_ts_apply_field_mappings_to_document(array $document, $product, $parent = null): array {
+    $mappings = joya_ts_get_field_mappings();
+    $schemas = joya_ts_schema_fields();
+
+    foreach ($schemas as $field => $schema) {
+        $required = !empty($schema['required']);
+        $core_value = array_key_exists($field, $document) ? $document[$field] : null;
+        $value = joya_ts_resolve_mapped_value($field, $mappings[$field] ?? ['source' => 'core', 'key' => ''], $product, $parent, $core_value);
+
+        if ($value === null && !$required) {
+            unset($document[$field]);
+            continue;
+        }
+
+        $cast = joya_ts_cast_mapped_value($value, (string) $schema['type']);
+        if (($cast === null || $cast === '') && $required) {
+            $cast = joya_ts_cast_mapped_value($core_value, (string) $schema['type']);
+        }
+
+        if (($cast === null || $cast === '') && !$required) {
+            unset($document[$field]);
+            continue;
+        }
+
+        $document[$field] = $cast;
+    }
+
+    return $document;
+}
+
+function joya_ts_dedupe_typesense_documents(array $documents): array {
+    $seen = [];
+    $deduped = [];
+
+    foreach ($documents as $document) {
+        if (!is_array($document) || !isset($document['id'])) {
+            continue;
+        }
+        $id = (string) $document['id'];
+        if ($id === '') {
+            continue;
+        }
+        if (isset($seen[$id])) {
+            joya_ts_log_with_activity('warning', 'duplicate document skipped before sync feed response', ['id' => $id]);
+            continue;
+        }
+        $seen[$id] = true;
+        $deduped[] = $document;
+    }
+
+    return $deduped;
+}
+
 add_action('rest_api_init', function () {
     register_rest_route('custom/v1', '/typesense-products', [
         'methods' => 'GET',
@@ -391,6 +684,10 @@ add_action('rest_api_init', function () {
                 if (!empty($variation_search_tokens)) {
                     $description = trim($description . ' ' . implode(' ', $variation_search_tokens));
                 }
+                $short_description = strip_tags($product->get_short_description());
+                $custom_badge = joya_ts_custom_badge_for_product($product);
+                $average_rating = (float) $product->get_average_rating();
+                $rating_count = (int) $product->get_rating_count();
 
                 $variation_dropdown_json = null;
                 if (!empty($variation_dropdown)) {
@@ -426,14 +723,16 @@ add_action('rest_api_init', function () {
 
                 // Parent (or simple) document: same fields as before + type/parent_id for Typesense group_by parent_id.
                 // parent_id equals id on the canonical product row so grouped hits collapse to one “product family”.
-                $data[] = [
+                $parent_doc = [
                     "id" => $parent_id_string,
                     "name" => $product->get_name(),
                     "slug" => $product->get_slug(),
+                    "custom_badge" => $custom_badge,
 
                     "sku" => $sku_array,
 
                     "description" => $description,
+                    "short_description" => $short_description,
 
                     "variation_dropdown_json" => $variation_dropdown_json,
 
@@ -461,11 +760,14 @@ add_action('rest_api_init', function () {
                     // Typesense: facet/filter + group_by parent_id — simple products use type "parent" with parent_id = id.
                     "type" => "parent",
                     "parent_id" => $parent_id_string,
+                    "average_rating" => $average_rating,
+                    "rating_count" => $rating_count,
                     "popularity" => $parent_popularity,
                     "date_created" => $parent_created,
 
                     "updated_at" => $parent_updated,
                 ];
+                $data[] = joya_ts_apply_field_mappings_to_document($parent_doc, $product, null);
 
                 // Variation documents: separate ids (variation post ID) so SKU search can return the exact variation;
                 // parent_id links back to the parent for group_by and UI rollups.
@@ -503,8 +805,12 @@ add_action('rest_api_init', function () {
                     }
 
                     $var_tax = joya_ts_effective_tax_fields($variation, $product);
+                    $var_custom_badge = joya_ts_custom_badge_for_product($variation, $product);
+                    $var_description = strip_tags($variation->get_description());
+                    $var_regular_price = (float) $variation->get_regular_price();
+                    $var_sale_price = (float) $variation->get_sale_price();
 
-                    $data[] = [
+                    $variation_doc = [
                         "id" => (string) $variation->get_id(),
                         "name" => $var_name,
                         "slug" => $product->get_slug(),
@@ -512,10 +818,13 @@ add_action('rest_api_init', function () {
                         "parent_id" => $parent_id_string,
                         "popularity" => $var_popularity,
                         "date_created" => $var_created,
-                        "custom_badge" => $custom_badge,
+                        "custom_badge" => $var_custom_badge,
                         // Typesense `sku` is string[] — match parent rows for a single schema type.
                         "sku" => $variation->get_sku() ? [(string) $variation->get_sku()] : [],
                         "price" => (float) $variation->get_price(),
+                        "regular_price" => $var_regular_price,
+                        "sale_price" => $var_sale_price ?: null,
+                        "on_sale" => $variation->is_on_sale(),
                         "tax_status" => $var_tax['tax_status'],
                         "tax_class" => $var_tax['tax_class'],
                         "gst_free" => $var_tax['gst_free'],
@@ -523,14 +832,19 @@ add_action('rest_api_init', function () {
                         "brand" => $brand_slugs,
                         "tags" => $tag_slugs,
                         "attributes" => empty($attr_map) ? new \stdClass() : $attr_map,
+                        "description" => $var_description,
+                        "short_description" => $var_description,
                         "image" => $var_image ? $var_image : '',
                         "in_stock" => $variation->is_in_stock(),
+                        "average_rating" => $average_rating,
+                        "rating_count" => $rating_count,
                         "updated_at" => $var_updated,
                     ];
+                    $data[] = joya_ts_apply_field_mappings_to_document($variation_doc, $variation, $product);
                 }
             }
 
-            return $data;
+            return joya_ts_dedupe_typesense_documents($data);
         }
     ]);
 });
@@ -636,8 +950,28 @@ function joya_ts_log($level, $message, $context = []) {
     error_log('[joya-typesense-sync] ' . wp_json_encode($payload));
 }
 
+function joya_ts_activity_status($level, $message = ''): string {
+    $level = strtolower(trim((string) $level));
+    $message = strtolower(trim((string) $message));
+
+    if (in_array($level, ['success', 'error', 'warning', 'not_sync'], true)) {
+        return $level;
+    }
+    if ($level === 'debug') {
+        return 'not_sync';
+    }
+    if (strpos($message, 'skipped') !== false || strpos($message, 'not found') !== false || strpos($message, 'no longer indexable') !== false) {
+        return 'not_sync';
+    }
+    if ($level === 'info') {
+        return 'success';
+    }
+
+    return 'warning';
+}
+
 function joya_ts_push_admin_activity($level, $message, $context = []) {
-    $max = 100;
+    $max = 500;
     $rows = get_option('joya_ts_sync_activity_log', []);
     if (!is_array($rows)) {
         $rows = [];
@@ -645,6 +979,7 @@ function joya_ts_push_admin_activity($level, $message, $context = []) {
     $rows[] = [
         'ts' => time(),
         'level' => (string) $level,
+        'status' => joya_ts_activity_status($level, $message),
         'message' => (string) $message,
         'context' => is_array($context) ? $context : [],
     ];
@@ -657,6 +992,127 @@ function joya_ts_push_admin_activity($level, $message, $context = []) {
 function joya_ts_log_with_activity($level, $message, $context = []) {
     joya_ts_log($level, $message, $context);
     joya_ts_push_admin_activity($level, $message, $context);
+}
+
+function joya_ts_pending_sync_queue(): array {
+    $queue = get_option('joya_ts_pending_sync_queue', []);
+    return is_array($queue) ? $queue : [];
+}
+
+function joya_ts_save_pending_sync_queue(array $queue): void {
+    if (count($queue) > 500) {
+        uasort($queue, static function ($a, $b) {
+            $a_ts = is_array($a) && isset($a['queued_at']) ? (int) $a['queued_at'] : 0;
+            $b_ts = is_array($b) && isset($b['queued_at']) ? (int) $b['queued_at'] : 0;
+            return $a_ts <=> $b_ts;
+        });
+        $queue = array_slice($queue, -500, null, true);
+    }
+    update_option('joya_ts_pending_sync_queue', $queue, false);
+}
+
+function joya_ts_queue_pending_sync($product_id, string $reason = 'update'): void {
+    $product_id = joya_ts_normalize_sync_id($product_id);
+    if ($product_id <= 0) {
+        return;
+    }
+
+    $queue = joya_ts_pending_sync_queue();
+    $key = (string) $product_id;
+    $existing = isset($queue[$key]) && is_array($queue[$key]) ? $queue[$key] : [];
+
+    $queue[$key] = [
+        'product_id' => $product_id,
+        'queued_at' => isset($existing['queued_at']) ? (int) $existing['queued_at'] : time(),
+        'last_queued_at' => time(),
+        'attempts' => isset($existing['attempts']) ? (int) $existing['attempts'] : 0,
+        'reason' => $reason,
+    ];
+
+    joya_ts_save_pending_sync_queue($queue);
+}
+
+function joya_ts_remove_pending_sync($product_id): void {
+    $product_id = joya_ts_normalize_sync_id($product_id);
+    if ($product_id <= 0) {
+        return;
+    }
+
+    $queue = joya_ts_pending_sync_queue();
+    $key = (string) $product_id;
+    if (isset($queue[$key])) {
+        unset($queue[$key]);
+        joya_ts_save_pending_sync_queue($queue);
+    }
+}
+
+function joya_ts_run_interval_queue(): void {
+    $queue = joya_ts_pending_sync_queue();
+    if (empty($queue)) {
+        return;
+    }
+
+    $processed = 0;
+    foreach ($queue as $key => $row) {
+        if ($processed >= 25) {
+            break;
+        }
+
+        $product_id = is_array($row) && isset($row['product_id']) ? absint($row['product_id']) : absint($key);
+        if ($product_id <= 0) {
+            unset($queue[$key]);
+            continue;
+        }
+
+        if (!joya_ts_product_is_indexable($product_id)) {
+            joya_ts_log_with_activity('not_sync', 'queued sync became delete: product no longer indexable', [
+                'product_id' => $product_id,
+            ]);
+            joya_ts_delete_index_docs_for_post($product_id, (string) get_post_type($product_id));
+            unset($queue[$key]);
+            $processed++;
+            continue;
+        }
+
+        $queue[$key]['attempts'] = isset($queue[$key]['attempts']) ? ((int) $queue[$key]['attempts']) + 1 : 1;
+        $queue[$key]['last_attempt_at'] = time();
+        joya_ts_save_pending_sync_queue($queue);
+
+        $ok = joya_ts_call_sync_endpoint($product_id);
+        if ($ok) {
+            unset($queue[$key]);
+        }
+
+        $processed++;
+    }
+
+    joya_ts_save_pending_sync_queue($queue);
+}
+
+add_filter('cron_schedules', function ($schedules) {
+    if (!isset($schedules['joya_ts_ten_minutes'])) {
+        $schedules['joya_ts_ten_minutes'] = [
+            'interval' => 10 * MINUTE_IN_SECONDS,
+            'display' => __('Every 10 minutes (Joya Typesense)', 'joya-typesense-woo'),
+        ];
+    }
+    return $schedules;
+});
+
+function joya_ts_ensure_interval_queue_event(): void {
+    if (!wp_next_scheduled('joya_ts_run_interval_queue')) {
+        wp_schedule_event(time() + (10 * MINUTE_IN_SECONDS), 'joya_ts_ten_minutes', 'joya_ts_run_interval_queue');
+    }
+}
+
+add_action('init', 'joya_ts_ensure_interval_queue_event');
+add_action('joya_ts_run_interval_queue', 'joya_ts_run_interval_queue');
+
+if (defined('JOYA_TYPESENSE_WOO_PLUGIN_FILE')) {
+    register_activation_hook(JOYA_TYPESENSE_WOO_PLUGIN_FILE, 'joya_ts_ensure_interval_queue_event');
+    register_deactivation_hook(JOYA_TYPESENSE_WOO_PLUGIN_FILE, function (): void {
+        wp_clear_scheduled_hook('joya_ts_run_interval_queue');
+    });
 }
 
 function joya_ts_is_supported_post_type($post_type) {
@@ -736,7 +1192,8 @@ function joya_ts_call_sync_endpoint($product_id): bool {
         joya_ts_log_with_activity('error', 'sync HTTP error', $ctx);
         return false;
     }
-    joya_ts_log_with_activity('info', 'sync request completed', ['product_id' => $product_id]);
+    joya_ts_remove_pending_sync($product_id);
+    joya_ts_log_with_activity('success', 'sync request completed', ['product_id' => $product_id]);
     return true;
 }
 
@@ -760,8 +1217,8 @@ function joya_ts_call_delete_endpoint($id) {
     $url = add_query_arg('id', (string) $id, $base . '/api/typesense/search/delete');
     $res = wp_remote_request($url, [
         'method' => 'DELETE',
-        'timeout' => 5,
-        'blocking' => false,
+        'timeout' => 15,
+        'blocking' => true,
         'headers' => joya_ts_merge_next_api_headers([
             'Accept' => 'application/json',
             'Authorization' => 'Bearer ' . $secret,
@@ -772,9 +1229,20 @@ function joya_ts_call_delete_endpoint($id) {
             'id' => $id,
             'error' => $res->get_error_message(),
         ]);
-    } else {
-        joya_ts_log_with_activity('info', 'delete request dispatched', ['id' => $id]);
+        return;
     }
+
+    $code = (int) wp_remote_retrieve_response_code($res);
+    if ($code < 200 || $code >= 300) {
+        joya_ts_log_with_activity('error', 'delete HTTP error', [
+            'id' => $id,
+            'status' => $code,
+            'body_preview' => substr((string) wp_remote_retrieve_body($res), 0, 500),
+        ]);
+        return;
+    }
+
+    joya_ts_log_with_activity('success', 'delete request completed', ['id' => $id]);
 }
 
 /**
@@ -885,19 +1353,22 @@ function joya_ts_run_queued_syncs(): void {
         }
         if (!joya_ts_product_is_indexable($pid)) {
             $post_type = (string) get_post_type($pid);
-            joya_ts_log_with_activity('debug', 'queued sync became delete: product no longer indexable', [
+            joya_ts_log_with_activity('not_sync', 'queued sync became delete: product no longer indexable', [
                 'product_id' => $pid,
                 'post_type' => $post_type,
             ]);
             if (joya_ts_is_supported_post_type($post_type)) {
                 joya_ts_delete_index_docs_for_post($pid, $post_type);
             }
+            joya_ts_remove_pending_sync($pid);
             continue;
         }
         joya_ts_log_with_activity('debug', 'running queued sync', [
             'product_id' => $pid,
         ]);
-        joya_ts_call_sync_endpoint($pid);
+        if (joya_ts_call_sync_endpoint($pid)) {
+            joya_ts_remove_pending_sync($pid);
+        }
     }
 }
 
@@ -907,12 +1378,13 @@ function joya_ts_schedule_sync($product_id) {
     }
     $normalized_id = joya_ts_normalize_sync_id($product_id);
     if ($normalized_id <= 0) {
-        joya_ts_log_with_activity('debug', 'schedule skipped: invalid normalized id', [
+        joya_ts_log_with_activity('not_sync', 'schedule skipped: invalid normalized id', [
             'product_id' => $product_id,
             'normalized_id' => $normalized_id,
         ]);
         return;
     }
+    joya_ts_queue_pending_sync($normalized_id, 'product_changed');
     static $queued_in_request = [];
     static $logged_dedupe_skip = [];
     static $registered_shutdown = false;
@@ -1294,6 +1766,59 @@ add_action('admin_menu', function () {
     );
 });
 
+function joya_ts_render_field_mapping_table(): void {
+    $schema = joya_ts_schema_fields();
+    $mappings = joya_ts_get_field_mappings();
+    $sources = joya_ts_field_mapping_sources();
+
+    echo '<div class="card" style="max-width:72rem;margin:1rem 0;padding:1rem 1.25rem;">';
+    echo '<h2 style="margin-top:0;">' . esc_html__('Field mapping', 'joya-typesense-woo') . '</h2>';
+    echo '<p class="description" style="margin-top:0;">';
+    echo esc_html__(
+        'These fields match the Typesense products_updated collection. Required identifiers, type, price, parent_id, and updated_at should normally stay on computed WooCommerce values.',
+        'joya-typesense-woo'
+    );
+    echo '</p>';
+    echo '<form method="post" action="">';
+    wp_nonce_field('joya_ts_save_field_mappings_action', 'joya_ts_save_field_mappings_nonce');
+    echo '<table class="widefat striped" style="margin-top:0.75rem;">';
+    echo '<thead><tr>';
+    echo '<th style="width:210px;">' . esc_html__('Typesense field', 'joya-typesense-woo') . '</th>';
+    echo '<th style="width:120px;">' . esc_html__('Type', 'joya-typesense-woo') . '</th>';
+    echo '<th style="width:260px;">' . esc_html__('Source', 'joya-typesense-woo') . '</th>';
+    echo '<th>' . esc_html__('Source key', 'joya-typesense-woo') . '</th>';
+    echo '</tr></thead><tbody>';
+
+    foreach ($schema as $field => $meta) {
+        $mapping = isset($mappings[$field]) && is_array($mappings[$field]) ? $mappings[$field] : ['source' => 'core', 'key' => ''];
+        $selected_source = isset($mapping['source']) ? (string) $mapping['source'] : 'core';
+        $source_key = isset($mapping['key']) ? (string) $mapping['key'] : '';
+        $required = !empty($meta['required']);
+
+        echo '<tr>';
+        echo '<td><code>' . esc_html($field) . '</code><br><span class="description">' . esc_html((string) $meta['label']) . ($required ? ' · ' . esc_html__('required', 'joya-typesense-woo') : '') . '</span></td>';
+        echo '<td><code>' . esc_html((string) $meta['type']) . '</code></td>';
+        echo '<td><select name="joya_ts_field_mapping[' . esc_attr($field) . '][source]">';
+        foreach ($sources as $source => $label) {
+            if ($required && $source === 'none') {
+                continue;
+            }
+            echo '<option value="' . esc_attr($source) . '"' . selected($selected_source, $source, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select></td>';
+        echo '<td><input type="text" class="regular-text" name="joya_ts_field_mapping[' . esc_attr($field) . '][key]" value="' . esc_attr($source_key) . '" placeholder="' . esc_attr__('meta key, taxonomy, or attribute name', 'joya-typesense-woo') . '" /></td>';
+        echo '</tr>';
+    }
+
+    echo '</tbody></table>';
+    echo '<p style="display:flex;gap:0.5rem;align-items:center;">';
+    echo '<button type="submit" class="button button-primary" name="joya_ts_save_field_mappings" value="1">' . esc_html__('Save field mapping', 'joya-typesense-woo') . '</button>';
+    echo '<button type="submit" class="button" name="joya_ts_reset_field_mappings" value="1">' . esc_html__('Reset defaults', 'joya-typesense-woo') . '</button>';
+    echo '</p>';
+    echo '</form>';
+    echo '</div>';
+}
+
 function joya_ts_render_activity_page() {
     if (!current_user_can(joya_ts_admin_capability())) {
         wp_die(esc_html__('You do not have permission to view this page.', 'joya'));
@@ -1340,6 +1865,20 @@ function joya_ts_render_activity_page() {
         }
     }
 
+    if (isset($_POST['joya_ts_save_field_mappings']) && isset($_POST['joya_ts_field_mapping'])) {
+        check_admin_referer('joya_ts_save_field_mappings_action', 'joya_ts_save_field_mappings_nonce');
+        update_option('joya_ts_field_mappings', joya_ts_sanitize_field_mappings(wp_unslash($_POST['joya_ts_field_mapping'])), false);
+        joya_ts_log_with_activity('success', 'field mappings saved', ['user_id' => get_current_user_id()]);
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Typesense field mapping saved.', 'joya-typesense-woo') . '</p></div>';
+    }
+
+    if (isset($_POST['joya_ts_reset_field_mappings'])) {
+        check_admin_referer('joya_ts_save_field_mappings_action', 'joya_ts_save_field_mappings_nonce');
+        delete_option('joya_ts_field_mappings');
+        joya_ts_log_with_activity('success', 'field mappings reset to defaults', ['user_id' => get_current_user_id()]);
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Typesense field mapping reset to defaults.', 'joya-typesense-woo') . '</p></div>';
+    }
+
     if (isset($_POST['joya_ts_clear_activity']) && check_admin_referer('joya_ts_clear_activity_nonce')) {
         update_option('joya_ts_sync_activity_log', [], false);
         echo '<div class="notice notice-success"><p>Typesense sync activity log cleared.</p></div>';
@@ -1350,10 +1889,42 @@ function joya_ts_render_activity_page() {
         $rows = [];
     }
     $rows = array_reverse($rows);
+    $all_rows = $rows;
+    $log_statuses = [
+        'all' => __('All', 'joya-typesense-woo'),
+        'success' => __('Success', 'joya-typesense-woo'),
+        'error' => __('Error', 'joya-typesense-woo'),
+        'warning' => __('Warning', 'joya-typesense-woo'),
+        'not_sync' => __('Not sync', 'joya-typesense-woo'),
+    ];
+    $status_filter = isset($_GET['joya_ts_log_status']) ? sanitize_key((string) wp_unslash($_GET['joya_ts_log_status'])) : 'all';
+    if (!isset($log_statuses[$status_filter])) {
+        $status_filter = 'all';
+    }
+    $status_counts = array_fill_keys(array_keys($log_statuses), 0);
+    $status_counts['all'] = count($all_rows);
+    foreach ($all_rows as $row) {
+        $status = isset($row['status'])
+            ? sanitize_key((string) $row['status'])
+            : joya_ts_activity_status($row['level'] ?? '', $row['message'] ?? '');
+        if (isset($status_counts[$status])) {
+            $status_counts[$status]++;
+        }
+    }
+    if ($status_filter !== 'all') {
+        $rows = array_values(array_filter($all_rows, static function ($row) use ($status_filter) {
+            $status = isset($row['status'])
+                ? sanitize_key((string) $row['status'])
+                : joya_ts_activity_status($row['level'] ?? '', $row['message'] ?? '');
+            return $status === $status_filter;
+        }));
+    }
+    $pending_queue = joya_ts_pending_sync_queue();
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__('Typesense sync', 'joya-typesense-woo') . '</h1>';
-    echo '<p>' . esc_html__('Manual sync and recent WooCommerce → Next.js Typesense events.', 'joya-typesense-woo') . '</p>';
+    echo '<p>' . esc_html__('Manual sync, field mapping, 10-minute fallback queue, and recent WooCommerce to Next.js Typesense events.', 'joya-typesense-woo') . '</p>';
+    echo '<p><strong>' . esc_html__('Pending fallback queue:', 'joya-typesense-woo') . '</strong> ' . esc_html((string) count($pending_queue)) . '</p>';
 
     echo '<div class="card" style="max-width:42rem;margin:1rem 0;padding:1rem 1.25rem;">';
     echo '<h2 style="margin-top:0;">' . esc_html__('Manual sync', 'joya-typesense-woo') . '</h2>';
@@ -1375,6 +1946,8 @@ function joya_ts_render_activity_page() {
     echo '</form>';
     echo '</div>';
 
+    joya_ts_render_field_mapping_table();
+
     if (joya_ts_vercel_protection_bypass_secret() === '') {
         echo '<p class="description" style="max-width:48rem;margin:0 0 1rem;">';
         echo esc_html__(
@@ -1385,14 +1958,33 @@ function joya_ts_render_activity_page() {
     }
 
     echo '<h2>' . esc_html__('Activity log', 'joya-typesense-woo') . '</h2>';
-    echo '<p class="description">' . esc_html__('Recent automatic sync/delete events.', 'joya-typesense-woo') . '</p>';
+    echo '<p class="description">' . esc_html__('Recent automatic sync/delete events. Use the filter to review success, error, warning, or not-sync entries.', 'joya-typesense-woo') . '</p>';
     echo '<style>
         .joya-ts-level{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:1.5}
         .joya-ts-level-debug{background:#eef2ff;color:#3730a3}
         .joya-ts-level-info{background:#ecfdf5;color:#065f46}
+        .joya-ts-level-success{background:#ecfdf5;color:#065f46}
         .joya-ts-level-warning{background:#fffbeb;color:#92400e}
         .joya-ts-level-error{background:#fef2f2;color:#991b1b}
+        .joya-ts-level-not_sync{background:#f1f5f9;color:#334155}
+        .joya-ts-filter-links{display:flex;flex-wrap:wrap;gap:0.5rem;margin:12px 0}
+        .joya-ts-filter-links a{display:inline-flex;gap:0.25rem;align-items:center;text-decoration:none;border:1px solid #c3c4c7;border-radius:999px;padding:4px 10px;background:#fff}
+        .joya-ts-filter-links a.is-active{background:#2271b1;border-color:#2271b1;color:#fff}
     </style>';
+    echo '<div class="joya-ts-filter-links">';
+    foreach ($log_statuses as $status => $label) {
+        $url = add_query_arg(
+            [
+                'page' => 'joya-typesense-sync-activity',
+                'joya_ts_log_status' => $status,
+            ],
+            admin_url('admin.php')
+        );
+        $active = $status_filter === $status ? ' is-active' : '';
+        $count = isset($status_counts[$status]) ? (int) $status_counts[$status] : 0;
+        echo '<a class="' . esc_attr(trim($active)) . '" href="' . esc_url($url) . '">' . esc_html($label) . ' <span>(' . esc_html((string) $count) . ')</span></a>';
+    }
+    echo '</div>';
     echo '<form method="post" style="margin:12px 0;">';
     wp_nonce_field('joya_ts_clear_activity_nonce');
     echo '<button type="submit" class="button" name="joya_ts_clear_activity" value="1">Clear Activity Log</button>';
@@ -1412,14 +2004,17 @@ function joya_ts_render_activity_page() {
         foreach ($rows as $row) {
             $ts = isset($row['ts']) ? (int) $row['ts'] : 0;
             $level = isset($row['level']) ? (string) $row['level'] : '';
-            $level_class = 'joya-ts-level-' . sanitize_html_class(strtolower($level));
+            $status = isset($row['status'])
+                ? sanitize_key((string) $row['status'])
+                : joya_ts_activity_status($level, $row['message'] ?? '');
+            $level_class = 'joya-ts-level-' . sanitize_html_class($status);
             $message = isset($row['message']) ? (string) $row['message'] : '';
             $context = isset($row['context']) && is_array($row['context']) ? $row['context'] : [];
             $context_json = wp_json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             echo '<tr>';
             echo '<td>' . esc_html($ts > 0 ? wp_date('Y-m-d H:i:s', $ts) : '-') . '</td>';
-            echo '<td><span class="joya-ts-level ' . esc_attr($level_class) . '">' . esc_html($level) . '</span></td>';
+            echo '<td><span class="joya-ts-level ' . esc_attr($level_class) . '">' . esc_html(str_replace('_', ' ', $status)) . '</span></td>';
             echo '<td>' . esc_html($message) . '</td>';
             echo '<td><code style="white-space:pre-wrap;word-break:break-word;">' . esc_html((string) $context_json) . '</code></td>';
             echo '</tr>';

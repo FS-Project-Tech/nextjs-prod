@@ -71,7 +71,9 @@ export function useCheckoutPageState() {
   const { success, error: showError } = useToast();
   const { appliedCoupon, discount: couponDiscountAmount } = useCoupon();
   const { user, sessionStatus, loading: authLoading } = useUser();
-  const { addresses } = useAddresses();
+  const { addresses, isLoading: addressesLoading } = useAddresses({
+    enabled: sessionStatus === "authenticated",
+  });
 
   const [isMounted, setIsMounted] = useState(false);
   const [cartPersistReady, setCartPersistReady] = useState(getCartPersistHydrated);
@@ -275,6 +277,33 @@ export function useCheckoutPageState() {
     selectedShippingAddressId,
     setValue,
     setSelectedShippingAddressId,
+  ]);
+
+  const savedAddressesReady = useMemo(() => {
+    if (sessionStatus !== "authenticated") return true;
+    if (addressesLoading) return false;
+    if (!user?.id) return true;
+    if (firstBillingId && !selectedBillingAddressId && !savedAddressHydrationRef.current.billing) {
+      return false;
+    }
+    if (
+      shipToDifferentAddress &&
+      firstShippingId &&
+      !selectedShippingAddressId &&
+      !savedAddressHydrationRef.current.shipping
+    ) {
+      return false;
+    }
+    return true;
+  }, [
+    addressesLoading,
+    firstBillingId,
+    firstShippingId,
+    selectedBillingAddressId,
+    selectedShippingAddressId,
+    sessionStatus,
+    shipToDifferentAddress,
+    user?.id,
   ]);
 
   useEffect(() => {
@@ -846,6 +875,7 @@ export function useCheckoutPageState() {
   return {
     isMounted,
     cartReady,
+    savedAddressesReady,
     cartLines,
     subtotal: summarySubtotal,
     cartSubtotal: summaryCartSubtotal,

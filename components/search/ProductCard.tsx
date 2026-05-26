@@ -183,13 +183,13 @@ function SearchProductCardComponent({
               />
             </div>
 
-            {skuText ? (
+            {/* {skuText ? (
               <div className="pointer-events-none absolute top-2 right-2 z-10 hidden max-w-[55%] md:block">
                 <p className="truncate text-right text-[10px] font-medium leading-tight text-gray-800 drop-shadow-sm">
                   {skuText}
                 </p>
               </div>
-            ) : null}
+            ) : null} */}
 
             {isVariation ? (
               <span className="absolute bottom-2 left-2 rounded-md bg-teal-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">

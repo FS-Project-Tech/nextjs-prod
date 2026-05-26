@@ -6,16 +6,23 @@ import { logInvalidAuth } from "@/lib/api-logging";
 export const runtime = "nodejs";
 
 function normalizeHost(raw: string): string {
-  return String(raw || "").replace(/^https?:\/\//, "").replace(/\/$/, "").trim();
+  return String(raw || "")
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .trim();
 }
 
 function typesenseHostAndKey(): { host: string; apiKey: string; collection: string } {
-  const host = normalizeHost(process.env.TYPESENSE_HOST || process.env.NEXT_PUBLIC_TYPESENSE_HOST || "");
+  const host = normalizeHost(
+    process.env.TYPESENSE_HOST || process.env.NEXT_PUBLIC_TYPESENSE_HOST || ""
+  );
   const apiKey = String(
     process.env.TYPESENSE_ADMIN_API_KEY || process.env.TYPESENSE_API_KEY || ""
   ).trim();
   const collection = String(
-    process.env.TYPESENSE_COLLECTION || process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION || "products_updated"
+    process.env.TYPESENSE_COLLECTION ||
+      process.env.NEXT_PUBLIC_TYPESENSE_COLLECTION ||
+      "products_updated"
   ).trim();
   if (!host || !apiKey) {
     throw new Error("Typesense write credentials are not configured.");
@@ -24,9 +31,27 @@ function typesenseHostAndKey(): { host: string; apiKey: string; collection: stri
 }
 
 function wpFeedBase(): string {
-  const base = String(process.env.WP_URL || "").trim().replace(/\/$/, "");
+  const base = String(process.env.WP_URL || "")
+    .trim()
+    .replace(/\/$/, "");
   if (!base) throw new Error("WP_URL is not configured.");
   return `${base}/wp-json/custom/v1/typesense-products`;
+}
+
+function dedupeProductsById(
+  products: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const deduped: Array<Record<string, unknown>> = [];
+
+  for (const product of products) {
+    const id = String(product.id ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    deduped.push(product);
+  }
+
+  return deduped;
 }
 
 export async function POST(req: NextRequest) {
@@ -47,7 +72,10 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as { product_id?: unknown };
     const productId = Number(body?.product_id);
     if (!Number.isFinite(productId) || productId <= 0) {
-      return NextResponse.json({ error: "Invalid product_id", code: "VALIDATION_ERROR" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid product_id", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
     }
 
     const feedSecret = process.env.TYPESENSE_FEED_SECRET?.trim();
@@ -77,11 +105,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Sync parent + all related variations in one request.
-    const wanted = products.filter((p) => {
-      const id = Number(p.id ?? 0);
-      const parent = Number(p.parent_id ?? 0);
-      return id === productId || parent === productId;
-    });
+    const wanted = dedupeProductsById(
+      products.filter((p) => {
+        const id = Number(p.id ?? 0);
+        const parent = Number(p.parent_id ?? 0);
+        return id === productId || parent === productId;
+      })
+    );
 
     if (wanted.length === 0) {
       return NextResponse.json({ error: "Product not found in feed" }, { status: 404 });
@@ -93,7 +123,7 @@ export async function POST(req: NextRequest) {
       {
         method: "POST",
         headers: {
-          "X-TYPESENSE-API-KEY": apiKey,  
+          "X-TYPESENSE-API-KEY": apiKey,
           "Content-Type": "text/plain",
         },
         body: wanted.map((d) => JSON.stringify(d)).join("\n"),
@@ -118,6 +148,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }
-
-
-

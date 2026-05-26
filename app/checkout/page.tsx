@@ -25,26 +25,73 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
+function RotatingCheckoutCube() {
+  return (
+    <div className="mx-auto h-8 w-8 [perspective:360px]" aria-hidden="true">
+      <div className="relative h-8 w-8 animate-[checkout-cube-spin_1.8s_ease-in-out_infinite] [transform-style:preserve-3d]">
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:translateZ(1rem)]" />
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:rotateY(180deg)_translateZ(1rem)]" />
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:rotateY(90deg)_translateZ(1rem)]" />
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:rotateY(-90deg)_translateZ(1rem)]" />
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:rotateX(90deg)_translateZ(1rem)]" />
+        <span className="absolute inset-0 rounded-md border border-white/50 bg-teal-600 shadow-md shadow-teal-900/20 [transform:rotateX(-90deg)_translateZ(1rem)]" />
+      </div>
+    </div>
+  );
+}
+
+function SavedAddressesOverlay() {
+  return (
+    <div
+      className="fixed inset-0 z-[105] flex items-center justify-center bg-white/70 p-4 backdrop-blur-[2px]"
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+    >
+      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white/95 p-6 text-center shadow-2xl">
+        <RotatingCheckoutCube />
+        <p className="mt-5 text-base font-semibold text-gray-950">Preparing your saved checkout</p>
+      </div>
+    </div>
+  );
+}
+
+const CHECKOUT_CUBE_KEYFRAMES = `
+  @keyframes checkout-cube-spin {
+    0% {
+      transform: rotateX(-24deg) rotateY(0deg) rotateZ(0deg);
+    }
+    45% {
+      transform: rotateX(28deg) rotateY(180deg) rotateZ(8deg);
+    }
+    100% {
+      transform: rotateX(-24deg) rotateY(360deg) rotateZ(0deg);
+    }
+  }
+`;
+
 const PLACING_OVERLAY_Z = "z-[110]";
 
 function CheckoutPageInner() {
   const checkout = useCheckoutPageState();
   const [placingPortalMounted, setPlacingPortalMounted] = useState(false);
 
-  const { isMounted, cartReady, cartLines, placing } = checkout;
+  const { isMounted, cartReady, placing, savedAddressesReady } = checkout;
+  const savedAddressesBlocking = isMounted && cartReady && !savedAddressesReady;
 
   useEffect(() => {
-    setPlacingPortalMounted(true);
+    const id = window.requestAnimationFrame(() => setPlacingPortalMounted(true));
+    return () => window.cancelAnimationFrame(id);
   }, []);
 
   useEffect(() => {
-    if (!placing) return;
+    if (!placing && !savedAddressesBlocking) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [placing]);
+  }, [placing, savedAddressesBlocking]);
 
   if (!isMounted || !cartReady) {
     return <Spinner label="Loading checkout…" />;
@@ -121,8 +168,13 @@ function CheckoutPageInner() {
       </div>
     ) : null;
 
+  const savedAddressesOverlay =
+    savedAddressesBlocking && placingPortalMounted ? <SavedAddressesOverlay /> : null;
+
   return (
     <>
+      <style>{CHECKOUT_CUBE_KEYFRAMES}</style>
+      {savedAddressesOverlay ? createPortal(savedAddressesOverlay, document.body) : null}
       {placingOverlay ? createPortal(placingOverlay, document.body) : null}
       <a
         href="#checkout-main"
@@ -157,9 +209,10 @@ function CheckoutPageInner() {
         <form
             id="checkout-main"
             onSubmit={onFormSubmit}
-            className={`grid gap-6 lg:grid-cols-3 ${placing ? "pointer-events-none select-none" : ""}`}
+            className={`grid gap-6 lg:grid-cols-3 ${placing || savedAddressesBlocking ? "pointer-events-none select-none" : ""}`}
             noValidate
             aria-label="Checkout and place order"
+            aria-busy={savedAddressesBlocking || placing}
           >
           <CheckoutForm
             user={user}

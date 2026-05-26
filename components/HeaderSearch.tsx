@@ -69,14 +69,7 @@ function SearchSpinner() {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
       <path
         className="opacity-90"
         fill="currentColor"
@@ -161,6 +154,58 @@ function rowQueryBoost(row: FlatSearchRow, rawQuery: string): number {
   return score;
 }
 
+function normalizeSkuText(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function rowSku(row: FlatSearchRow): string {
+  if (row.kind === "variation") return normalizeSkuText(row.variation.sku);
+  return normalizeSkuText(row.doc.sku);
+}
+
+function rowParentKey(row: FlatSearchRow): string {
+  const raw =
+    row.kind === "variation"
+      ? row.doc.parent_id || row.doc.parentId || row.doc.id
+      : row.doc.parent_id || row.doc.parentId || row.doc.id;
+  return String(raw || "").trim();
+}
+
+function rowSkuMatchesQuery(row: FlatSearchRow, normalizedQuery: string): boolean {
+  const sku = rowSku(row);
+  if (!sku || normalizedQuery.length < 2) return false;
+  return sku === normalizedQuery || sku.startsWith(normalizedQuery);
+}
+
+function removeParentRowsForMatchingSkuVariants(
+  rows: FlatSearchRow[],
+  queryTrimmed: string
+): FlatSearchRow[] {
+  const normalizedQuery = normalizeSkuText(queryTrimmed);
+  if (!/[\d._/-]/.test(normalizedQuery)) return rows;
+
+  const parentKeysWithVariantMatch = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "variation" || !rowSkuMatchesQuery(row, normalizedQuery)) continue;
+    const key = rowParentKey(row);
+    if (key) parentKeysWithVariantMatch.add(key);
+  }
+
+  if (parentKeysWithVariantMatch.size === 0) return rows;
+
+  return rows.filter((row) => {
+    if (row.kind !== "parent") return true;
+    const key = rowParentKey(row);
+    return (
+      !key || !parentKeysWithVariantMatch.has(key) || !rowSkuMatchesQuery(row, normalizedQuery)
+    );
+  });
+}
+
 type TypesenseHitLite = {
   document?: Record<string, unknown>;
   text_match?: number;
@@ -222,7 +267,10 @@ function buildRankedFlatRows(
     return a.seq - b.seq;
   });
 
-  return tagged.map((t) => t.row);
+  return removeParentRowsForMatchingSkuVariants(
+    tagged.map((t) => t.row),
+    queryTrimmed
+  );
 }
 
 function productPathWithOptionalVariation(slug: string, variationId?: number): string {
@@ -454,8 +502,11 @@ export default function HeaderSearch() {
 
     const delay = setTimeout(async () => {
       try {
-        const { hits, categories: catCounts, brands: brandCounts } =
-          await fetchHeaderSearchSuggestions(query.trim(), ac.signal);
+        const {
+          hits,
+          categories: catCounts,
+          brands: brandCounts,
+        } = await fetchHeaderSearchSuggestions(query.trim(), ac.signal);
 
         if (searchGenerationRef.current !== gen) return;
 
@@ -628,67 +679,7 @@ export default function HeaderSearch() {
               {searchError}
             </div>
           ) : null}
-          {categories.length > 0 && (
-            <div className="border-b border-gray-100 px-3 py-2">
-              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Categories</p>
-              <div
-                role="group"
-                aria-label="Matching categories"
-                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
-              >
-                {categories.map((cat: { value: string; count: number }) => (
-                  <button
-                    key={cat.value}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      suppressAutoOpenAfterNavigationRef.current = true;
-                      closePanel();
-                      router.push(
-                        `/search?category=${encodeURIComponent(cat.value)}`
-                      );
-                    }}
-                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
-                  >
-                    <span className="whitespace-nowrap">{categoryLabel(cat.value)}</span>
-                    <span className="ml-1 tabular-nums text-gray-600">({cat.count})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {brands.length > 0 && (
-            <div className="border-b border-gray-100 px-3 py-2">
-              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Brands</p>
-              <div
-                role="group"
-                aria-label="Matching brands"
-                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
-              >
-                {brands.map((brand: { value: string; count: number }) => (
-                  <button
-                    key={brand.value}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      suppressAutoOpenAfterNavigationRef.current = true;
-                      closePanel();
-                      router.push(
-                        `/search?q=${encodeURIComponent(query)}&brands=${encodeURIComponent(brand.value)}`
-                      );
-                    }}
-                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
-                  >
-                    <span className="whitespace-nowrap">{prettyFacetValue(brand.value)}</span>
-                    <span className="ml-1 tabular-nums text-gray-600">({brand.count})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="px-3 py-2">
+          <div className="border-b border-gray-100 px-3 py-2">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p id={productListId} className="text-sm font-semibold text-gray-800">
                 Products
@@ -727,7 +718,9 @@ export default function HeaderSearch() {
                       );
                     }}
                     className={`flex min-h-[44px] cursor-pointer gap-3 rounded-lg p-3 text-left focus-within:ring-2 focus-within:ring-teal-600 ${
-                      index === activeIndex ? "bg-gray-100 ring-2 ring-teal-600 ring-offset-2" : "hover:bg-gray-50"
+                      index === activeIndex
+                        ? "bg-gray-100 ring-2 ring-teal-600 ring-offset-2"
+                        : "hover:bg-gray-50"
                     } ${isVariation ? "border-l-2 border-teal-500/40 pl-4" : ""}`}
                   >
                     <img
@@ -756,11 +749,7 @@ export default function HeaderSearch() {
                           __html: highlight(
                             isVariation
                               ? String(row.variation.sku || "")
-                              : String(
-                                  Array.isArray(hit.sku)
-                                    ? hit.sku[0] || ""
-                                    : hit.sku || ""
-                                ),
+                              : String(Array.isArray(hit.sku) ? hit.sku[0] || "" : hit.sku || ""),
                             query
                           ),
                         }}
@@ -774,6 +763,64 @@ export default function HeaderSearch() {
               })}
             </div>
           </div>
+
+          {categories.length > 0 && (
+            <div className="border-b border-gray-100 px-3 py-2">
+              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Categories</p>
+              <div
+                role="group"
+                aria-label="Matching categories"
+                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
+              >
+                {categories.map((cat: { value: string; count: number }) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      suppressAutoOpenAfterNavigationRef.current = true;
+                      closePanel();
+                      router.push(`/search?category=${encodeURIComponent(cat.value)}`);
+                    }}
+                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
+                  >
+                    <span className="whitespace-nowrap">{categoryLabel(cat.value)}</span>
+                    <span className="ml-1 tabular-nums text-gray-600">({cat.count})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {brands.length > 0 && (
+            <div className="px-3 py-2">
+              <p className="mb-1 text-xs font-semibold text-gray-800 sm:text-sm">Brands</p>
+              <div
+                role="group"
+                aria-label="Matching brands"
+                className="-mx-1 flex flex-wrap gap-1 px-1 pb-0.5 sm:gap-1.5"
+              >
+                {brands.map((brand: { value: string; count: number }) => (
+                  <button
+                    key={brand.value}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      suppressAutoOpenAfterNavigationRef.current = true;
+                      closePanel();
+                      router.push(
+                        `/search?q=${encodeURIComponent(query)}&brands=${encodeURIComponent(brand.value)}`
+                      );
+                    }}
+                    className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-left text-xs font-medium text-gray-900 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-2.5 sm:py-1.5 sm:text-sm"
+                  >
+                    <span className="whitespace-nowrap">{prettyFacetValue(brand.value)}</span>
+                    <span className="ml-1 tabular-nums text-gray-600">({brand.count})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

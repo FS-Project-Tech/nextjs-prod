@@ -16,6 +16,7 @@ import {
 } from "@/lib/typesense-products";
 import { parseListingSortQueryValue } from "@/lib/listing-sort-options";
 import {
+  isExactSkuSearchQuery,
   isLikelySkuToken,
   MAX_SKU_SEARCH_QUERY_LEN,
   parseSkuTokens,
@@ -60,6 +61,7 @@ type SearchUiProductLike = {
   id?: unknown;
   sku?: unknown;
   docType?: unknown;
+  variation_id?: unknown;
 };
 
 /** After TS mapping: keep only rows whose `sku` was explicitly requested (avoids grouped parent rows). */
@@ -81,6 +83,7 @@ function dedupeSearchProductsBySku<T extends SearchUiProductLike>(items: T[]): T
     const docType = String(p.docType || "").toLowerCase();
     // Prefer concrete variation rows over generic parent rows for exact SKU searches.
     if (docType === "variation") return 2;
+    if (Number(p.variation_id ?? 0) > 0) return 2;
     if (docType === "parent") return 1;
     return 0;
   };
@@ -195,9 +198,13 @@ export async function GET(request: NextRequest) {
     const qSanitized = sanitizeSlug(qRaw, MAX_SKU_SEARCH_QUERY_LEN);
     /** Parse from raw-length string so long comma lists are not truncated at 200 chars. */
     const skuTokens = parseSkuTokens(String(qRaw || "").trim().slice(0, MAX_SKU_SEARCH_QUERY_LEN));
-    const useSkuFilterSearch =
-      skuTokens.length > 1 &&
-      (/[,&;\n\r\t]/.test(qRaw) || skuTokens.every((t) => isLikelySkuToken(t)));
+    const useSkuFilterSearch = isExactSkuSearchQuery(qRaw, skuTokens);
+    const useSkuPrefixDedupe =
+      !useSkuFilterSearch &&
+      skuTokens.length === 1 &&
+      isLikelySkuToken(skuTokens[0]) &&
+      /[\d._/-]/.test(skuTokens[0]);
+    const useSkuResultDedupe = useSkuFilterSearch || useSkuPrefixDedupe;
     const q = useSkuFilterSearch ? "*" : qSanitized || "*";
 
     /** Fetch enough TS rows per page so parent + variation docs for each SKU usually fit (multi-SKU paste). */
@@ -279,9 +286,9 @@ export async function GET(request: NextRequest) {
           const mapped = hits.map((h) =>
             typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>)
           );
-          if (!useSkuFilterSearch) return mapped;
+          if (!useSkuResultDedupe) return mapped;
           const deduped = dedupeSearchProductsBySku(mapped);
-          return filterByRequestedSkuTokens(deduped, skuTokens);
+          return useSkuFilterSearch ? filterByRequestedSkuTokens(deduped, skuTokens) : deduped;
         })()
       : (() => {
           const listed = dedupeProductsById(
@@ -289,8 +296,9 @@ export async function GET(request: NextRequest) {
               typesenseHitToListingProduct((h.document || {}) as Record<string, unknown>)
             )
           );
-          if (!useSkuFilterSearch) return listed;
-          return filterByRequestedSkuTokens(listed, skuTokens);
+          if (!useSkuResultDedupe) return listed;
+          const deduped = dedupeSearchProductsBySku(listed);
+          return useSkuFilterSearch ? filterByRequestedSkuTokens(deduped, skuTokens) : deduped;
         })();
 
     /**
@@ -299,7 +307,7 @@ export async function GET(request: NextRequest) {
      * that match `products.length`.
      */
     const allSkuHitsInOnePage =
-      !facetsOnly && useSkuFilterSearch && useSearchShape && page === 1 && found <= typesensePerPage;
+      !facetsOnly && useSkuResultDedupe && page === 1 && found <= typesensePerPage;
     const responseTotal =
       allSkuHitsInOnePage && !facetsOnly ? products.length : found;
     const responseTotalPages = facetsOnly
