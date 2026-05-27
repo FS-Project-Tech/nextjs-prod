@@ -237,14 +237,19 @@ async function tryRecoverPendingOrderAfterCreateFailure(
   return getWooOrder(String(id));
 }
 
-/** Shipping, fees, coupons, meta — phase-2 PUT only. COD → `processing` after extras are applied. */
+/** Shipping, fees, coupons, meta — phase-2 PUT only. COD/Afterpay → `processing` after extras are applied. */
 export function buildCheckoutExtensionPatch(
   input: WooCreateOrderInput,
-  options?: { omitMeta?: boolean; existingShippingLineId?: number }
+  options?: { omitMeta?: boolean; existingShippingLineId?: number; completePayment?: boolean }
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
-  if (String(input.payment_method || "").toLowerCase() === "cod") {
+  const paymentMethod = String(input.payment_method || "").toLowerCase();
+  const completePayment = options?.completePayment !== false;
+  if (completePayment && (paymentMethod === "cod" || paymentMethod === "afterpay")) {
     patch.status = "processing";
+  }
+  if (completePayment && paymentMethod === "afterpay") {
+    patch.set_paid = true;
   }
   if (input.shipping_line) {
     const sl: Record<string, unknown> = {
@@ -282,9 +287,12 @@ export function buildCheckoutExtensionPatch(
 /** One POST /orders with extension fields (shipping, fees, coupons, meta) — skips phase-2 PUT when Woo accepts it. */
 function buildSingleShotOrderPayload(
   input: WooCreateOrderInput,
-  sessionMeta: Array<{ key: string; value: unknown }>
+  sessionMeta: Array<{ key: string; value: unknown }>,
+  options?: { completePayment?: boolean }
 ): Record<string, unknown> {
-  const patch = buildCheckoutExtensionPatch(input);
+  const patch = buildCheckoutExtensionPatch(input, {
+    completePayment: options?.completePayment,
+  });
   const status =
     typeof patch.status === "string" && patch.status.trim() ? patch.status : input.status;
   const body: Record<string, unknown> = {
@@ -314,14 +322,19 @@ async function trySingleShotOrderCreate(
   input: WooCreateOrderInput,
   sessionMeta: Array<{ key: string; value: unknown }>,
   timeoutMs: number,
-  requestId?: string
+  requestId?: string,
+  options?: { completePayment?: boolean }
 ): Promise<unknown | null> {
-  const patch = buildCheckoutExtensionPatch(input);
+  const patch = buildCheckoutExtensionPatch(input, {
+    completePayment: options?.completePayment,
+  });
   if (Object.keys(patch).length === 0) {
     return null;
   }
   try {
-    const body = buildSingleShotOrderPayload(input, sessionMeta);
+    const body = buildSingleShotOrderPayload(input, sessionMeta, {
+      completePayment: options?.completePayment,
+    });
     const res = await wcAPI.post("/orders", body, buildWooOrderWriteConfig({ timeoutMs }));
     return res.data;
   } catch (e) {
@@ -443,6 +456,7 @@ export async function createValidatedCheckoutOrder(
   options?: {
     checkoutSessionMeta?: Array<{ key: string; value: unknown }>;
     perf?: { wooCreateMs?: number; wooPatchMs?: number; requestId?: string };
+    completePayment?: boolean;
   }
 ): Promise<unknown> {
   if (!input.line_items?.length) {
@@ -465,7 +479,9 @@ export async function createValidatedCheckoutOrder(
   const t1 = minimalCreateFirstTimeoutMs();
   const t2 = minimalCreateRetryTimeoutMs();
 
-  const patchProbe = buildCheckoutExtensionPatch(input);
+  const patchProbe = buildCheckoutExtensionPatch(input, {
+    completePayment: options?.completePayment,
+  });
   let skipMinimalCreate = false;
   let orderMinimal: unknown;
   let singleShotOrRecoverMs = 0;
@@ -476,7 +492,9 @@ export async function createValidatedCheckoutOrder(
     input.payment_method !== "afterpay"
   ) {
     const tShot = Date.now();
-    const shot = await trySingleShotOrderCreate(input, sessionMeta, t1, rid);
+    const shot = await trySingleShotOrderCreate(input, sessionMeta, t1, rid, {
+      completePayment: options?.completePayment,
+    });
     if (shot != null) {
       if (options?.perf) {
         options.perf.wooCreateMs = Date.now() - tShot;
@@ -651,6 +669,7 @@ export async function createValidatedCheckoutOrder(
   const patch = buildCheckoutExtensionPatch(input, {
     omitMeta: timing.mode === "after_response",
     existingShippingLineId: existingShippingLineIdFromOrder,
+    completePayment: options?.completePayment,
   });
   const keys = Object.keys(patch);
   if (keys.length === 0) {

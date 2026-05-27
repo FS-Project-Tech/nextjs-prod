@@ -11,9 +11,7 @@ import {
 import { handlePayment } from "@/lib/services/paymentService";
 import type { CheckoutActor, CheckoutInitiatePayload, CheckoutTotals } from "@/types/checkout";
 import { readWooOrderTotal } from "@/lib/checkout/readWooOrderTotal";
-import {
-  upsertValidatedCheckoutOrder,
-} from "@/lib/checkout/upsertWooCheckoutOrder";
+import { upsertValidatedCheckoutOrder } from "@/lib/checkout/upsertWooCheckoutOrder";
 import type { WooCreateOrderInput, WooLineItem } from "@/services/woocommerce";
 import { updateWooOrder } from "@/services/woocommerce";
 import { mergeWooOrderMetaByKey } from "@/lib/woo/orderMeta";
@@ -144,6 +142,53 @@ export type WooCheckoutExecuteResult =
       wooOrderTotal: string | null;
     };
 
+export function buildWooCheckoutOrderInput(input: {
+  payload: CheckoutInitiatePayload;
+  wooLineItems: WooLineItem[];
+  shippingLine: {
+    method_id: string;
+    method_title: string;
+    total: string;
+    instance_id?: string;
+  };
+  actor: CheckoutActor;
+}): WooCreateOrderInput {
+  const { payload, wooLineItems, shippingLine, actor } = input;
+  const isCod = payload.payment_method === "cod";
+  const isAfterpay = payload.payment_method === "afterpay";
+  const paymentTitle = isCod ? "On Account" : isAfterpay ? "Afterpay" : "Credit Card (eWAY)";
+
+  return {
+    payment_method: payload.payment_method,
+    payment_method_title: paymentTitle,
+    set_paid: false,
+    status: "pending",
+    customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
+    line_items: wooLineItems,
+    billing: {
+      ...payload.billing,
+      country: normalizeCountry(payload.billing.country),
+    },
+    shipping: {
+      ...payload.shipping,
+      country: normalizeCountry(payload.shipping.country),
+    },
+    shipping_line: shippingLine,
+    coupon_code: payload.coupon_code,
+    fee_lines:
+      payload.insurance_option === "yes"
+        ? [
+            {
+              name: "Parcel Protection",
+              total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
+              tax_status: "none" as const,
+            },
+          ]
+        : undefined,
+    meta_data: checkoutOrderMeta(payload),
+  };
+}
+
 /**
  * Creates the WooCommerce order, optional parcel protection fee, then eWAY redirect or COD completion.
  * Used by both synchronous create-order and deferred background sync.
@@ -182,41 +227,9 @@ export async function executeWooCheckoutOrder(input: {
   if (!isCod && !isAfterpay && !checkoutTotals) {
     throw new Error("Validated checkout totals are required for card (eWAY) payment.");
   }
-  const paymentTitle = isCod ? "On Account" : isAfterpay ? "Afterpay" : "Credit Card (eWAY)";
-  /** Phase 1: always `pending` + `set_paid: false`. COD → `processing` is applied in phase-2 PUT. Afterpay → paid via gateway before order create. */
-  const orderStatus = "pending";
-
   const requestId = perf?.requestId;
 
-  const wooInput: WooCreateOrderInput = {
-    payment_method: payload.payment_method,
-    payment_method_title: paymentTitle,
-    set_paid: isAfterpay ? true : false,
-    status: isAfterpay ? "processing" : orderStatus,
-    customer_id: typeof actor.userId === "number" && actor.userId > 0 ? actor.userId : undefined,
-    line_items: wooLineItems,
-    billing: {
-      ...payload.billing,
-      country: normalizeCountry(payload.billing.country),
-    },
-    shipping: {
-      ...payload.shipping,
-      country: normalizeCountry(payload.shipping.country),
-    },
-    shipping_line: shippingLine,
-    coupon_code: payload.coupon_code,
-    fee_lines:
-      payload.insurance_option === "yes"
-        ? [
-            {
-              name: "Parcel Protection",
-              total: PARCEL_PROTECTION_FEE_AUD.toFixed(2),
-              tax_status: "none" as const,
-            },
-          ]
-        : undefined,
-    meta_data: checkoutOrderMeta(payload),
-  };
+  const wooInput = buildWooCheckoutOrderInput({ payload, wooLineItems, shippingLine, actor });
 
   const order = await upsertValidatedCheckoutOrder({
     payload,

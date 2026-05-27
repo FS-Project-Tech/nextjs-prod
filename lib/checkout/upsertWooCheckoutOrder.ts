@@ -67,9 +67,11 @@ export async function upsertValidatedCheckoutOrder(params: {
   checkoutSessionId: string;
   actor: CheckoutActor;
   customerIp?: string;
+  completePayment?: boolean;
   perf?: { wooCreateMs?: number; wooPatchMs?: number; requestId?: string };
 }): Promise<unknown> {
-  const { payload, input, timing, checkoutSessionId, actor, customerIp, perf } = params;
+  const { payload, input, timing, checkoutSessionId, actor, customerIp, completePayment, perf } =
+    params;
 
   if (!input.line_items?.length) {
     const err = new Error("Cart is empty");
@@ -160,6 +162,7 @@ export async function upsertValidatedCheckoutOrder(params: {
         Number.isFinite(existingShippingLineId) && existingShippingLineId > 0
           ? existingShippingLineId
           : undefined,
+      completePayment,
     });
     const tExt = Date.now();
     let afterWrite: unknown = phase1Response;
@@ -205,6 +208,7 @@ export async function upsertValidatedCheckoutOrder(params: {
 
   const order = await createValidatedCheckoutOrder(input, timing, {
     checkoutSessionMeta: sessionRows,
+    completePayment,
     perf,
   });
   validateCreatedLineItems(order);

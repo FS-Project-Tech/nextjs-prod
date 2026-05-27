@@ -662,7 +662,7 @@ export default function AIOrderAssistant() {
 
   return (
     <>
-      <button
+      {/* <button
         type="button"
         onClick={openAssistant}
         className="fixed bottom-24 left-4 z-[80] inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-2xl shadow-gray-900/15 transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-teal-900/20 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 md:bottom-5 md:left-5"
@@ -679,7 +679,7 @@ export default function AIOrderAssistant() {
           </span>
           <span className="block">What are you looking for?</span>
         </span>
-      </button>
+      </button> */}
 
       {isOpen ? (
         <div

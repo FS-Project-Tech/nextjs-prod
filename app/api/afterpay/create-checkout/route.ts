@@ -23,6 +23,9 @@ import { parseAfterpayCheckoutBody } from "@/lib/afterpay/schema";
 import { savePendingCheckoutPayload } from "@/lib/afterpay/pendingSession";
 import { buildAfterpayCreateCheckoutBody } from "@/lib/afterpay/buildCheckoutRequest";
 import { afterpayCreateCheckout, isAfterpayApiError } from "@/lib/afterpay/afterpayHttp";
+import { buildWooCheckoutOrderInput } from "@/lib/checkout/executeWooCheckoutOrder";
+import { upsertValidatedCheckoutOrder } from "@/lib/checkout/upsertWooCheckoutOrder";
+import { extractWooOrderId, extractWooOrderNumber } from "@/lib/services/wooService";
 import {
   assertPayloadMatchesQuoteSnapshot,
   isQuoteSnapshotFresh,
@@ -193,7 +196,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const merchantReference = randomUUID();
+    const checkoutSessionId =
+      typeof payload.checkout_session_id === "string" && payload.checkout_session_id.trim()
+        ? payload.checkout_session_id.trim()
+        : randomUUID();
+    payload = {
+      ...payload,
+      checkout_session_id: checkoutSessionId,
+    };
+
+    const actor = await resolveCheckoutActor({ skipNdisCustomerLookup: true });
+    const pendingWooOrder = await upsertValidatedCheckoutOrder({
+      payload,
+      input: buildWooCheckoutOrderInput({
+        payload,
+        wooLineItems: pricing.wooLineItems,
+        shippingLine: pricing.shippingLine,
+        actor,
+      }),
+      timing: { mode: "inline" },
+      checkoutSessionId,
+      actor,
+      completePayment: false,
+      perf: { requestId },
+    });
+
+    const orderId = extractWooOrderId(pendingWooOrder);
+    const merchantReference =
+      extractWooOrderNumber(pendingWooOrder) || (orderId == null ? "" : String(orderId));
+    if (!merchantReference) {
+      return withRequestId(
+        NextResponse.json(
+          { success: false, error: "WooCommerce did not return an order number for Afterpay." },
+          { status: 502 }
+        ),
+        requestId
+      );
+    }
 
     const pendingEnvelopeJson = JSON.stringify({
       payload,
