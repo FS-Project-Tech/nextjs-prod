@@ -207,7 +207,8 @@ export function useCheckoutPageState() {
     const isB2bUser = roles.includes("b2b_user");
     const isB2b30Days = roles.includes("b2b30days");
     const isSupportCoordinator = roles.includes("support_co_ordinator");
-    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days || isSupportCoordinator)
+    const isCommunity7Days = roles.includes("community-7days");
+    if (isAdmin || isNdisApprovedRole || isB2bUser || isB2b30Days || isSupportCoordinator || isCommunity7Days)
       return true;
     if (user) return false;
     if (sessionStatus !== "unauthenticated") return false;
