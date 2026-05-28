@@ -3,11 +3,21 @@
  * Supports GA4 + Google Ads conversions + Meta Pixel + Ecommerce Events
  */
 
+type GtagFunction = (...args: unknown[]) => void;
+type MetaPixelFunction = ((...args: unknown[]) => void) & {
+  callMethod?: (...args: unknown[]) => void;
+  loaded: boolean;
+  push: MetaPixelFunction;
+  queue: unknown[][];
+  version: string;
+};
+
 declare global {
   interface Window {
-    gtag?: (...args: any[]) => void;
-    fbq?: (...args: any[]) => void;
-    dataLayer?: any[];
+    _fbq?: MetaPixelFunction;
+    dataLayer?: unknown[];
+    fbq?: MetaPixelFunction;
+    gtag?: GtagFunction;
   }
 }
 
@@ -58,7 +68,7 @@ export function initGA4(measurementId: string) {
   document.head.appendChild(script);
 
   window.dataLayer = window.dataLayer || [];
-  function gtag(...args: any[]) {
+  function gtag(...args: unknown[]) {
     window.dataLayer!.push(args);
   }
 
@@ -75,7 +85,18 @@ export function trackPageView(pagePath: string) {
   const gaId = process.env.NEXT_PUBLIC_GA4_ID?.trim();
   if (!gaId || !window.gtag) return;
   try {
-    window.gtag("config", gaId, { page_path: pagePath });
+    window.gtag("config", gaId, {
+      page_path: pagePath,
+      page_location: window.location.href,
+      page_title: document.title,
+      send_page_view: false,
+    });
+    window.gtag("event", "page_view", {
+      send_to: gaId,
+      page_path: pagePath,
+      page_location: window.location.href,
+      page_title: document.title,
+    });
   } catch (err) {
     console.error("trackPageView error", err);
   }
@@ -87,25 +108,33 @@ export function trackPageView(pagePath: string) {
 export function initMetaPixel(pixelId: string, nonce: string) {
   if (typeof window === "undefined") return;
 
-  // جلوگیری duplicate load
+  // Prevent duplicate loads.
   if (window.fbq) return;
 
-  (function (f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
-    if (f.fbq) return;
-    n = f.fbq = function (...args: any[]) {
-      n.callMethod ? n.callMethod.apply(n, args) : n.queue.push(args);
-    };
-    if (!f._fbq) f._fbq = n;
-    n.push = n;
-    n.loaded = true;
-    n.version = "2.0";
-    n.queue = [];
-    t = b.createElement(e);
-    t.async = true;
-    t.src = v;
-    s = b.getElementsByTagName(e)[0];
-    s.parentNode!.insertBefore(t, s);
-  })(window, document, "script", `https://connect.facebook.net/en_US/fbevents.js?nonce=${nonce}`);
+  const fbq = ((...args: unknown[]) => {
+    if (typeof fbq.callMethod === "function") {
+      fbq.callMethod(...args);
+      return;
+    }
+    fbq.queue.push(args);
+  }) as MetaPixelFunction;
+
+  window.fbq = fbq;
+  if (!window._fbq) window._fbq = fbq;
+  fbq.push = fbq;
+  fbq.loaded = true;
+  fbq.version = "2.0";
+  fbq.queue = [];
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://connect.facebook.net/en_US/fbevents.js?nonce=${encodeURIComponent(nonce)}`;
+  const firstScript = document.getElementsByTagName("script")[0];
+  if (firstScript?.parentNode) {
+    firstScript.parentNode.insertBefore(script, firstScript);
+  } else {
+    document.head.appendChild(script);
+  }
 
   window.fbq("init", pixelId);
   window.fbq("track", "PageView");

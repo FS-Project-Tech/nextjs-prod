@@ -99,6 +99,14 @@ function findRawEtaValueFromMeta(
   return candidates[0]?.raw ?? null;
 }
 
+function formatDateForDisplay(date: Date): string {
+  return date.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 /**
  * Format ETA strings from Woo/meta (ISO, YYYY-MM-DD, timestamps, or plain text).
  */
@@ -111,16 +119,33 @@ export function formatEtaDateForDisplay(raw: string): string {
   if (Number.isFinite(asNum) && asNum > 1e11) {
     const d = new Date(asNum);
     if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+      return formatDateForDisplay(d);
+    }
+  }
+
+  const dayFirstDate = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+  if (dayFirstDate) {
+    const day = Number(dayFirstDate[1]);
+    const month = Number(dayFirstDate[2]);
+    const fullYear = Number(dayFirstDate[3]);
+    const year = fullYear < 100 ? 2000 + fullYear : fullYear;
+    const d = new Date(year, month - 1, day);
+
+    if (
+      d.getFullYear() === year &&
+      d.getMonth() === month - 1 &&
+      d.getDate() === day
+    ) {
+      return formatDateForDisplay(d);
     }
   }
 
   const d = new Date(t);
   if (!Number.isNaN(d.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(t)) {
-    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+    return formatDateForDisplay(d);
   }
   if (!Number.isNaN(d.getTime()) && t.length >= 8 && /\d{4}/.test(t)) {
-    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+    return formatDateForDisplay(d);
   }
 
   // Human-entered note (e.g. "Mid-April") — show only if it looks intentional, not a token.
@@ -209,38 +234,13 @@ export function extractNoStockStatusUpdateDisplayForProduct(
   return null;
 }
 
-/**
- * Extract expiry date from Woo short_description.
- * Expected admin content is date-only, but this safely handles wrapped HTML.
- */
-export function extractExpiryDateDisplayFromShortDescription(
-  shortDescription: string | null | undefined,
-): string | null {
-  const plain = String(shortDescription || "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!plain) return null;
-
-  const directDate = plain.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
-  if (directDate?.[1]) return directDate[1];
-
-  // Fallback: accept plain ISO-like date if ever used.
-  const isoDate = plain.match(/\b(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\b/);
-  if (isoDate?.[1]) return isoDate[1];
-
-  return null;
-}
-
 function extractExpiryDateFromMeta(
   meta: Array<{ key?: string; value?: unknown }> | undefined,
 ): string | null {
   if (!Array.isArray(meta) || meta.length === 0) return null;
   for (const row of meta) {
     const k = String(row?.key || "").toLowerCase().trim();
-    if (k !== "_expiry_date" && k !== "expiry_date") continue;
+    if (k !== "_expiry_date") continue;
     const raw = String(row?.value ?? "").trim();
     if (!raw) continue;
     return formatEtaDateForDisplay(raw) || raw;
@@ -250,9 +250,8 @@ function extractExpiryDateFromMeta(
 
 /**
  * Expiry date resolution order:
- * 1) selected variation meta (`_expiry_date` / `expiry_date`)
- * 2) parent product meta (`_expiry_date` / `expiry_date`)
- * 3) parent short_description date fallback
+ * 1) selected variation meta (`_expiry_date`)
+ * 2) parent product meta (`_expiry_date`)
  */
 export function extractExpiryDateDisplayForProduct(
   product: WooCommerceProduct,
@@ -266,7 +265,7 @@ export function extractExpiryDateDisplayForProduct(
   );
   if (fromProductMeta) return fromProductMeta;
 
-  return extractExpiryDateDisplayFromShortDescription(product.short_description);
+  return null;
 }
 
 /**
