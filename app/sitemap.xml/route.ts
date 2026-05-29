@@ -19,6 +19,7 @@ export async function GET() {
       { url: `${baseUrl}/post-sitemap.xml`, lastModified },
       ...productSitemaps,
       { url: `${baseUrl}/product-category-sitemap.xml`, lastModified },
+      { url: `${baseUrl}/product-tag-sitemap.xml`, lastModified },
       { url: `${baseUrl}/brand-sitemap.xml`, lastModified },
     ])
   );

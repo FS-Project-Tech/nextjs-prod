@@ -8,6 +8,7 @@ import {
   fetchPublishedProductsForSitemapPage,
   getPublishedProductSitemapPageCount,
 } from "@/lib/woocommerce/product-sitemap"; 
+import { fetchProductTagsForSitemap } from "@/lib/woocommerce/tags";
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
 
@@ -346,5 +347,19 @@ export async function getBrandSitemapEntries(
       lastModified: new Date(),
       changeFrequency: "weekly" as const,
       priority: 0.75,
+    }));
+}
+
+export async function getProductTagSitemapEntries(
+  baseUrl = getSitemapOrigin()
+): Promise<SitemapUrlEntry[]> {
+  const tags = await fetchProductTagsForSitemap();
+  return tags
+    .filter((tag) => (tag.slug || "").trim().length > 0)
+    .map((tag) => ({
+      url: `${baseUrl}/tag/${encodeURIComponent(tag.slug)}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.65,
     }));
 }

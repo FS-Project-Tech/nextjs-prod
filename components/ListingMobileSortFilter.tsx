@@ -54,6 +54,7 @@ function useActiveFilterCount() {
 
 export type ListingMobileSortFilterProps = {
   categorySlug?: string;
+  tagSlug?: string;
   brandSlug?: string;
   onSaleOnly?: boolean;
 };
@@ -67,6 +68,7 @@ export type ListingMobileSortFilterProps = {
  */
 function ListingMobileSortFilterImpl({
   categorySlug,
+  tagSlug,
   brandSlug,
   onSaleOnly,
 }: ListingMobileSortFilterProps) {
@@ -261,6 +263,7 @@ function ListingMobileSortFilterImpl({
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                 <FilterSidebar
                   categorySlug={categorySlug}
+                  tagSlug={tagSlug}
                   brandSlug={brandSlug}
                   onSaleOnly={onSaleOnly}
                   isMobileDrawer

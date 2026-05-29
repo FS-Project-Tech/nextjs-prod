@@ -37,6 +37,7 @@ type SidebarCategoryRow =
 
 interface Props {
   categorySlug?: string;
+  tagSlug?: string;
   /** When set (e.g. /brands/3m), sidebar lists only categories that contain this brand's products */
   brandSlug?: string;
   /** Match ProductGrid on-sale filter for facet counts */
@@ -89,6 +90,7 @@ function slugId(slug: string): number {
 
 async function fetchTypesenseBrandFacets(opts: {
   categorySlug: string | null;
+  tagSlug: string | null;
   minPrice: string;
   maxPrice: string;
   onSaleOnly?: boolean;
@@ -98,6 +100,7 @@ async function fetchTypesenseBrandFacets(opts: {
   usp.set("for_brand_facets", "1");
   usp.set("include_facets", "1");
   if (opts.categorySlug) usp.set("category_slug", opts.categorySlug);
+  if (opts.tagSlug) usp.set("tag_slug", opts.tagSlug);
   if (opts.minPrice && /^\d+(\.\d+)?$/.test(opts.minPrice)) {
     usp.set("min_price", opts.minPrice);
   }
@@ -236,6 +239,7 @@ function stripDeprecatedFilterParams(params: URLSearchParams, pathname: string) 
 
 export default function FilterSidebar({
   categorySlug,
+  tagSlug,
   brandSlug,
   onSaleOnly,
   isMobileDrawer: _isMobileDrawer,
@@ -283,6 +287,14 @@ export default function FilterSidebar({
     }
     return searchParams.get("category") || categorySlug || null;
   }, [pathname, categorySlug, searchParams]);
+
+  const activeTag = useMemo(() => {
+    if (pathname.startsWith("/tag/")) {
+      const parts = pathname.split("/").filter(Boolean);
+      return parts.length >= 2 ? parts[parts.length - 1] : null;
+    }
+    return tagSlug || searchParams.get("tag") || searchParams.get("tag_slug") || null;
+  }, [pathname, tagSlug, searchParams]);
 
   const activeBrands = useMemo(() => {
     const val = searchParams.get("brands") || "";
@@ -535,6 +547,7 @@ export default function FilterSidebar({
     const t = window.setTimeout(() => {
       fetchTypesenseBrandFacets({
         categorySlug: activeCategory,
+        tagSlug: activeTag,
         minPrice: minP,
         maxPrice: maxP,
         onSaleOnly,
@@ -551,7 +564,7 @@ export default function FilterSidebar({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [activeCategory, searchParamsFacetKey, isBrandContext, onSaleOnly]);
+  }, [activeCategory, activeTag, searchParamsFacetKey, isBrandContext, onSaleOnly]);
 
   useEffect(() => {
     if (!brandSlug) {

@@ -13,5 +13,6 @@ export * from "./product-single";
 export * from "./reviews";
 export * from "./categories";
 export * from "./category-trail";
+export * from "./tags";
 export * from "./orders";
 export * from "./customers";

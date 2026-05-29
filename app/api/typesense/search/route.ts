@@ -186,6 +186,7 @@ export async function GET(request: NextRequest) {
     const categorySlugRaw = sanitizeSlug(sp.get("category_slug") || sp.get("categorySlug"));
     const categorySlug =
       forBrandCategoryFacets || forOnSaleCategoryFacets ? "" : categorySlugRaw;
+    const tagSlug = sanitizeSlug(sp.get("tag_slug") || sp.get("tagSlug") || sp.get("tag"));
     const brandSingle = sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"));
     const brands = forBrandFacets ? [] : parseBrands(sp.get("brands"));
 
@@ -221,6 +222,7 @@ export async function GET(request: NextRequest) {
 
     const filterParts = buildTypesenseFilterParts({
       categorySlug: categorySlug || null,
+      tagSlug: tagSlug || null,
       brandSlugs: brands,
       brandSlugSingle: brandSingle || null,
       minPrice: /^\d+(\.\d+)?$/.test(minPrice) ? minPrice : null,

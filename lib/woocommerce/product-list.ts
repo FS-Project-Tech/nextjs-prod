@@ -20,6 +20,7 @@ export const fetchProducts = async (params?: {
   categories?: string;
   brands?: string;
   tags?: string;
+  tagSlug?: string;
   minPrice?: string;
   maxPrice?: string;
   sortBy?: string;
@@ -111,6 +112,26 @@ export const fetchProducts = async (params?: {
       } catch (error: unknown) {
         const normalized = normalizeError(error);
         console.warn(`⚠️ Failed to resolve category slug "${slug}":`, normalized.message);
+        return null;
+      }
+    };
+
+    const resolveTagSlug = async (slug: string): Promise<number | null> => {
+      try {
+        const { data: tags } = await wcGet<Array<{ id?: number; slug?: string; name?: string }>>(
+          "/products/tags",
+          { slug, per_page: 1 },
+          "categories",
+        );
+        if (tags?.length && Number(tags[0]?.id || 0) > 0) {
+          console.log(`🏷️ Resolved product_tag slug "${slug}" → ID ${tags[0].id}`);
+          return Number(tags[0].id);
+        }
+        console.warn(`⚠️ Product tag slug "${slug}" not found`);
+        return null;
+      } catch (error: unknown) {
+        const normalized = normalizeError(error);
+        console.warn(`⚠️ Failed to resolve product tag slug "${slug}":`, normalized.message);
         return null;
       }
     };
@@ -247,6 +268,9 @@ export const fetchProducts = async (params?: {
 
     if (params?.tags) {
       cleanParams.tag = params.tags;
+    } else if (params?.tagSlug) {
+      const resolved = await resolveTagSlug(params.tagSlug);
+      if (resolved) cleanParams.tag = resolved;
     }
 
     if (params?.minPrice) {

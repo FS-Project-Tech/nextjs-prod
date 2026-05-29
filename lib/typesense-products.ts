@@ -7,6 +7,7 @@ export const TYPESENSE_DEFAULT_QUERY_BY =
 export const TS_FIELDS = {
   categorySlug: process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
   brandSlug: process.env.TYPESENSE_FIELD_BRAND_SLUG || "brand",
+  tagSlug: process.env.TYPESENSE_FIELD_TAG_SLUG || "tags",
   price: process.env.TYPESENSE_FIELD_PRICE || "price",
   /** Empty = do not apply on_sale filter (collection has no such field). */
   onSale: (process.env.TYPESENSE_FIELD_ON_SALE ?? "").trim(),
@@ -36,6 +37,7 @@ export function tsEscapeFilterValue(value: string): string {
 
 export function buildTypesenseFilterParts(opts: {
   categorySlug?: string | null;
+  tagSlug?: string | null;
   brandSlugs?: string[];
   brandSlugSingle?: string | null;
   minPrice?: string | null;
@@ -48,6 +50,11 @@ export function buildTypesenseFilterParts(opts: {
 
   if (cat) {
     f.push(`${catField}:=${tsEscapeFilterValue(cat)}`);
+  }
+
+  const tag = opts.tagSlug?.trim();
+  if (tag) {
+    f.push(`${TS_FIELDS.tagSlug}:=${tsEscapeFilterValue(tag)}`);
   }
 
   if (opts.brandSlugSingle?.trim()) {
@@ -168,6 +175,22 @@ function firstStringish(v: unknown): string {
   return String(v);
 }
 
+function stringArrayish(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+  const s = String(v ?? "").trim();
+  return s ? [s] : [];
+}
+
+function labelFromSlug(slug: string): string {
+  return String(slug || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function firstNonEmptyString(...values: unknown[]): string | undefined {
   for (const v of values) {
     const s = firstStringish(v).trim();
@@ -237,6 +260,11 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
   }
 
   const brandName = firstStringish(doc.brand_name ?? doc.brand ?? doc.brand_title);
+  const tags = stringArrayish(doc.tags).map((tag, index) => ({
+    id: index + 1,
+    name: labelFromSlug(tag),
+    slug: tag,
+  }));
   const taxClass = firstNonEmptyString(
     doc.tax_class,
     doc.taxClass,
@@ -289,6 +317,7 @@ export function typesenseHitToListingProduct(doc: Record<string, unknown>) {
     /** True when index marks GST-free or tax_class/status resolve to GST-free (matches PDP). */
     gstFree: gstFreeProduct,
     brand_name: brandName,
+    tags,
     /** When Typesense row is a Woo variation, `id` is the variation id — use for `?variation_id=` PDP links. */
     variation_id: isVariationDoc && id > 0 ? id : undefined,
   };

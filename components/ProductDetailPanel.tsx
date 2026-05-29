@@ -895,6 +895,21 @@ export default function ProductDetailPanel({
           .filter(Boolean)
           .join(", ")
       : findBrand(product);
+  const productTags = useMemo(() => {
+    const seen = new Set<string>();
+    return (product.tags || [])
+      .map((tag) => ({
+        id: tag.id,
+        name: String(tag.name || "").trim(),
+        slug: String(tag.slug || "").trim(),
+      }))
+      .filter((tag) => {
+        const key = tag.slug || tag.name.toLowerCase();
+        if (!tag.name || !tag.slug || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [product.tags]);
 
   // Check if product has resources (downloads or meta_data with resource)
   const hasResources = useMemo(() => {
@@ -1509,6 +1524,24 @@ export default function ProductDetailPanel({
               </span>
             </span>
           )}
+          {productTags.length > 0 ? (
+            <span>
+              Tags:{" "}
+              <span className="font-medium text-gray-700">
+                {productTags.map((tag, idx) => (
+                  <span key={tag.id || tag.slug}>
+                    {idx > 0 ? ", " : ""}
+                    <Link
+                      href={`/tag/${encodeURIComponent(tag.slug)}`}
+                      className="hover:text-teal-700 hover:underline"
+                    >
+                      {tag.name}
+                    </Link>
+                  </span>
+                ))}
+              </span>
+            </span>
+          ) : null}
         </div>
       </div>
 

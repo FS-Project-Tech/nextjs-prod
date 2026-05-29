@@ -14,10 +14,11 @@ import {
   shouldOmitSortParam,
 } from "@/lib/listing-sort-options";
 
-/** Product rows and facets use Typesense as the single source of truth. */
+/** Product rows and facets use Typesense; tag archives use Woo as the product_tag source of truth. */
 
 interface ProductGridProps {
   categorySlug?: string;
+  tagSlug?: string;
   brandSlug?: string;
   onSaleOnly?: boolean;
   products?: ProductCardProduct[];
@@ -111,6 +112,12 @@ function categoryLeafFromPathname(pathname: string): string {
   return parts.length >= 2 ? parts[parts.length - 1]! : "";
 }
 
+function tagLeafFromPathname(pathname: string): string {
+  if (!pathname.startsWith("/tag/")) return "";
+  const parts = pathname.split("/").filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 1]! : "";
+}
+
 function stripDeprecatedListingParams(params: URLSearchParams, pathname: string) {
   if (!pathname.startsWith("/search")) {
     params.delete("brand");
@@ -121,7 +128,12 @@ function stripDeprecatedListingParams(params: URLSearchParams, pathname: string)
   params.delete("order");
 }
 
-export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: ProductGridProps) {
+export default function ProductGrid({
+  categorySlug,
+  tagSlug,
+  brandSlug,
+  onSaleOnly,
+}: ProductGridProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -140,8 +152,10 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
   const searchParamsKey = searchParams.toString();
 
   const categoryFromPath = useMemo(() => categoryLeafFromPathname(pathname), [pathname]);
+  const tagFromPath = useMemo(() => tagLeafFromPathname(pathname), [pathname]);
 
   const effectiveCategorySlug = categorySlug || categoryFromPath || "";
+  const effectiveTagSlug = tagSlug || tagFromPath || "";
 
   const filters = useMemo<Record<string, string>>(() => {
     const params: Record<string, string> = {};
@@ -151,6 +165,10 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
     } else {
       const catQ = searchParams.get("categories")?.trim() || searchParams.get("category")?.trim();
       if (catQ) params.category_slug = catQ;
+    }
+
+    if (effectiveTagSlug) {
+      params.tag_slug = effectiveTagSlug;
     }
 
     const urlBrands = searchParams.get("brands")?.trim();
@@ -172,7 +190,7 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
     if (searchQ) params.q = searchQ.slice(0, 100);
 
     return params;
-  }, [effectiveCategorySlug, brandSlug, searchParamsKey]);
+  }, [effectiveCategorySlug, effectiveTagSlug, brandSlug, searchParamsKey]);
 
   const debouncedQuery = useDebouncedValue(filters.q || "", 400);
   const effectiveFilters = useMemo<Record<string, string>>(
@@ -207,6 +225,9 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         if (effectiveFilters.category_slug) {
           usp.set("category_slug", effectiveFilters.category_slug);
         }
+        if (effectiveFilters.tag_slug) {
+          usp.set("tag_slug", effectiveFilters.tag_slug);
+        }
         if (brandSlug) {
           usp.set("brand_slug", brandSlug);
         }
@@ -229,7 +250,9 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
         }
         if (onSaleOnly) usp.set("on_sale", "true");
 
-        const listingEndpoint = `/api/typesense/search?${usp.toString()}`;
+        const listingEndpoint = effectiveFilters.tag_slug
+          ? `/api/catalog/woo-listing?${usp.toString()}`
+          : `/api/typesense/search?${usp.toString()}`;
 
         const res = await fetch(listingEndpoint, {
           signal: controller.signal,
@@ -264,6 +287,18 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
                   : [],
               average_rating: String(p.average_rating ?? "0"),
               rating_count: Number(p.rating_count ?? 0),
+              tags: Array.isArray(p.tags)
+                ? (p.tags as Array<{ id?: number; name?: string; slug?: string } | string>).map(
+                    (tag, index) =>
+                      typeof tag === "string"
+                        ? { id: index + 1, name: tag, slug: tag }
+                        : {
+                            id: Number(tag.id ?? index + 1),
+                            name: String(tag.name ?? tag.slug ?? ""),
+                            slug: String(tag.slug ?? tag.name ?? ""),
+                          },
+                  )
+                : [],
               tax_class: p.tax_class as string | undefined,
               tax_status: p.tax_status as string | undefined,
               variation_id:
@@ -423,15 +458,9 @@ export default function ProductGrid({ categorySlug, brandSlug, onSaleOnly }: Pro
                 tax_status={product.tax_status}
                 average_rating={product.average_rating}
                 rating_count={product.rating_count}
-                imageUrl={
-                  typeof (product as any)?.image === "string"
-                    ? (product as any).image
-                    : (product as any)?.image?.src ||
-                      (product as any)?.image?.thumbnail ||
-                      (product as any)?.images?.[0]?.src ||
-                      ""
-                }
-                imageAlt={(product as any)?.images?.[0]?.alt || product.name}
+                tags={product.tags}
+                imageUrl={product.image || product.images?.[0]?.src || ""}
+                imageAlt={product.images?.[0]?.alt || product.name}
                 variation_id={product.variation_id}
               />
             ))}

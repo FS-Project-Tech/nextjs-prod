@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     const page = Math.min(500, Math.max(1, parseInt(sp.get("page") || "1", 10) || 1));
 
     const categorySlug = sanitizeSlug(sp.get("category_slug") || sp.get("categorySlug"));
+    const tagSlug = sanitizeSlug(sp.get("tag_slug") || sp.get("tagSlug") || sp.get("tag"));
     const brandSingle = sanitizeSlug(sp.get("brand_slug") || sp.get("brandSlug"));
     const brandsParam = parseBrands(sp.get("brands"));
     const brands =
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
       page,
       per_page: perPage,
       categorySlug: categorySlug || undefined,
+      tagSlug: tagSlug || undefined,
       brands: brands || undefined,
       minPrice: /^\d+(\.\d+)?$/.test(minPrice) ? minPrice : undefined,
       maxPrice: /^\d+(\.\d+)?$/.test(maxPrice) ? maxPrice : undefined,
