@@ -5,7 +5,11 @@
  */
 
 import { TS_FIELDS } from "@/lib/typesense-products";
-import { isExactSkuSearchQuery, isLikelySkuToken, parseSkuTokens } from "@/lib/sku-search-tokens";
+import {
+  isExactSkuSearchQuery,
+  isSingleSkuAutocompleteQuery,
+  parseSkuTokens,
+} from "@/lib/sku-search-tokens";
 
 export type HeaderSearchFacetCount = { value: string; count: number };
 export type HeaderSearchFacetGroup = { field_name: string; counts: HeaderSearchFacetCount[] };
@@ -66,8 +70,7 @@ export async function fetchHeaderSearchSuggestions(
 ): Promise<HeaderSearchApiResult> {
   const skuTokens = parseSkuTokens(queryTrimmed);
   const useSkuFilterSearch = isExactSkuSearchQuery(queryTrimmed, skuTokens);
-  const singleSkuAutocompleteQuery =
-    skuTokens.length === 1 && isLikelySkuToken(skuTokens[0]) && /[\d._/-]/.test(skuTokens[0]);
+  const singleSkuAutocompleteQuery = isSingleSkuAutocompleteQuery(queryTrimmed, skuTokens);
 
   const formattedQuery = queryTrimmed
     .split(/[,\/&\s]+/)

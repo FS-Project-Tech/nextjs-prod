@@ -17,7 +17,7 @@ import {
 import { parseListingSortQueryValue } from "@/lib/listing-sort-options";
 import {
   isExactSkuSearchQuery,
-  isLikelySkuToken,
+  isSingleSkuAutocompleteQuery,
   MAX_SKU_SEARCH_QUERY_LEN,
   parseSkuTokens,
   toTypesenseExactArray,
@@ -198,13 +198,13 @@ export async function GET(request: NextRequest) {
     const qRaw = sp.get("q") || sp.get("search") || sp.get("query") || sp.get("Search") || "";
     const qSanitized = sanitizeSlug(qRaw, MAX_SKU_SEARCH_QUERY_LEN);
     /** Parse from raw-length string so long comma lists are not truncated at 200 chars. */
-    const skuTokens = parseSkuTokens(String(qRaw || "").trim().slice(0, MAX_SKU_SEARCH_QUERY_LEN));
+    const skuTokens = parseSkuTokens(
+      String(qRaw || "")
+        .trim()
+        .slice(0, MAX_SKU_SEARCH_QUERY_LEN)
+    );
     const useSkuFilterSearch = isExactSkuSearchQuery(qRaw, skuTokens);
-    const useSkuPrefixDedupe =
-      !useSkuFilterSearch &&
-      skuTokens.length === 1 &&
-      isLikelySkuToken(skuTokens[0]) &&
-      /[\d._/-]/.test(skuTokens[0]);
+    const useSkuPrefixDedupe = !useSkuFilterSearch && isSingleSkuAutocompleteQuery(qRaw, skuTokens);
     const useSkuResultDedupe = useSkuFilterSearch || useSkuPrefixDedupe;
     const q = useSkuFilterSearch ? "*" : qSanitized || "*";
 

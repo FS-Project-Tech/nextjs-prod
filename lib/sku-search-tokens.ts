@@ -10,6 +10,7 @@ export const MAX_SKU_SEARCH_QUERY_LEN = 8000;
 const SEGMENT_MAX = 180;
 const MIN_EXACT_SINGLE_SKU_LENGTH = 6;
 const SKU_TOKEN_PATTERN = /^[A-Za-z0-9._/\s-]+$/;
+const SKU_STRUCTURAL_SEPARATOR_PATTERN = /[._/-]/;
 
 export function parseSkuTokens(rawQuery: string): string[] {
   const raw = String(rawQuery || "").trim();
@@ -34,11 +35,29 @@ export function parseSkuTokens(rawQuery: string): string[] {
 export function isLikelySkuToken(token: string): boolean {
   const t = token.trim();
   if (!SKU_TOKEN_PATTERN.test(t) || !t) return false;
-  if (/\d/.test(t) || t.includes("-") || t.includes("_") || t.includes(".") || t.includes("/")) {
+  if (/\d/.test(t) || SKU_STRUCTURAL_SEPARATOR_PATTERN.test(t)) {
     return true;
   }
   if (/\s/.test(t) && t.split(/\s+/).length >= 2) return true;
   return false;
+}
+
+function isUnstructuredMultiWordToken(token: string): boolean {
+  return /\s/.test(token) && !SKU_STRUCTURAL_SEPARATOR_PATTERN.test(token);
+}
+
+export function isSingleSkuAutocompleteQuery(
+  rawQuery: string,
+  tokens = parseSkuTokens(rawQuery)
+): boolean {
+  if (tokens.length !== 1) return false;
+  const token = tokens[0].trim();
+  if (!isLikelySkuToken(token)) return false;
+  if (!/[\d._/-]/.test(token)) return false;
+  // Product names like "3in 1 wet" look SKU-ish because they contain digits and spaces.
+  // Without a structural SKU separator, keep them in keyword search instead of SKU mode.
+  if (isUnstructuredMultiWordToken(token)) return false;
+  return true;
 }
 
 export function isExactSkuSearchQuery(rawQuery: string, tokens = parseSkuTokens(rawQuery)): boolean {
@@ -50,7 +69,8 @@ export function isExactSkuSearchQuery(rawQuery: string, tokens = parseSkuTokens(
     allTokensLookLikeSkus &&
     singleToken.replace(/\s+/g, "").length >= MIN_EXACT_SINGLE_SKU_LENGTH &&
     /[\d._/-]/.test(singleToken) &&
-    !/[._/-]$/.test(singleToken);
+    !/[._/-]$/.test(singleToken) &&
+    !isUnstructuredMultiWordToken(singleToken);
 
   return (
     (tokens.length > 1 && (hasSkuListDelimiter || allTokensLookLikeSkus)) ||
