@@ -8,7 +8,6 @@
 export const MAX_SKU_SEARCH_QUERY_LEN = 8000;
 
 const SEGMENT_MAX = 180;
-const MIN_EXACT_SINGLE_SKU_LENGTH = 6;
 const SKU_TOKEN_PATTERN = /^[A-Za-z0-9._/\s-]+$/;
 const SKU_STRUCTURAL_SEPARATOR_PATTERN = /[._/-]/;
 
@@ -63,19 +62,8 @@ export function isSingleSkuAutocompleteQuery(
 export function isExactSkuSearchQuery(rawQuery: string, tokens = parseSkuTokens(rawQuery)): boolean {
   const hasSkuListDelimiter = /[,&;\n\r\t]/.test(rawQuery);
   const allTokensLookLikeSkus = tokens.length > 0 && tokens.every((t) => isLikelySkuToken(t));
-  const singleToken = tokens.length === 1 ? tokens[0].trim() : "";
-  const singleStrongSkuToken =
-    Boolean(singleToken) &&
-    allTokensLookLikeSkus &&
-    singleToken.replace(/\s+/g, "").length >= MIN_EXACT_SINGLE_SKU_LENGTH &&
-    /[\d._/-]/.test(singleToken) &&
-    !/[._/-]$/.test(singleToken) &&
-    !isUnstructuredMultiWordToken(singleToken);
 
-  return (
-    (tokens.length > 1 && (hasSkuListDelimiter || allTokensLookLikeSkus)) ||
-    singleStrongSkuToken
-  );
+  return tokens.length > 1 && (hasSkuListDelimiter || allTokensLookLikeSkus);
 }
 
 export function toTypesenseExactArray(values: string[]): string {

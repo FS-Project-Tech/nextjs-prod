@@ -20,6 +20,9 @@ function getSocialLinks() {
     linkedin:
       process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL?.trim() ||
       "https://au.linkedin.com/company/joya-medical-supplies",
+    youtube:
+      process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL?.trim() ||
+      "https://www.youtube.com/@joyamedicalsupplies5567",
   };
 }
  
@@ -63,6 +66,17 @@ function FollowUsSocial({ links }: { links: ReturnType<typeof getSocialLinks> })
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             <path d="M6.5 8.5a2 2 0 110-4 2 2 0 010 4zM4.5 20.5V10H8.5v10.5h-4zM11 20.5h4v-6.2c0-1 .2-2 1.4-2 1.2 0 1.6.9 1.6 2v6.2H21v-7c0-3.5-1.9-5.1-4.4-5.1-2.1 0-3.2 1.1-3.7 2.1h-.1V10H11v10.5z" />
+          </svg>
+        </a>
+        <a
+          href={links.youtube}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={iconBtn}
+          aria-label="Joya Medical Supplies on YouTube"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2 31.2 31.2 0 000 12a31.2 31.2 0 00.5 5.8 3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1A31.2 31.2 0 0024 12a31.2 31.2 0 00-.5-5.8zM9.6 15.6V8.4L15.9 12l-6.3 3.6z" />
           </svg>
         </a>
       </div>

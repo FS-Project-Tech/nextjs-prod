@@ -14,11 +14,13 @@ describe("sku-search-tokens", () => {
     expect(isSingleSkuAutocompleteQuery(query, tokens)).toBe(false);
   });
 
-  it("treats compact numeric or separated SKU queries as SKU searches", () => {
-    expect(isExactSkuSearchQuery("995096")).toBe(true);
+  it("treats single compact numeric or separated SKU queries as autocomplete searches", () => {
+    expect(isExactSkuSearchQuery("995096")).toBe(false);
     expect(isSingleSkuAutocompleteQuery("995096")).toBe(true);
-    expect(isExactSkuSearchQuery("995096-OLD")).toBe(true);
+    expect(isExactSkuSearchQuery("995096-OLD")).toBe(false);
     expect(isSingleSkuAutocompleteQuery("995096-OLD")).toBe(true);
+    expect(isExactSkuSearchQuery("57-885")).toBe(false);
+    expect(isSingleSkuAutocompleteQuery("57-885")).toBe(true);
   });
 
   it("keeps comma-separated SKU lists as exact SKU searches", () => {

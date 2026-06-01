@@ -5,11 +5,6 @@
  */
 
 import { TS_FIELDS } from "@/lib/typesense-products";
-import {
-  isExactSkuSearchQuery,
-  isSingleSkuAutocompleteQuery,
-  parseSkuTokens,
-} from "@/lib/sku-search-tokens";
 
 export type HeaderSearchFacetCount = { value: string; count: number };
 export type HeaderSearchFacetGroup = { field_name: string; counts: HeaderSearchFacetCount[] };
@@ -68,23 +63,8 @@ export async function fetchHeaderSearchSuggestions(
   queryTrimmed: string,
   signal: AbortSignal
 ): Promise<HeaderSearchApiResult> {
-  const skuTokens = parseSkuTokens(queryTrimmed);
-  const useSkuFilterSearch = isExactSkuSearchQuery(queryTrimmed, skuTokens);
-  const singleSkuAutocompleteQuery = isSingleSkuAutocompleteQuery(queryTrimmed, skuTokens);
-
-  const formattedQuery = queryTrimmed
-    .split(/[,\/&\s]+/)
-    .map((q) => q.trim())
-    .filter(Boolean)
-    .join(" || ");
-
-  /** API parses SKU tokens from raw `q`; OR-query uses formatted string for keyword search. */
-  const qParam = useSkuFilterSearch || singleSkuAutocompleteQuery
-    ? queryTrimmed
-    : formattedQuery.trim() || queryTrimmed;
-
   const usp = new URLSearchParams();
-  usp.set("q", qParam);
+  usp.set("q", queryTrimmed);
   usp.set("per_page", "10");
   usp.set("page", "1");
   usp.set("include_facets", "1");
@@ -124,7 +104,7 @@ export async function fetchHeaderSearchSuggestions(
 
   const hits = products.map((p) => ({
     document: searchProductRowToPseudoDoc(p),
-    text_match: 0,
+    text_match: typeof p._text_match === "number" ? p._text_match : 0,
   }));
 
   const categories = pickFacetCounts(facet_counts, TS_FIELDS.categorySlug);

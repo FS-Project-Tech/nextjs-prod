@@ -11,10 +11,12 @@ import {
   mapSortToTypesense,
   TS_FIELDS,
   TYPESENSE_DEFAULT_QUERY_BY,
+  TYPESENSE_DEFAULT_QUERY_BY_WEIGHTS,
   typesenseHitToListingProduct,
   typesenseHitToSearchProduct,
 } from "@/lib/typesense-products";
 import { parseListingSortQueryValue } from "@/lib/listing-sort-options";
+import { buildProductSearchQueryPlan } from "@/lib/product-search-query";
 import {
   isExactSkuSearchQuery,
   isSingleSkuAutocompleteQuery,
@@ -55,7 +57,14 @@ function sanitizeGroupByField(raw: string | null): string {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : "";
 }
 
-type TypesenseHitLike = { document?: Record<string, unknown> };
+type TypesenseHitLike = { document?: Record<string, unknown>; text_match?: number };
+
+type TypesenseSearchResultLike = {
+  found?: number;
+  facet_counts?: unknown[];
+  hits?: TypesenseHitLike[];
+  grouped_hits?: { hits?: TypesenseHitLike[] }[];
+};
 
 type SearchUiProductLike = {
   id?: unknown;
@@ -119,10 +128,7 @@ function dedupeSearchProductsBySku<T extends SearchUiProductLike>(items: T[]): T
   return out;
 }
 
-function flattenTypesenseHits(result: {
-  hits?: TypesenseHitLike[];
-  grouped_hits?: { hits?: TypesenseHitLike[] }[];
-}): TypesenseHitLike[] {
+function flattenTypesenseHits(result: TypesenseSearchResultLike): TypesenseHitLike[] {
   const groups = result.grouped_hits;
   if (groups && groups.length > 0) {
     const out: TypesenseHitLike[] = [];
@@ -132,6 +138,92 @@ function flattenTypesenseHits(result: {
     return out;
   }
   return result.hits || [];
+}
+
+function shouldUseRelaxedSearch(
+  result: TypesenseSearchResultLike,
+  searchPlan: ReturnType<typeof buildProductSearchQueryPlan>,
+  opts: { page: number; useSkuFilterSearch: boolean; useSkuPrefixDedupe: boolean; q: string }
+): boolean {
+  if (opts.page !== 1 || opts.useSkuFilterSearch || opts.useSkuPrefixDedupe || opts.q === "*") {
+    return false;
+  }
+  if (!searchPlan.relaxedQuery || searchPlan.relaxedQuery === opts.q) return false;
+  return true;
+}
+
+function normalizeSearchComparable(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function firstString(value: unknown): string {
+  if (Array.isArray(value)) return firstString(value[0]);
+  return String(value ?? "").trim();
+}
+
+function searchHitRankScore(hit: TypesenseHitLike, rawQuery: string, isSkuPrefixSearch: boolean): number {
+  const doc = hit.document || {};
+  const q = normalizeSearchComparable(rawQuery);
+  if (!q || q === "*") return 0;
+  const name = normalizeSearchComparable(doc.name);
+  const sku = normalizeSearchComparable(firstString(doc.sku));
+  const tokens = q.split(/[\s,\/&]+/).filter(Boolean);
+
+  let score = Number(hit.text_match ?? 0);
+  if (sku) {
+    if (sku === q) score += 1_000_000_000;
+    else if (sku.startsWith(q)) score += 850_000_000;
+    else if (sku.includes(q)) score += 450_000_000;
+  }
+  if (name) {
+    if (name === q) score += 120_000_000;
+    else if (name.includes(q)) score += 80_000_000;
+    if (tokens.length > 1 && tokens.every((token) => name.includes(token))) {
+      score += 25_000_000;
+    }
+  }
+  if (isSkuPrefixSearch && sku) score += 10_000_000;
+  if (doc.in_stock !== false && doc.inStock !== false) score += 10_000;
+  return score;
+}
+
+function mergeTypesenseResults(
+  strictResult: TypesenseSearchResultLike,
+  relaxedResult: TypesenseSearchResultLike,
+  rawQuery: string,
+  isSkuPrefixSearch: boolean
+): TypesenseSearchResultLike {
+  const merged: { hit: TypesenseHitLike; seq: number; score: number }[] = [];
+  const seen = new Set<string>();
+  let seq = 0;
+
+  for (const hit of [...flattenTypesenseHits(strictResult), ...flattenTypesenseHits(relaxedResult)]) {
+    const doc = hit.document || {};
+    const key = String(doc.id ?? doc.product_id ?? doc.slug ?? "").trim();
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    merged.push({
+      hit,
+      seq: seq++,
+      score: searchHitRankScore(hit, rawQuery, isSkuPrefixSearch),
+    });
+  }
+
+  merged.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.seq - b.seq;
+  });
+
+  return {
+    ...relaxedResult,
+    found: Math.max(Number(strictResult.found ?? 0), Number(relaxedResult.found ?? 0), merged.length),
+    hits: merged.map((item) => item.hit),
+    grouped_hits: undefined,
+    facet_counts: relaxedResult.facet_counts || strictResult.facet_counts,
+  };
 }
 
 function isPublishedStatus(status: unknown): boolean {
@@ -206,7 +298,8 @@ export async function GET(request: NextRequest) {
     const useSkuFilterSearch = isExactSkuSearchQuery(qRaw, skuTokens);
     const useSkuPrefixDedupe = !useSkuFilterSearch && isSingleSkuAutocompleteQuery(qRaw, skuTokens);
     const useSkuResultDedupe = useSkuFilterSearch || useSkuPrefixDedupe;
-    const q = useSkuFilterSearch ? "*" : qSanitized || "*";
+    const searchPlan = buildProductSearchQueryPlan(qSanitized);
+    const q = useSkuFilterSearch ? "*" : searchPlan.strictQuery || "*";
 
     /** Fetch enough TS rows per page so parent + variation docs for each SKU usually fit (multi-SKU paste). */
     const typesensePerPage =
@@ -236,6 +329,10 @@ export async function GET(request: NextRequest) {
 
     const client = getTypesenseClient();
     const collection = getTypesenseCollectionName();
+    const configuredQueryBy = (process.env.TYPESENSE_QUERY_BY || "").trim();
+    const queryBy = useSkuFilterSearch || useSkuPrefixDedupe
+      ? "name,sku"
+      : configuredQueryBy || TYPESENSE_DEFAULT_QUERY_BY;
 
     const groupByParam = sanitizeGroupByField(sp.get("group_by"));
     const groupLimitRaw = parseInt(sp.get("group_limit") || "10", 10);
@@ -244,13 +341,27 @@ export async function GET(request: NextRequest) {
     // Typesense requires per_page >= 1; use 1 for facet-only to minimize payload.
     const searchParams: Record<string, unknown> = {
       q,
-      query_by: useSkuFilterSearch
-        ? "name,sku"
-        : (process.env.TYPESENSE_QUERY_BY || "").trim() || TYPESENSE_DEFAULT_QUERY_BY,
+      query_by: queryBy,
       per_page: facetsOnly ? 1 : typesensePerPage,
       page: facetsOnly ? 1 : page,
       sort_by,
     };
+
+    if (!useSkuFilterSearch && !configuredQueryBy) {
+      searchParams.query_by_weights = useSkuPrefixDedupe
+        ? "3,10"
+        : TYPESENSE_DEFAULT_QUERY_BY_WEIGHTS;
+    }
+
+    if (!useSkuFilterSearch && q !== "*") {
+      searchParams.prioritize_exact_match = true;
+      searchParams.prioritize_token_position = true;
+      searchParams.drop_tokens_threshold = 0;
+      if (useSkuPrefixDedupe) {
+        searchParams.prefix = true;
+        searchParams.num_typos = "1,0";
+      }
+    }
 
     if (filter_by) searchParams.filter_by = filter_by;
 
@@ -272,22 +383,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await client
+    let result = (await client
       .collections(collection)
       .documents()
-      .search(searchParams as Record<string, unknown>);
+      .search(searchParams as Record<string, unknown>)) as TypesenseSearchResultLike;
+
+    if (
+      shouldUseRelaxedSearch(result, searchPlan, {
+        page,
+        useSkuFilterSearch,
+        useSkuPrefixDedupe,
+        q,
+      })
+    ) {
+      const relaxedResult = (await client
+        .collections(collection)
+        .documents()
+        .search({
+          ...searchParams,
+          q: searchPlan.relaxedQuery,
+          drop_tokens_threshold: 1,
+          prefix: true,
+        } as Record<string, unknown>)) as TypesenseSearchResultLike;
+      result = mergeTypesenseResults(result, relaxedResult, q, useSkuPrefixDedupe);
+    }
 
     const found = result.found ?? 0;
 
-    const hits = flattenTypesenseHits(result as Parameters<typeof flattenTypesenseHits>[0]).filter(
-      (h) => isPublishedStatus((h.document || {}).status)
+    const hits = flattenTypesenseHits(result).filter((h) =>
+      isPublishedStatus((h.document || {}).status)
     );
     const useSearchShape = sp.get("search_ui") === "1";
     const products = useSearchShape
       ? (() => {
-          const mapped = hits.map((h) =>
-            typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>)
-          );
+          const mapped = hits.map((h) => ({
+            ...typesenseHitToSearchProduct((h.document || {}) as Record<string, unknown>),
+            _text_match: typeof h.text_match === "number" ? h.text_match : 0,
+          }));
           if (!useSkuResultDedupe) return mapped;
           const deduped = dedupeSearchProductsBySku(mapped);
           return useSkuFilterSearch ? filterByRequestedSkuTokens(deduped, skuTokens) : deduped;

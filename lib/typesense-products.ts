@@ -2,7 +2,10 @@ import { getTaxDisplayType } from "@/lib/format-utils";
 
 /** Default `query_by` when `TYPESENSE_QUERY_BY` is unset; keep in sync with `HeaderSearch`. */
 export const TYPESENSE_DEFAULT_QUERY_BY =
-  "name,sku,category,brand,tags";
+  "name,sku,brand,category,tags,short_description,description";
+
+/** Match {@link TYPESENSE_DEFAULT_QUERY_BY}: name/SKU dominate; long descriptions only rescue misses. */
+export const TYPESENSE_DEFAULT_QUERY_BY_WEIGHTS = "10,9,5,4,3,1,1";
 
 export const TS_FIELDS = {
   categorySlug: process.env.TYPESENSE_FIELD_CATEGORY_SLUG || "category",
